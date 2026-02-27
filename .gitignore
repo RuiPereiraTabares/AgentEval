@@ -1,0 +1,29 @@
+# Environment and secrets
+.env
+.mwai_token
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+
+# Data files (may contain PII from support cases)
+*.csv
+evaluation_results_*
+evaluation_summary_*
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Claude Code
+.claude/

@@ -1,0 +1,809 @@
+"""
+Evaluation result data models.
+"""
+
+from dataclasses import dataclass, field
+from typing import Literal
+
+
+import logging
+
+_logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Helpers for normalizing unpredictable LLM JSON responses
+# ---------------------------------------------------------------------------
+
+# Maps qualitative labels to numeric scores (0-100).
+# Exhaustive to handle any label variant the LLM might produce.
+_RELEVANCE_LABEL_MAP = {
+    # High tier (90-100)
+    "excellent": 95, "perfect": 95, "exact match": 95, "exact": 95,
+    "very high": 90, "directly relevant": 90, "highly relevant": 90,
+    # Good tier (70-89)
+    "high": 85, "strong": 85, "good": 75, "relevant": 75,
+    "mostly relevant": 75, "mostly_relevant": 75, "above average": 75,
+    # Partial tier (50-69)
+    "medium": 55, "moderate": 55, "average": 55, "fair": 55,
+    "partial": 45, "partially relevant": 45, "partially_relevant": 45,
+    "somewhat relevant": 45, "somewhat": 45, "mixed": 45,
+    # Poor tier (20-49)
+    "low": 25, "poor": 20, "weak": 20, "below average": 25,
+    "marginally relevant": 25, "marginal": 25, "tangential": 25,
+    "tangentially related": 25, "minimal": 20, "limited": 25,
+    # Irrelevant tier (0-19)
+    "very low": 10, "irrelevant": 5, "not relevant": 5,
+    "not_relevant": 5, "unrelated": 5, "none": 0, "no": 5, "n/a": 0,
+    # Boolean-like
+    "true": 85, "false": 10, "yes": 85, "no match": 5,
+}
+
+_COMPLETENESS_LABEL_MAP = {
+    # Complete tier (90-100)
+    "complete": 95, "fully complete": 95, "fully_complete": 95,
+    "comprehensive": 95, "excellent": 95, "perfect": 95,
+    "very high": 90, "very complete": 90,
+    # Mostly complete tier (70-89)
+    "high": 85, "mostly complete": 75, "mostly_complete": 75,
+    "good": 75, "adequate": 75, "sufficient": 75, "above average": 75,
+    "mostly comprehensive": 75, "largely complete": 75,
+    # Incomplete tier (40-69)
+    "medium": 55, "moderate": 55, "average": 55, "fair": 55,
+    "partial": 45, "partially complete": 45, "partially_complete": 45,
+    "incomplete": 35, "somewhat complete": 45, "somewhat": 45,
+    "mixed": 45, "limited": 40,
+    # Severely lacking tier (0-39)
+    "low": 25, "poor": 20, "below average": 25,
+    "severely lacking": 15, "severely_lacking": 15, "lacking": 20,
+    "very low": 10, "very incomplete": 10, "minimal": 15,
+    "insufficient": 25, "inadequate": 20, "weak": 20,
+    "none": 0, "missing": 10, "empty": 0, "n/a": 0,
+    # Boolean-like
+    "true": 85, "false": 20, "yes": 85, "no": 20,
+}
+
+_VALIDITY_LABEL_MAP = {
+    # Valid tier (80-100)
+    "valid": 90, "correct": 90, "applicable": 85, "effective": 85,
+    "very high": 90, "excellent": 95, "perfect": 95,
+    "highly valid": 90, "confirmed": 90, "verified": 90,
+    # Likely valid tier (60-79)
+    "high": 85, "likely valid": 70, "likely_valid": 70,
+    "mostly valid": 70, "mostly_valid": 70, "good": 75,
+    "probably valid": 70, "should work": 70, "adequate": 70,
+    "largely valid": 70, "above average": 75,
+    # Uncertain tier (40-59)
+    "partially valid": 55, "partially_valid": 55, "partial": 45,
+    "medium": 55, "moderate": 55, "average": 55, "fair": 55,
+    "uncertain": 45, "questionable": 45, "mixed": 45,
+    "somewhat valid": 50, "somewhat": 45, "unclear": 45,
+    "inconclusive": 45, "limited": 40,
+    # Likely invalid tier (20-39)
+    "likely invalid": 25, "likely_invalid": 25, "low": 20,
+    "mostly invalid": 25, "mostly_invalid": 25, "poor": 20,
+    "probably invalid": 25, "below average": 25, "weak": 20,
+    "unlikely": 25, "doubtful": 25, "insufficient": 25,
+    # Invalid tier (0-19)
+    "invalid": 10, "incorrect": 10, "not valid": 10, "not_valid": 10,
+    "inapplicable": 10, "not applicable": 10, "not_applicable": 10,
+    "very low": 10, "none": 0, "n/a": 0, "no": 10,
+    "does not apply": 10, "wrong": 10, "ineffective": 10,
+    # Boolean-like
+    "true": 85, "false": 10, "yes": 85,
+}
+
+
+def _collect_all_values(data: dict) -> dict:
+    """Recursively collect all key-value pairs from nested dicts into a flat dict.
+    Later (deeper) values override earlier ones for the same key."""
+    flat = {}
+    for key, value in data.items():
+        flat[key.lower()] = value
+        if isinstance(value, dict):
+            for k, v in _collect_all_values(value).items():
+                flat[k.lower()] = v
+    return flat
+
+
+def _parse_numeric_string(val: str) -> int | None:
+    """Try to extract a numeric score from a string like '70', '7/10', '70%', '7 out of 10'."""
+    import re
+    s = val.strip()
+    # Pure integer
+    try:
+        n = int(s)
+        return n if 0 <= n <= 100 else None
+    except ValueError:
+        pass
+    # Percentage like "70%"
+    m = re.match(r'^(\d+)\s*%$', s)
+    if m:
+        return int(m.group(1))
+    # Fraction like "7/10" or "70/100"
+    m = re.match(r'^(\d+)\s*/\s*(\d+)$', s)
+    if m:
+        num, denom = int(m.group(1)), int(m.group(2))
+        if denom > 0:
+            return int(num * 100 / denom)
+    # "X out of Y"
+    m = re.match(r'^(\d+)\s+out\s+of\s+(\d+)$', s, re.IGNORECASE)
+    if m:
+        num, denom = int(m.group(1)), int(m.group(2))
+        if denom > 0:
+            return int(num * 100 / denom)
+    return None
+
+
+def _extract_score(flat: dict, score_key: str, label_keys: list[str],
+                   label_map: dict, default: int = 0) -> int:
+    """Extract a numeric score from flat dict, trying direct score key first,
+    then falling back to mapping qualitative labels."""
+    # Try the exact score key (e.g. "relevance_score")
+    val = flat.get(score_key)
+    if val is not None and isinstance(val, (int, float)):
+        return int(val)
+    if val is not None and isinstance(val, str):
+        n = _parse_numeric_string(val)
+        if n is not None:
+            return n
+
+    # Try "score" as a generic key
+    val = flat.get("score")
+    if val is not None and isinstance(val, (int, float)):
+        return int(val)
+    if val is not None and isinstance(val, str):
+        n = _parse_numeric_string(val)
+        if n is not None:
+            return n
+
+    # Try mapping qualitative labels from known keys
+    for lk in label_keys:
+        val = flat.get(lk)
+        if isinstance(val, str):
+            # Try label map first
+            mapped = label_map.get(val.lower().strip())
+            if mapped is not None:
+                _logger.info(f"  Mapped label '{val}' -> score {mapped}")
+                return mapped
+            # Try parsing as a numeric string
+            n = _parse_numeric_string(val)
+            if n is not None:
+                _logger.info(f"  Parsed numeric string '{val}' -> score {n}")
+                return n
+        elif isinstance(val, bool):
+            return 80 if val else 20
+        elif isinstance(val, (int, float)):
+            return int(val)
+
+    # LAST RESORT: scan ALL values in flat dict for any recognizable score
+    # This handles cases where the LLM uses completely unexpected key names
+    _logger.debug(f"  Last-resort scan of all flat keys: {list(flat.keys())}")
+    for key, val in flat.items():
+        if isinstance(val, (int, float)) and 0 < val <= 100 and key not in ("score",):
+            _logger.info(f"  Last-resort: found numeric value {val} under key '{key}'")
+            return int(val)
+    for key, val in flat.items():
+        if isinstance(val, str):
+            mapped = label_map.get(val.lower().strip())
+            if mapped is not None:
+                _logger.info(f"  Last-resort: mapped label '{val}' (key='{key}') -> score {mapped}")
+                return mapped
+            n = _parse_numeric_string(val)
+            if n is not None:
+                _logger.info(f"  Last-resort: parsed numeric string '{val}' (key='{key}') -> score {n}")
+                return n
+
+    _logger.warning(f"  Could not extract score from flat keys: {list(flat.keys())}")
+    return default
+
+
+def _extract_bool(flat: dict, key: str, default: bool) -> bool:
+    """Extract a boolean, searching by lowercase key."""
+    val = flat.get(key)
+    if isinstance(val, bool):
+        return val
+    if isinstance(val, str):
+        return val.lower().strip() in ("true", "yes", "1")
+    return default
+
+
+def _extract_list(flat: dict, keys: list[str], default=None) -> list:
+    """Extract a list value trying multiple possible keys."""
+    for k in keys:
+        val = flat.get(k)
+        if isinstance(val, list):
+            return val
+    return default if default is not None else []
+
+
+def _extract_str(flat: dict, key: str, valid_values: set, default: str) -> str:
+    """Extract a string value, validating against allowed values."""
+    val = flat.get(key)
+    if isinstance(val, str) and val.lower().strip() in valid_values:
+        return val.lower().strip()
+    return default
+
+
+RelevanceVerdict = Literal["excellent", "good", "partial", "poor", "irrelevant"]
+CompletenessVerdict = Literal["complete", "mostly_complete", "incomplete", "severely_lacking"]
+ValidityVerdict = Literal["valid", "likely_valid", "uncertain", "likely_invalid", "invalid"]
+ConfidenceLevel = Literal["high", "medium", "low"]
+OverallVerdict = Literal["adequate", "needs_supplementation", "inadequate", "no_citation_provided"]
+ActionRequired = Literal["none", "add_context", "find_better_article", "create_content"]
+GapPriority = Literal["high", "medium", "low"]
+GapEffort = Literal["small", "medium", "large"]
+GapRecommendation = Literal["augment_existing", "create_new", "combine_multiple"]
+DescriptionQualityVerdict = Literal["well_defined", "mostly_defined", "partially_defined", "poorly_defined"]
+TransferReason = Literal[
+    "poor_description",
+    "poor_description_bad_citation",
+    "no_citation_found",
+    "bad_citation_match",
+    "inadequate_article",
+    "customer_escalation",
+    "not_transferred",
+    "unknown",
+]
+
+
+_DESCRIPTION_QUALITY_LABEL_MAP = {
+    # High tier (80-100)
+    "excellent": 95, "perfect": 95, "well defined": 90, "well_defined": 90,
+    "very high": 90, "comprehensive": 90, "detailed": 85, "clear": 85,
+    "thorough": 85, "complete": 85,
+    # Good tier (60-79)
+    "high": 80, "good": 75, "mostly defined": 70, "mostly_defined": 70,
+    "adequate": 70, "sufficient": 70, "above average": 75,
+    # Partial tier (40-59)
+    "medium": 55, "moderate": 55, "average": 55, "fair": 55,
+    "partial": 45, "partially defined": 45, "partially_defined": 45,
+    "somewhat": 45, "mixed": 45, "limited": 40,
+    # Poor tier (0-39)
+    "low": 25, "poor": 20, "poorly defined": 15, "poorly_defined": 15,
+    "weak": 20, "below average": 25, "vague": 20, "unclear": 20,
+    "very low": 10, "minimal": 15, "insufficient": 20, "inadequate": 20,
+    "none": 0, "missing": 0, "empty": 0, "n/a": 0,
+    # Boolean-like
+    "true": 80, "false": 10, "yes": 80, "no": 10,
+}
+
+
+@dataclass
+class DescriptionQualityResult:
+    """Result from the Description Quality Agent (Kepner-Tregoe framework)."""
+
+    # Per-dimension scores (0-100)
+    identity_score: int = 0
+    location_score: int = 0
+    timing_score: int = 0
+    magnitude_score: int = 0
+
+    # Per-dimension analysis strings
+    identity_analysis: str = ""
+    location_analysis: str = ""
+    timing_analysis: str = ""
+    magnitude_analysis: str = ""
+
+    # Overall
+    description_quality_score: int = 0
+    description_quality_verdict: DescriptionQualityVerdict = "poorly_defined"
+
+    # Missing info
+    missing_kt_elements: list[str] = field(default_factory=list)
+    improvement_suggestions: list[str] = field(default_factory=list)
+
+    def to_dict(self) -> dict:
+        return {
+            "identity_score": self.identity_score,
+            "location_score": self.location_score,
+            "timing_score": self.timing_score,
+            "magnitude_score": self.magnitude_score,
+            "identity_analysis": self.identity_analysis,
+            "location_analysis": self.location_analysis,
+            "timing_analysis": self.timing_analysis,
+            "magnitude_analysis": self.magnitude_analysis,
+            "description_quality_score": self.description_quality_score,
+            "description_quality_verdict": self.description_quality_verdict,
+            "missing_kt_elements": self.missing_kt_elements,
+            "improvement_suggestions": self.improvement_suggestions,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "DescriptionQualityResult":
+        flat = _collect_all_values(data)
+
+        identity_score = _extract_score(
+            flat, "identity_score",
+            ["identity_score", "identityscore", "identity", "what_score", "whatscore"],
+            _DESCRIPTION_QUALITY_LABEL_MAP,
+        )
+        location_score = _extract_score(
+            flat, "location_score",
+            ["location_score", "locationscore", "location", "where_score", "wherescore"],
+            _DESCRIPTION_QUALITY_LABEL_MAP,
+        )
+        timing_score = _extract_score(
+            flat, "timing_score",
+            ["timing_score", "timingscore", "timing", "when_score", "whenscore"],
+            _DESCRIPTION_QUALITY_LABEL_MAP,
+        )
+        magnitude_score = _extract_score(
+            flat, "magnitude_score",
+            ["magnitude_score", "magnitudescore", "magnitude", "extent_score", "extentscore"],
+            _DESCRIPTION_QUALITY_LABEL_MAP,
+        )
+
+        # Overall score — use provided value or compute from dimensions
+        from ..config.settings import KT_DIMENSION_WEIGHTS
+        overall = _extract_score(
+            flat, "description_quality_score",
+            ["description_quality_score", "descriptionqualityscore", "overall_score", "overallscore"],
+            _DESCRIPTION_QUALITY_LABEL_MAP,
+        )
+        if overall == 0 and any([identity_score, location_score, timing_score, magnitude_score]):
+            overall = round(
+                identity_score * KT_DIMENSION_WEIGHTS["identity"]
+                + location_score * KT_DIMENSION_WEIGHTS["location"]
+                + timing_score * KT_DIMENSION_WEIGHTS["timing"]
+                + magnitude_score * KT_DIMENSION_WEIGHTS["magnitude"]
+            )
+
+        # Derive verdict from score
+        verdict_map = {
+            (0, 40): "poorly_defined",
+            (40, 60): "partially_defined",
+            (60, 80): "mostly_defined",
+            (80, 101): "well_defined",
+        }
+        verdict = _extract_str(
+            flat, "description_quality_verdict",
+            {"well_defined", "mostly_defined", "partially_defined", "poorly_defined"},
+            "poorly_defined",
+        )
+        if verdict == "poorly_defined" and overall > 0:
+            for (lo, hi), v in verdict_map.items():
+                if lo <= overall < hi:
+                    verdict = v
+                    break
+
+        return cls(
+            identity_score=identity_score,
+            location_score=location_score,
+            timing_score=timing_score,
+            magnitude_score=magnitude_score,
+            identity_analysis=flat.get("identity_analysis", "") or "",
+            location_analysis=flat.get("location_analysis", "") or "",
+            timing_analysis=flat.get("timing_analysis", "") or "",
+            magnitude_analysis=flat.get("magnitude_analysis", "") or "",
+            description_quality_score=overall,
+            description_quality_verdict=verdict,
+            missing_kt_elements=_extract_list(flat, [
+                "missing_kt_elements", "missingktelements",
+                "missing_elements", "missingelements",
+                "missing_information", "missinginformation",
+            ]),
+            improvement_suggestions=_extract_list(flat, [
+                "improvement_suggestions", "improvementsuggestions",
+                "suggestions", "recommendations",
+            ]),
+        )
+
+
+@dataclass
+class RelevanceResult:
+    """Result from the Relevance Agent."""
+
+    relevance_score: int
+    matched_aspects: list[str] = field(default_factory=list)
+    unmatched_aspects: list[str] = field(default_factory=list)
+    version_match: bool = True
+    product_match: bool = True
+    is_outdated: bool = False
+    relevance_verdict: RelevanceVerdict = "partial"
+
+    def to_dict(self) -> dict:
+        return {
+            "relevance_score": self.relevance_score,
+            "matched_aspects": self.matched_aspects,
+            "unmatched_aspects": self.unmatched_aspects,
+            "version_match": self.version_match,
+            "product_match": self.product_match,
+            "is_outdated": self.is_outdated,
+            "relevance_verdict": self.relevance_verdict
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "RelevanceResult":
+        flat = _collect_all_values(data)
+        score = _extract_score(
+            flat, "relevance_score",
+            [
+                "relevance_score", "relevancescore", "score",
+                "relevance", "relevant", "isrelevant", "is_relevant",
+                "article_relevance", "articlerelevance",
+                "relevance_verdict", "relevanceverdict",
+                "relevance_level", "relevancelevel",
+                "match", "match_level", "matchlevel",
+                "verdict", "result", "rating", "assessment", "evaluation",
+            ],
+            _RELEVANCE_LABEL_MAP,
+        )
+        verdict_map = {(0, 30): "irrelevant", (30, 50): "poor", (50, 70): "partial",
+                       (70, 90): "good", (90, 101): "excellent"}
+        verdict = _extract_str(flat, "relevance_verdict",
+                               {"excellent", "good", "partial", "poor", "irrelevant"}, "partial")
+        if verdict == "partial" and score > 0:
+            for (lo, hi), v in verdict_map.items():
+                if lo <= score < hi:
+                    verdict = v
+                    break
+        return cls(
+            relevance_score=score,
+            matched_aspects=_extract_list(flat, [
+                "matched_aspects", "matchedaspects", "matched",
+                "matching_aspects", "matchingaspects",
+                "high_relevance_factors", "highrelevancefactors",
+                "strengths", "matches",
+            ]),
+            unmatched_aspects=_extract_list(flat, [
+                "unmatched_aspects", "unmatchedaspects", "unmatched",
+                "unmatching_aspects", "unmatchingaspects",
+                "low_relevance_factors", "lowrelevancefactors",
+                "gaps", "weaknesses", "mismatches",
+            ]),
+            version_match=any(_extract_bool(flat, k, False) for k in [
+                "version_match", "versionmatch", "version_appropriate",
+            ]) if any(k in flat for k in ["version_match", "versionmatch", "version_appropriate"]) else True,
+            product_match=any(_extract_bool(flat, k, False) for k in [
+                "product_match", "productmatch", "product_relevant",
+            ]) if any(k in flat for k in ["product_match", "productmatch", "product_relevant"]) else True,
+            is_outdated=any(_extract_bool(flat, k, False) for k in [
+                "is_outdated", "isoutdated", "outdated", "deprecated",
+            ]),
+            relevance_verdict=verdict,
+        )
+
+
+@dataclass
+class CompletenessResult:
+    """Result from the Completeness Agent."""
+
+    completeness_score: int
+    has_prerequisites: bool = False
+    has_step_by_step: bool = False
+    has_examples: bool = False
+    has_troubleshooting: bool = False
+    has_success_criteria: bool = False
+    missing_elements: list[str] = field(default_factory=list)
+    completeness_verdict: CompletenessVerdict = "incomplete"
+
+    def to_dict(self) -> dict:
+        return {
+            "completeness_score": self.completeness_score,
+            "has_prerequisites": self.has_prerequisites,
+            "has_step_by_step": self.has_step_by_step,
+            "has_examples": self.has_examples,
+            "has_troubleshooting": self.has_troubleshooting,
+            "has_success_criteria": self.has_success_criteria,
+            "missing_elements": self.missing_elements,
+            "completeness_verdict": self.completeness_verdict
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "CompletenessResult":
+        flat = _collect_all_values(data)
+        score = _extract_score(
+            flat, "completeness_score",
+            [
+                "completeness_score", "completenessscore", "score",
+                "completeness", "complete", "iscomplete", "is_complete",
+                "articlecompleteness", "article_completeness",
+                "doc_completeness", "doccompleteness",
+                "documentation_completeness", "documentationcompleteness",
+                "completeness_verdict", "completenessverdict",
+                "completeness_level", "completenesslevel",
+                "coverage", "content_coverage", "contentcoverage",
+                "verdict", "result", "rating", "assessment", "evaluation",
+            ],
+            _COMPLETENESS_LABEL_MAP,
+        )
+        verdict_map = {(0, 50): "severely_lacking", (50, 70): "incomplete",
+                       (70, 90): "mostly_complete", (90, 101): "complete"}
+        verdict = _extract_str(flat, "completeness_verdict",
+                               {"complete", "mostly_complete", "incomplete", "severely_lacking"}, "incomplete")
+        if verdict == "incomplete" and score > 0:
+            for (lo, hi), v in verdict_map.items():
+                if lo <= score < hi:
+                    verdict = v
+                    break
+        return cls(
+            completeness_score=score,
+            has_prerequisites=any(_extract_bool(flat, k, False) for k in [
+                "has_prerequisites", "hasprerequisites", "prerequisites_section",
+                "prerequisitessection", "prerequisites", "prereqs",
+            ]),
+            has_step_by_step=any(_extract_bool(flat, k, False) for k in [
+                "has_step_by_step", "hasstepbystep", "step_by_step", "stepbystep",
+                "steps_clear", "stepsclear", "has_steps", "hassteps",
+            ]),
+            has_examples=any(_extract_bool(flat, k, False) for k in [
+                "has_examples", "hasexamples", "examples", "has_code_samples",
+                "hascodesamples", "has_screenshots", "hasscreenshots",
+            ]),
+            has_troubleshooting=any(_extract_bool(flat, k, False) for k in [
+                "has_troubleshooting", "hastroubleshooting", "troubleshooting",
+                "has_troubleshooting_steps", "hastroubleshootingsteps",
+            ]),
+            has_success_criteria=any(_extract_bool(flat, k, False) for k in [
+                "has_success_criteria", "hassuccesscriteria", "success_criteria",
+                "successcriteria", "has_verification", "hasverification",
+            ]),
+            missing_elements=_extract_list(flat, [
+                "missing_elements", "missingelements",
+                "missing_components", "missingcomponents",
+                "missing_sections", "missingsections",
+                "gaps", "issues", "weaknesses",
+            ]),
+            completeness_verdict=verdict,
+        )
+
+
+@dataclass
+class ValidityResult:
+    """Result from the Validity Agent."""
+
+    validity_score: int
+    addresses_root_cause: bool = False
+    is_current_solution: bool = True
+    environment_compatible: bool = True
+    potential_issues: list[str] = field(default_factory=list)
+    confidence_level: ConfidenceLevel = "medium"
+    validity_verdict: ValidityVerdict = "uncertain"
+
+    def to_dict(self) -> dict:
+        return {
+            "validity_score": self.validity_score,
+            "addresses_root_cause": self.addresses_root_cause,
+            "is_current_solution": self.is_current_solution,
+            "environment_compatible": self.environment_compatible,
+            "potential_issues": self.potential_issues,
+            "confidence_level": self.confidence_level,
+            "validity_verdict": self.validity_verdict
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "ValidityResult":
+        flat = _collect_all_values(data)
+        score = _extract_score(
+            flat, "validity_score",
+            [
+                "validity_score", "validityscore", "score",
+                "validity", "valid", "isvalid", "is_valid",
+                "issolutionvalid", "is_solution_valid",
+                "solution_valid", "solutionvalid",
+                "article_validity", "articlevalidity",
+                "validity_verdict", "validityverdict",
+                "validity_level", "validitylevel",
+                "effectiveness", "applicability", "applicable",
+                "verdict", "result", "rating", "assessment", "evaluation",
+            ],
+            _VALIDITY_LABEL_MAP,
+        )
+        verdict_map = {(0, 20): "invalid", (20, 40): "likely_invalid", (40, 60): "uncertain",
+                       (60, 80): "likely_valid", (80, 101): "valid"}
+        verdict = _extract_str(flat, "validity_verdict",
+                               {"valid", "likely_valid", "uncertain", "likely_invalid", "invalid"}, "uncertain")
+        if verdict == "uncertain" and score > 0:
+            for (lo, hi), v in verdict_map.items():
+                if lo <= score < hi:
+                    verdict = v
+                    break
+        return cls(
+            validity_score=score,
+            addresses_root_cause=any(_extract_bool(flat, k, False) for k in [
+                "addresses_root_cause", "addressesrootcause",
+                "root_cause", "rootcause", "addresses_cause",
+            ]),
+            is_current_solution=not any(_extract_bool(flat, k, False) for k in [
+                "is_deprecated", "isdeprecated", "deprecated", "outdated",
+            ]) if any(k in flat for k in ["is_deprecated", "isdeprecated", "deprecated", "outdated"]) else _extract_bool(flat, "is_current_solution", True),
+            environment_compatible=any(_extract_bool(flat, k, True) for k in [
+                "environment_compatible", "environmentcompatible",
+                "env_compatible", "envcompatible", "compatible",
+            ]) if any(k in flat for k in ["environment_compatible", "environmentcompatible", "env_compatible", "envcompatible", "compatible"]) else True,
+            potential_issues=_extract_list(flat, [
+                "potential_issues", "potentialissues",
+                "issues", "concerns", "risks", "problems",
+                "reasons", "limitations", "caveats",
+            ]),
+            confidence_level=_extract_str(flat, "confidence_level", {"high", "medium", "low"}, "medium"),
+            validity_verdict=verdict,
+        )
+
+
+@dataclass
+class RecommendedArticle:
+    """A recommended article from search results."""
+
+    url: str
+    title: str
+    relevance_reason: str
+    estimated_match_score: int
+    last_updated: str | None = None
+    article_type: str = "unknown"
+
+    def to_dict(self) -> dict:
+        return {
+            "url": self.url,
+            "title": self.title,
+            "relevance_reason": self.relevance_reason,
+            "estimated_match_score": self.estimated_match_score,
+            "last_updated": self.last_updated,
+            "article_type": self.article_type
+        }
+
+
+@dataclass
+class SearchResult:
+    """Result from the Search Agent."""
+
+    recommended_articles: list[RecommendedArticle] = field(default_factory=list)
+    search_terms_used: list[str] = field(default_factory=list)
+    better_alternative_found: bool = False
+
+    def to_dict(self) -> dict:
+        return {
+            "recommended_articles": [a.to_dict() for a in self.recommended_articles],
+            "search_terms_used": self.search_terms_used,
+            "better_alternative_found": self.better_alternative_found
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "SearchResult":
+        data = _flatten_to_fields(data, {"recommended_articles", "search_terms_used"})
+        articles = [
+            RecommendedArticle(**a) if isinstance(a, dict) else a
+            for a in data.get("recommended_articles", [])
+        ]
+        return cls(
+            recommended_articles=articles,
+            search_terms_used=data.get("search_terms_used", []),
+            better_alternative_found=data.get("better_alternative_found", False)
+        )
+
+
+@dataclass
+class GapAnalysisResult:
+    """Result from the Gap Analysis Agent."""
+
+    documentation_gaps: list[str] = field(default_factory=list)
+    suggested_content_outline: list[str] = field(default_factory=list)
+    required_expertise: list[str] = field(default_factory=list)
+    priority: GapPriority = "medium"
+    estimated_effort: GapEffort = "medium"
+    recommendation: GapRecommendation = "augment_existing"
+
+    def to_dict(self) -> dict:
+        return {
+            "documentation_gaps": self.documentation_gaps,
+            "suggested_content_outline": self.suggested_content_outline,
+            "required_expertise": self.required_expertise,
+            "priority": self.priority,
+            "estimated_effort": self.estimated_effort,
+            "recommendation": self.recommendation
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "GapAnalysisResult":
+        data = _flatten_to_fields(data, {"documentation_gaps", "suggested_content_outline", "priority"})
+        return cls(
+            documentation_gaps=data.get("documentation_gaps", []),
+            suggested_content_outline=data.get("suggested_content_outline", []),
+            required_expertise=data.get("required_expertise", []),
+            priority=data.get("priority", "medium"),
+            estimated_effort=data.get("estimated_effort", "medium"),
+            recommendation=data.get("recommendation", "augment_existing")
+        )
+
+
+@dataclass
+class TransferReasonResult:
+    """Result from the TransferReasonAgent — classifies WHY a case was transferred."""
+
+    transfer_reason: TransferReason = "unknown"
+    confidence: ConfidenceLevel = "medium"
+    transferred: bool | None = None
+    sr_status: str = ""
+    reopened: bool | None = None
+    contributing_factors: list[str] = field(default_factory=list)
+
+    # Snapshot of upstream scores used for classification
+    description_quality_score: int = 0
+    overall_article_score: int = 0
+    relevance_score: int = 0
+    contains_citations: bool = False
+
+    escalation_signals_detected: list[str] = field(default_factory=list)
+    narrative: str = ""
+
+    def to_dict(self) -> dict:
+        return {
+            "transfer_reason": self.transfer_reason,
+            "confidence": self.confidence,
+            "transferred": self.transferred,
+            "sr_status": self.sr_status,
+            "reopened": self.reopened,
+            "contributing_factors": self.contributing_factors,
+            "description_quality_score": self.description_quality_score,
+            "overall_article_score": self.overall_article_score,
+            "relevance_score": self.relevance_score,
+            "contains_citations": self.contains_citations,
+            "escalation_signals_detected": self.escalation_signals_detected,
+            "narrative": self.narrative,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "TransferReasonResult":
+        return cls(
+            transfer_reason=data.get("transfer_reason", "unknown"),
+            confidence=data.get("confidence", "medium"),
+            transferred=data.get("transferred"),
+            sr_status=data.get("sr_status", ""),
+            reopened=data.get("reopened"),
+            contributing_factors=data.get("contributing_factors", []),
+            description_quality_score=data.get("description_quality_score", 0),
+            overall_article_score=data.get("overall_article_score", 0),
+            relevance_score=data.get("relevance_score", 0),
+            contains_citations=data.get("contains_citations", False),
+            escalation_signals_detected=data.get("escalation_signals_detected", []),
+            narrative=data.get("narrative", ""),
+        )
+
+
+@dataclass
+class EvaluationResult:
+    """Complete evaluation result from the Orchestrator."""
+
+    issue_summary: dict = field(default_factory=dict)
+    current_article_evaluation: dict = field(default_factory=dict)
+    overall_score: int = 0
+    verdict: OverallVerdict = "inadequate"
+    action_required: ActionRequired = "find_better_article"
+    recommended_articles: list[dict] = field(default_factory=list)
+    content_gaps: dict = field(default_factory=dict)
+    final_recommendation: str = ""
+    description_quality: dict = field(default_factory=dict)
+    evaluation_reliability_warning: bool = False
+    transfer_analysis: dict = field(default_factory=dict)
+
+    def to_dict(self) -> dict:
+        return {
+            "issue_summary": self.issue_summary,
+            "current_article_evaluation": self.current_article_evaluation,
+            "overall_score": self.overall_score,
+            "verdict": self.verdict,
+            "action_required": self.action_required,
+            "recommended_articles": self.recommended_articles,
+            "content_gaps": self.content_gaps,
+            "final_recommendation": self.final_recommendation,
+            "description_quality": self.description_quality,
+            "evaluation_reliability_warning": self.evaluation_reliability_warning,
+            "transfer_analysis": self.transfer_analysis,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "EvaluationResult":
+        return cls(
+            issue_summary=data.get("issue_summary", {}),
+            current_article_evaluation=data.get("current_article_evaluation", {}),
+            overall_score=data.get("overall_score", 0),
+            verdict=data.get("verdict", "inadequate"),
+            action_required=data.get("action_required", "find_better_article"),
+            recommended_articles=data.get("recommended_articles", []),
+            content_gaps=data.get("content_gaps", {}),
+            final_recommendation=data.get("final_recommendation", ""),
+            description_quality=data.get("description_quality", {}),
+            evaluation_reliability_warning=data.get("evaluation_reliability_warning", False),
+            transfer_analysis=data.get("transfer_analysis", {}),
+        )

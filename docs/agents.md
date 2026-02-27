@@ -1,0 +1,257 @@
+# Agent Reference
+
+The system contains 9 agents: 1 base class, 1 orchestrator, and 7 specialized evaluation agents. All inherit from `BaseAgent` and follow the same evaluate/fallback pattern.
+
+## BaseAgent
+
+**File:** `agents/__init__.py`
+
+Abstract base class for all agents.
+
+```python
+class BaseAgent(ABC):
+    def __init__(self, client, model: str = "gpt-4o", provider: str = "openai")
+    def evaluate(self, **kwargs) -> dict           # Abstract
+    def _call_claude(self, system_prompt, user_message) -> str
+    def _parse_json_response(self, response) -> dict
+    def set_llm_callable(self, callable_fn)        # Inject custom LLM
+```
+
+See [Architecture > BaseAgent](architecture.md#baseagent-class) for details on `_call_claude()` provider dispatch and `_parse_json_response()` 3-stage parsing.
+
+---
+
+## IssueParserAgent
+
+**File:** `agents/issue_parser.py`
+**Role:** Parse raw customer issue text into a structured `Issue` object.
+**LLM Prompt:** `AgentPrompts.ISSUE_PARSER`
+
+**Inputs:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `issue_description` | `str` | Raw customer issue text |
+| `product_info` | `dict \| None` | SAP product metadata from CSV |
+
+**Output:** `Issue` dataclass
+
+**Extracted fields:** product, version, error_codes, symptoms, issue_type, keywords (5-10 search terms), environment, severity
+
+**Fallback:** On LLM failure, uses `_extract_fallback_keywords()` for keyword extraction and `_guess_product()` for product detection via regex matching.
+
+---
+
+## DescriptionQualityAgent
+
+**File:** `agents/description_quality_agent.py`
+**Role:** Evaluate issue description quality using the Kepner-Tregoe framework.
+**LLM Prompt:** `AgentPrompts.DESCRIPTION_QUALITY_AGENT`
+
+**Input:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `issue` | `Issue` | Parsed customer issue |
+
+**Output:** `DescriptionQualityResult`
+
+**Scoring:** Weighted across 4 KT dimensions — Identity/WHAT (35%), Location/WHERE (25%), Timing/WHEN (20%), Magnitude/EXTENT (20%).
+
+**Verdict thresholds:** well_defined (80+), mostly_defined (60-79), partially_defined (40-59), poorly_defined (<40)
+
+**Fallback:** Heuristic keyword detection for location (server, tenant, region), timing (date patterns, temporal words), and magnitude (user counts, percentages).
+
+See [KT Framework](kt-framework.md) for the full scoring guide.
+
+---
+
+## RelevanceAgent
+
+**File:** `agents/relevance_agent.py`
+**Role:** Evaluate how well an article matches the customer's issue.
+**LLM Prompt:** `AgentPrompts.RELEVANCE_AGENT`
+
+**Inputs:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `issue` | `Issue` | Parsed customer issue |
+| `article` | `Article` | Fetched article content |
+
+**Output:** `RelevanceResult`
+
+**Evaluates:** Product match, version match, error code match, symptom match, recency.
+
+**Scoring guide:**
+- 90-100: Excellent — directly addresses the exact issue
+- 70-89: Good — most aspects covered
+- 50-69: Partial — related but with gaps
+- 30-49: Poor — tangentially related
+- 0-29: Irrelevant — does not match
+
+**Fallback:** Returns score 30 (poor) with empty matched/unmatched aspects.
+
+---
+
+## CompletenessAgent
+
+**File:** `agents/completeness_agent.py`
+**Role:** Check whether an article provides complete information to resolve the issue.
+**LLM Prompt:** `AgentPrompts.COMPLETENESS_AGENT`
+
+**Inputs:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `issue` | `Issue` | Parsed customer issue |
+| `article` | `Article` | Fetched article content |
+
+**Output:** `CompletenessResult`
+
+**Checks for:** Prerequisites section, step-by-step instructions, examples/screenshots, troubleshooting guidance, success criteria/verification steps.
+
+**Scoring guide:**
+- 90-100: Complete — all sections present
+- 70-89: Mostly complete — minor gaps
+- 50-69: Incomplete — significant gaps
+- 0-49: Severely lacking — insufficient content
+
+**Fallback:** Keyword-based section detection (scans article content for section headers and instruction patterns).
+
+---
+
+## ValidityAgent
+
+**File:** `agents/validity_agent.py`
+**Role:** Determine whether the article's solution would actually work for the customer's issue.
+**LLM Prompt:** `AgentPrompts.VALIDITY_AGENT`
+
+**Inputs:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `issue` | `Issue` | Parsed customer issue |
+| `article` | `Article` | Fetched article content |
+
+**Output:** `ValidityResult`
+
+**Evaluates:** Root cause vs. symptom treatment, solution currency (not deprecated), environment compatibility, potential issues/caveats.
+
+**Scoring guide:**
+- 80-100: Valid — solution is correct and current
+- 60-79: Likely valid — probably works
+- 40-59: Uncertain — questionable effectiveness
+- 20-39: Likely invalid — probably does not work
+- 0-19: Invalid — incorrect or deprecated
+
+**Fallback:** Returns score 50 (uncertain) with confidence "low".
+
+---
+
+## SearchAgent
+
+**File:** `agents/search_agent.py`
+**Role:** Generate optimized search queries to find alternative articles when the current one is insufficient.
+**LLM Prompt:** `AgentPrompts.SEARCH_AGENT`
+
+**Inputs:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `issue` | `Issue` | Parsed customer issue |
+| `current_score` | `int` | Current best article score (0-100) |
+
+**Output:** `SearchResult`
+
+**Triggered when:** `best_score < 70`
+
+**Generates:** 3-5 optimized search queries with reasoning, recommended search domains (support.microsoft.com, learn.microsoft.com).
+
+**Key methods:**
+- `_extract_queries_from_text()` — parse plain-text LLM responses
+- `_generate_fallback_searches()` — heuristic query construction from issue data
+- `generate_search_urls()` — build full search URLs from queries
+
+**Fallback:** Constructs queries from issue product, keywords, and error codes.
+
+---
+
+## GapAnalysisAgent
+
+**File:** `agents/gap_agent.py`
+**Role:** Identify documentation gaps when no adequate article exists.
+**LLM Prompt:** `AgentPrompts.GAP_ANALYSIS_AGENT`
+
+**Inputs:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `issue` | `Issue` | Parsed customer issue |
+| `relevance_result` | `RelevanceResult \| None` | From RelevanceAgent |
+| `completeness_result` | `CompletenessResult \| None` | From CompletenessAgent |
+| `validity_result` | `ValidityResult \| None` | From ValidityAgent |
+
+**Output:** `GapAnalysisResult`
+
+**Triggered when:** `best_score < 60`
+
+**Produces:** Documentation gaps list, suggested content outline, required expertise, priority, effort estimate, and recommendation (augment existing / create new / combine multiple).
+
+**Fallback:** Derives gap analysis from upstream evaluation results (missing elements from completeness, unmatched aspects from relevance).
+
+---
+
+## TransferReasonAgent
+
+**File:** `agents/transfer_reason_agent.py`
+**Role:** Classify the root cause of why a support case was transferred. Runs **last** in the pipeline.
+**LLM Prompt:** `AgentPrompts.TRANSFER_REASON_ESCALATION_DETECTION` (for escalation detection only)
+
+**Inputs:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `issue` | `Issue` | Parsed issue (with transfer metadata) |
+| `description_quality_result` | `DescriptionQualityResult \| None` | From DescriptionQualityAgent |
+| `overall_score` | `int` | Overall article evaluation score |
+| `relevance_score` | `int` | From RelevanceAgent |
+| `contains_citations` | `bool` | Whether case had article citations |
+| `verdict` | `str` | Overall verdict from orchestrator |
+
+**Output:** `TransferReasonResult`
+
+**Classification:** 8 categories via a cascading decision tree. See [Transfer Analysis](transfer-analysis.md) for the full decision tree, escalation detection patterns, and narrative templates.
+
+---
+
+## Orchestrator
+
+**File:** `agents/orchestrator.py`
+**Role:** Coordinate all agents, manage the evaluation pipeline, and produce the final result.
+
+**Inputs:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `customer_issue` | `str` | Raw issue description |
+| `article_url` | `str \| None` | Single article URL |
+| `article_urls` | `list[str] \| None` | Multiple article URLs |
+| `product_info` | `dict \| None` | SAP product metadata |
+| `transfer_metadata` | `dict \| None` | transferred, sr_status, reopened |
+
+**Output:** `dict` (serialized `EvaluationResult`)
+
+**Coordination logic:**
+
+1. Initializes all 8 agents with the same client/model/provider
+2. Parses issue via IssueParserAgent
+3. Runs DescriptionQualityAgent, checks reliability threshold
+4. For multi-URL cases, evaluates each article and keeps the **best score**
+5. Conditionally triggers SearchAgent and GapAnalysisAgent
+6. Runs TransferReasonAgent last (needs all upstream scores)
+7. Builds final result with `_build_final_result()` or `_handle_no_citation()`
+
+**No-citation path:** When no URLs are provided, the orchestrator calls `_handle_no_citation()` which runs SearchAgent and GapAnalysisAgent immediately, then TransferReasonAgent with `contains_citations=False`.
+
+See [Pipeline](pipeline.md) for the complete step-by-step flowchart.
