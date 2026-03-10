@@ -114,6 +114,7 @@ def write_results_csv(results: list[dict], output_path: str):
 
         flat = {
             'case_number': r.get('case_number', ''),
+            'issue_description': eval_data.get('issue_summary', {}).get('raw_description', ''),
             'issue_product': eval_data.get('issue_summary', {}).get('product', ''),
             'issue_type': eval_data.get('issue_summary', {}).get('issue_type', ''),
             'article_url': article_eval.get('url', ''),
@@ -205,6 +206,7 @@ def write_results_csv_summary(results: list[dict], output_path: str):
 
         flat = {
             'case_number': r.get('case_number', ''),
+            'issue_description': eval_data.get('issue_summary', {}).get('raw_description', ''),
             'overall_score': eval_data.get('overall_score', 0),
             'verdict': eval_data.get('verdict', ''),
             # Relevance — score + reasons
