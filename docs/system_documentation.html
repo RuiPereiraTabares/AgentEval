@@ -1,0 +1,1107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Article Evaluation System - Documentation</title>
+<style>
+  :root {
+    --bg: #f8f9fb;
+    --surface: #ffffff;
+    --text: #1a1a2e;
+    --text-muted: #555770;
+    --border: #e2e4ea;
+    --accent: #3b5bdb;
+    --accent-light: #edf2ff;
+    --success: #2b8a3e;
+    --success-light: #ebfbee;
+    --warning: #e67700;
+    --warning-light: #fff9db;
+    --danger: #c92a2a;
+    --danger-light: #fff5f5;
+    --purple: #7048e8;
+    --purple-light: #f3f0ff;
+    --teal: #0c8599;
+    --teal-light: #e6fcf5;
+    --pink: #d6336c;
+    --pink-light: #fff0f6;
+    --orange: #d9480f;
+    --orange-light: #fff4e6;
+    --radius: 10px;
+    --shadow: 0 1px 3px rgba(0,0,0,.07), 0 4px 12px rgba(0,0,0,.04);
+    --shadow-lg: 0 4px 12px rgba(0,0,0,.08), 0 12px 32px rgba(0,0,0,.06);
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+    font-size: 15px;
+  }
+
+  /* --- NAV --- */
+  nav {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 240px;
+    height: 100vh;
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    padding: 24px 0;
+    overflow-y: auto;
+    z-index: 100;
+  }
+  nav .nav-title {
+    font-size: 13px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    color: var(--text-muted);
+    padding: 0 20px;
+    margin-bottom: 12px;
+  }
+  nav a {
+    display: block;
+    padding: 7px 20px;
+    color: var(--text-muted);
+    text-decoration: none;
+    font-size: 14px;
+    border-left: 3px solid transparent;
+    transition: all .15s;
+  }
+  nav a:hover, nav a:focus {
+    color: var(--accent);
+    background: var(--accent-light);
+    border-left-color: var(--accent);
+  }
+  nav a.indent { padding-left: 36px; font-size: 13px; }
+
+  /* --- MAIN --- */
+  main {
+    margin-left: 240px;
+    max-width: 960px;
+    padding: 40px 48px 80px;
+  }
+
+  /* --- HERO --- */
+  .hero {
+    background: linear-gradient(135deg, #3b5bdb 0%, #7048e8 100%);
+    color: #fff;
+    border-radius: var(--radius);
+    padding: 48px 44px;
+    margin-bottom: 48px;
+    box-shadow: var(--shadow-lg);
+  }
+  .hero h1 { font-size: 32px; font-weight: 800; margin-bottom: 12px; }
+  .hero p { font-size: 16px; opacity: .9; max-width: 640px; line-height: 1.65; }
+  .hero .badge-row { margin-top: 20px; display: flex; gap: 10px; flex-wrap: wrap; }
+  .hero .badge {
+    display: inline-block;
+    background: rgba(255,255,255,.18);
+    padding: 4px 14px;
+    border-radius: 20px;
+    font-size: 13px;
+    font-weight: 600;
+  }
+
+  /* --- SECTIONS --- */
+  section { margin-bottom: 52px; }
+  h2 {
+    font-size: 22px;
+    font-weight: 700;
+    margin-bottom: 20px;
+    padding-bottom: 8px;
+    border-bottom: 2px solid var(--border);
+  }
+  h3 { font-size: 17px; font-weight: 700; margin: 24px 0 10px; }
+  h4 { font-size: 15px; font-weight: 600; margin: 16px 0 6px; color: var(--text-muted); }
+  p, li { color: var(--text); }
+  p + p { margin-top: 10px; }
+  ul, ol { padding-left: 24px; margin: 8px 0; }
+  li { margin-bottom: 4px; }
+
+  /* --- CARDS --- */
+  .agent-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+  }
+  .agent-card {
+    background: var(--surface);
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    box-shadow: var(--shadow);
+    overflow: hidden;
+    transition: box-shadow .2s;
+  }
+  .agent-card:hover { box-shadow: var(--shadow-lg); }
+  .agent-card .card-header {
+    padding: 16px 20px 12px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .agent-card .card-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 20px;
+    flex-shrink: 0;
+  }
+  .agent-card .card-header h3 { margin: 0; font-size: 15px; }
+  .agent-card .card-header .card-class { font-size: 12px; color: var(--text-muted); font-family: monospace; }
+  .agent-card .card-body { padding: 0 20px 18px; font-size: 14px; }
+  .agent-card .card-body p { margin-bottom: 8px; }
+  .card-tag {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 600;
+    margin-right: 4px;
+    margin-bottom: 4px;
+  }
+  .card-field { margin-bottom: 6px; }
+  .card-field strong { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--text-muted); }
+
+  /* Card accent colors */
+  .agent-card[data-agent="parser"] .card-icon { background: var(--accent-light); color: var(--accent); }
+  .agent-card[data-agent="quality"] .card-icon { background: var(--purple-light); color: var(--purple); }
+  .agent-card[data-agent="relevance"] .card-icon { background: var(--teal-light); color: var(--teal); }
+  .agent-card[data-agent="completeness"] .card-icon { background: var(--success-light); color: var(--success); }
+  .agent-card[data-agent="validity"] .card-icon { background: var(--warning-light); color: var(--warning); }
+  .agent-card[data-agent="search"] .card-icon { background: var(--orange-light); color: var(--orange); }
+  .agent-card[data-agent="gap"] .card-icon { background: var(--danger-light); color: var(--danger); }
+  .agent-card[data-agent="transfer"] .card-icon { background: var(--pink-light); color: var(--pink); }
+
+  .agent-card[data-agent="parser"] { border-top: 3px solid var(--accent); }
+  .agent-card[data-agent="quality"] { border-top: 3px solid var(--purple); }
+  .agent-card[data-agent="relevance"] { border-top: 3px solid var(--teal); }
+  .agent-card[data-agent="completeness"] { border-top: 3px solid var(--success); }
+  .agent-card[data-agent="validity"] { border-top: 3px solid var(--warning); }
+  .agent-card[data-agent="search"] { border-top: 3px solid var(--orange); }
+  .agent-card[data-agent="gap"] { border-top: 3px solid var(--danger); }
+  .agent-card[data-agent="transfer"] { border-top: 3px solid var(--pink); }
+
+  /* Full-width card */
+  .agent-card.full { grid-column: 1 / -1; }
+
+  /* --- PIPELINE DIAGRAM --- */
+  .pipeline {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    position: relative;
+  }
+  .pipe-step {
+    display: flex;
+    align-items: flex-start;
+    gap: 16px;
+    position: relative;
+    padding-bottom: 8px;
+  }
+  .pipe-step .pipe-marker {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: var(--accent);
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    font-weight: 700;
+    flex-shrink: 0;
+    z-index: 1;
+  }
+  .pipe-step .pipe-marker.decision { background: var(--warning); border-radius: 6px; transform: rotate(0deg); }
+  .pipe-step .pipe-marker.conditional { background: var(--purple); }
+  .pipe-step .pipe-marker.final { background: var(--success); }
+  .pipe-step .pipe-content {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 14px 18px;
+    flex: 1;
+    box-shadow: var(--shadow);
+  }
+  .pipe-step .pipe-content h4 { margin: 0 0 4px; font-size: 14px; color: var(--text); }
+  .pipe-step .pipe-content p { font-size: 13px; margin: 0; color: var(--text-muted); }
+  .pipe-connector {
+    width: 2px;
+    height: 20px;
+    background: var(--border);
+    margin-left: 17px;
+  }
+  .pipe-branch {
+    margin-left: 52px;
+    border-left: 2px dashed var(--border);
+    padding-left: 20px;
+    padding-top: 8px;
+    padding-bottom: 8px;
+  }
+  .pipe-branch .branch-label {
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    color: var(--warning);
+    margin-bottom: 8px;
+  }
+  .pipe-branch .branch-label.alt { color: var(--success); }
+  .pipe-branch-item {
+    font-size: 13px;
+    padding: 6px 0;
+    color: var(--text-muted);
+  }
+  .pipe-branch-item strong { color: var(--text); }
+
+  /* --- TABLE --- */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    background: var(--surface);
+    border-radius: var(--radius);
+    overflow: hidden;
+    box-shadow: var(--shadow);
+    margin: 16px 0;
+    font-size: 14px;
+  }
+  thead { background: var(--accent-light); }
+  th {
+    text-align: left;
+    padding: 10px 14px;
+    font-weight: 600;
+    font-size: 13px;
+    color: var(--accent);
+    border-bottom: 2px solid var(--border);
+  }
+  td {
+    padding: 9px 14px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+  }
+  tr:last-child td { border-bottom: none; }
+  code {
+    font-family: "SF Mono", "Fira Code", "Consolas", monospace;
+    background: #f1f3f5;
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-size: 13px;
+  }
+  pre {
+    background: #1a1a2e;
+    color: #e0e0e0;
+    padding: 18px 22px;
+    border-radius: var(--radius);
+    overflow-x: auto;
+    font-size: 13px;
+    line-height: 1.55;
+    margin: 12px 0;
+  }
+  pre code { background: none; padding: 0; color: inherit; }
+  .formula {
+    background: var(--accent-light);
+    border-left: 4px solid var(--accent);
+    padding: 14px 20px;
+    border-radius: 0 var(--radius) var(--radius) 0;
+    font-family: monospace;
+    font-size: 14px;
+    margin: 12px 0;
+  }
+  .callout {
+    padding: 14px 20px;
+    border-radius: var(--radius);
+    margin: 14px 0;
+    font-size: 14px;
+  }
+  .callout.info { background: var(--accent-light); border-left: 4px solid var(--accent); }
+  .callout.warn { background: var(--warning-light); border-left: 4px solid var(--warning); }
+  .callout.success { background: var(--success-light); border-left: 4px solid var(--success); }
+
+  .weight-bar-container {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 4px 0;
+  }
+  .weight-bar {
+    height: 10px;
+    border-radius: 5px;
+    display: inline-block;
+  }
+  .weight-label { font-size: 13px; font-weight: 600; min-width: 36px; text-align: right; }
+
+  /* --- DECISION TREE --- */
+  .decision-tree {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 24px;
+    box-shadow: var(--shadow);
+    font-size: 13px;
+  }
+  .dt-node {
+    padding: 6px 0 6px 20px;
+    border-left: 2px solid var(--border);
+    margin-left: 10px;
+  }
+  .dt-condition {
+    font-weight: 600;
+    color: var(--accent);
+    margin-bottom: 2px;
+  }
+  .dt-result {
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: 4px;
+    font-weight: 600;
+    font-size: 12px;
+    margin: 2px 0;
+  }
+  .dt-result.green { background: var(--success-light); color: var(--success); }
+  .dt-result.orange { background: var(--warning-light); color: var(--warning); }
+  .dt-result.red { background: var(--danger-light); color: var(--danger); }
+  .dt-result.blue { background: var(--accent-light); color: var(--accent); }
+  .dt-result.purple { background: var(--purple-light); color: var(--purple); }
+  .dt-result.pink { background: var(--pink-light); color: var(--pink); }
+
+  /* --- RESPONSIVE --- */
+  @media (max-width: 900px) {
+    nav { display: none; }
+    main { margin-left: 0; padding: 24px 20px 60px; }
+    .agent-grid { grid-template-columns: 1fr; }
+    .hero { padding: 32px 24px; }
+    .hero h1 { font-size: 24px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- NAVIGATION -->
+<nav>
+  <div class="nav-title">Documentation</div>
+  <a href="#overview">Overview</a>
+  <a href="#architecture">Architecture</a>
+  <a href="#agents">Agent Directory</a>
+  <a href="#agent-parser" class="indent">IssueParserAgent</a>
+  <a href="#agent-quality" class="indent">DescriptionQualityAgent</a>
+  <a href="#agent-relevance" class="indent">RelevanceAgent</a>
+  <a href="#agent-completeness" class="indent">CompletenessAgent</a>
+  <a href="#agent-validity" class="indent">ValidityAgent</a>
+  <a href="#agent-search" class="indent">SearchAgent</a>
+  <a href="#agent-gap" class="indent">GapAnalysisAgent</a>
+  <a href="#agent-transfer" class="indent">TransferReasonAgent</a>
+  <a href="#pipeline">Pipeline Flow</a>
+  <a href="#scoring">Scoring Methodology</a>
+  <a href="#verdicts">Verdicts &amp; Actions</a>
+  <a href="#transfer-logic">Transfer Classification</a>
+  <a href="#outputs">Output Formats</a>
+  <a href="#configuration">Configuration</a>
+</nav>
+
+<!-- MAIN CONTENT -->
+<main>
+
+<!-- ============ HERO ============ -->
+<section class="hero" id="overview">
+  <h1>Article Evaluation System</h1>
+  <p>A multi-agent LLM pipeline that evaluates whether Microsoft support articles adequately address customer support cases. Eight specialized agents collaborate through an orchestrated pipeline to score articles, identify documentation gaps, and classify transfer reasons.</p>
+  <div class="badge-row">
+    <span class="badge">8 Specialized Agents</span>
+    <span class="badge">Kepner-Tregoe Framework</span>
+    <span class="badge">Weighted Scoring</span>
+    <span class="badge">Multi-Provider LLM</span>
+  </div>
+</section>
+
+<!-- ============ ARCHITECTURE ============ -->
+<section id="architecture">
+  <h2>Architecture Overview</h2>
+  <p>The system is orchestrated by a central <code>Orchestrator</code> class that coordinates all agents in a defined sequence. The pipeline adapts its execution path based on whether an article URL is provided and on intermediate scoring results.</p>
+
+  <div style="display:flex; flex-wrap:wrap; gap:10px; margin:20px 0;">
+    <div style="background:var(--accent-light); border:1px solid var(--accent); border-radius:8px; padding:10px 16px; font-size:13px; font-weight:600; color:var(--accent); text-align:center; flex:1; min-width:100px;">CSV Input</div>
+    <div style="display:flex; align-items:center; color:var(--text-muted);">&rarr;</div>
+    <div style="background:var(--accent-light); border:1px solid var(--accent); border-radius:8px; padding:10px 16px; font-size:13px; font-weight:600; color:var(--accent); text-align:center; flex:1; min-width:100px;">Issue Parser</div>
+    <div style="display:flex; align-items:center; color:var(--text-muted);">&rarr;</div>
+    <div style="background:var(--purple-light); border:1px solid var(--purple); border-radius:8px; padding:10px 16px; font-size:13px; font-weight:600; color:var(--purple); text-align:center; flex:1; min-width:100px;">Desc. Quality</div>
+    <div style="display:flex; align-items:center; color:var(--text-muted);">&rarr;</div>
+    <div style="background:var(--warning-light); border:1px solid var(--warning); border-radius:8px; padding:10px 16px; font-size:13px; font-weight:600; color:var(--warning); text-align:center; flex:1; min-width:100px;">Decision Branch</div>
+  </div>
+  <div style="display:flex; flex-wrap:wrap; gap:10px; margin:0 0 20px; justify-content:center;">
+    <div style="text-align:center; font-size:12px; color:var(--text-muted); padding:4px 0;">&#8595; Has Article</div>
+    <div style="min-width:60px;"></div>
+    <div style="text-align:center; font-size:12px; color:var(--text-muted); padding:4px 0;">&#8595; No Article</div>
+  </div>
+  <div style="display:flex; gap:20px; flex-wrap:wrap; margin-bottom:20px;">
+    <div style="flex:1; min-width:260px;">
+      <div style="display:flex; flex-direction:column; gap:8px;">
+        <div style="background:var(--teal-light); border:1px solid var(--teal); border-radius:8px; padding:8px 14px; font-size:13px; font-weight:600; color:var(--teal); text-align:center;">Relevance (40%) + Completeness (30%) + Validity (30%)</div>
+        <div style="text-align:center; font-size:12px; color:var(--text-muted);">&#8595; score &lt; 70</div>
+        <div style="background:var(--orange-light); border:1px solid var(--orange); border-radius:8px; padding:8px 14px; font-size:13px; font-weight:600; color:var(--orange); text-align:center;">Search Agent</div>
+        <div style="text-align:center; font-size:12px; color:var(--text-muted);">&#8595; score &lt; 60</div>
+        <div style="background:var(--danger-light); border:1px solid var(--danger); border-radius:8px; padding:8px 14px; font-size:13px; font-weight:600; color:var(--danger); text-align:center;">Gap Analysis Agent</div>
+      </div>
+    </div>
+    <div style="flex:1; min-width:260px;">
+      <div style="display:flex; flex-direction:column; gap:8px;">
+        <div style="background:var(--orange-light); border:1px solid var(--orange); border-radius:8px; padding:8px 14px; font-size:13px; font-weight:600; color:var(--orange); text-align:center;">Search Agent</div>
+        <div style="background:var(--danger-light); border:1px solid var(--danger); border-radius:8px; padding:8px 14px; font-size:13px; font-weight:600; color:var(--danger); text-align:center;">Gap Analysis Agent</div>
+        <div style="background:var(--accent-light); border:1px solid var(--accent); border-radius:8px; padding:8px 14px; font-size:13px; font-weight:600; color:var(--accent); text-align:center;">Verdict: no_citation_provided, Score: 0</div>
+      </div>
+    </div>
+  </div>
+  <div style="display:flex; flex-wrap:wrap; gap:10px; justify-content:center;">
+    <div style="display:flex; align-items:center; color:var(--text-muted);">&darr;</div>
+  </div>
+  <div style="display:flex; flex-wrap:wrap; gap:10px; margin:10px 0; justify-content:center;">
+    <div style="background:var(--pink-light); border:1px solid var(--pink); border-radius:8px; padding:10px 20px; font-size:13px; font-weight:600; color:var(--pink); text-align:center;">Transfer Reason Agent (always runs last)</div>
+    <div style="display:flex; align-items:center; color:var(--text-muted);">&rarr;</div>
+    <div style="background:var(--success-light); border:1px solid var(--success); border-radius:8px; padding:10px 20px; font-size:13px; font-weight:600; color:var(--success); text-align:center;">Final Result &rarr; CSV / JSON</div>
+  </div>
+</section>
+
+<!-- ============ AGENT DIRECTORY ============ -->
+<section id="agents">
+  <h2>Agent Directory</h2>
+  <p>Each agent inherits from <code>BaseAgent</code> and follows a consistent pattern: call the LLM with a specialized prompt, parse the JSON response, and fall back to heuristics if the LLM call fails.</p>
+
+  <div class="agent-grid">
+
+    <!-- IssueParserAgent -->
+    <div class="agent-card" data-agent="parser" id="agent-parser">
+      <div class="card-header">
+        <div class="card-icon">&#128269;</div>
+        <div>
+          <h3>IssueParserAgent</h3>
+          <div class="card-class">agents/issue_parser.py</div>
+        </div>
+      </div>
+      <div class="card-body">
+        <p>Parses raw customer issue text into a structured <code>Issue</code> object, extracting product, version, error codes, symptoms, keywords, environment, and severity.</p>
+        <div class="card-field"><strong>Input</strong></div>
+        <p>Raw issue text string + optional SAP product metadata</p>
+        <div class="card-field"><strong>Output</strong></div>
+        <p><code>Issue</code> dataclass with fields: <code>product</code>, <code>version</code>, <code>error_codes</code>, <code>symptoms</code>, <code>issue_type</code>, <code>keywords</code>, <code>environment</code>, <code>severity</code></p>
+        <div class="card-field"><strong>Issue Types</strong></div>
+        <p>
+          <span class="card-tag" style="background:var(--accent-light);color:var(--accent);">configuration</span>
+          <span class="card-tag" style="background:var(--danger-light);color:var(--danger);">error</span>
+          <span class="card-tag" style="background:var(--teal-light);color:var(--teal);">how-to</span>
+          <span class="card-tag" style="background:var(--warning-light);color:var(--warning);">troubleshooting</span>
+          <span class="card-tag" style="background:var(--purple-light);color:var(--purple);">performance</span>
+        </p>
+        <div class="card-field"><strong>Fallback</strong></div>
+        <p>Heuristic product detection from keyword map; regex extraction of error codes (hex/numeric patterns).</p>
+      </div>
+    </div>
+
+    <!-- DescriptionQualityAgent -->
+    <div class="agent-card" data-agent="quality" id="agent-quality">
+      <div class="card-header">
+        <div class="card-icon">&#9733;</div>
+        <div>
+          <h3>DescriptionQualityAgent</h3>
+          <div class="card-class">agents/description_quality_agent.py</div>
+        </div>
+      </div>
+      <div class="card-body">
+        <p>Evaluates issue description quality using the <strong>Kepner-Tregoe Problem Statement</strong> framework across four dimensions.</p>
+        <div class="card-field"><strong>KT Dimensions</strong></div>
+        <table style="box-shadow:none; margin:6px 0;">
+          <tr><td><strong>Identity (WHAT)</strong></td><td>35% weight</td></tr>
+          <tr><td><strong>Location (WHERE)</strong></td><td>25% weight</td></tr>
+          <tr><td><strong>Timing (WHEN)</strong></td><td>20% weight</td></tr>
+          <tr><td><strong>Magnitude (EXTENT)</strong></td><td>20% weight</td></tr>
+        </table>
+        <div class="card-field"><strong>Output</strong></div>
+        <p><code>DescriptionQualityResult</code> with per-dimension scores (0-100), analyses, overall score, verdict, missing elements, and improvement suggestions.</p>
+        <div class="card-field"><strong>Verdicts</strong></div>
+        <p>
+          <span class="card-tag" style="background:var(--success-light);color:var(--success);">&ge;80 well_defined</span>
+          <span class="card-tag" style="background:var(--accent-light);color:var(--accent);">&ge;60 mostly_defined</span>
+          <span class="card-tag" style="background:var(--warning-light);color:var(--warning);">&ge;40 partially_defined</span>
+          <span class="card-tag" style="background:var(--danger-light);color:var(--danger);">&lt;40 poorly_defined</span>
+        </p>
+        <div class="callout warn">If <code>description_quality_score &lt; 40</code>, the system sets <code>evaluation_reliability_warning = True</code> since a poor description reduces evaluation confidence.</div>
+      </div>
+    </div>
+
+    <!-- RelevanceAgent -->
+    <div class="agent-card" data-agent="relevance" id="agent-relevance">
+      <div class="card-header">
+        <div class="card-icon">&#127919;</div>
+        <div>
+          <h3>RelevanceAgent</h3>
+          <div class="card-class">agents/relevance_agent.py</div>
+        </div>
+      </div>
+      <div class="card-body">
+        <p>Scores how well a fetched article matches the customer issue. Carries the highest weight in the overall score at <strong>40%</strong>.</p>
+        <div class="card-field"><strong>Input</strong></div>
+        <p><code>Issue</code> + <code>Article</code> (content truncated to 8,000 chars)</p>
+        <div class="card-field"><strong>Output</strong></div>
+        <p><code>RelevanceResult</code> with score, matched/unmatched aspects, product_match, version_match, is_outdated flag, verdict.</p>
+        <div class="card-field"><strong>Score Guide</strong></div>
+        <p>
+          <span class="card-tag" style="background:var(--success-light);color:var(--success);">90-100 Excellent</span>
+          <span class="card-tag" style="background:var(--accent-light);color:var(--accent);">70-89 Good</span>
+          <span class="card-tag" style="background:var(--warning-light);color:var(--warning);">50-69 Partial</span>
+          <span class="card-tag" style="background:var(--orange-light);color:var(--orange);">30-49 Poor</span>
+          <span class="card-tag" style="background:var(--danger-light);color:var(--danger);">0-29 Irrelevant</span>
+        </p>
+      </div>
+    </div>
+
+    <!-- CompletenessAgent -->
+    <div class="agent-card" data-agent="completeness" id="agent-completeness">
+      <div class="card-header">
+        <div class="card-icon">&#9989;</div>
+        <div>
+          <h3>CompletenessAgent</h3>
+          <div class="card-class">agents/completeness_agent.py</div>
+        </div>
+      </div>
+      <div class="card-body">
+        <p>Assesses whether an article provides complete information to solve the issue. Weighted at <strong>30%</strong>.</p>
+        <div class="card-field"><strong>5 Evaluation Aspects</strong></div>
+        <ul>
+          <li><code>has_prerequisites</code> &mdash; setup/requirements listed</li>
+          <li><code>has_step_by_step</code> &mdash; ordered resolution steps</li>
+          <li><code>has_examples</code> &mdash; code samples / screenshots</li>
+          <li><code>has_troubleshooting</code> &mdash; alternative paths / common issues</li>
+          <li><code>has_success_criteria</code> &mdash; how to verify resolution</li>
+        </ul>
+        <div class="card-field"><strong>Verdicts</strong></div>
+        <p>
+          <span class="card-tag" style="background:var(--success-light);color:var(--success);">&ge;90 complete</span>
+          <span class="card-tag" style="background:var(--accent-light);color:var(--accent);">&ge;70 mostly_complete</span>
+          <span class="card-tag" style="background:var(--warning-light);color:var(--warning);">&ge;50 incomplete</span>
+          <span class="card-tag" style="background:var(--danger-light);color:var(--danger);">&lt;50 severely_lacking</span>
+        </p>
+      </div>
+    </div>
+
+    <!-- ValidityAgent -->
+    <div class="agent-card" data-agent="validity" id="agent-validity">
+      <div class="card-header">
+        <div class="card-icon">&#128300;</div>
+        <div>
+          <h3>ValidityAgent</h3>
+          <div class="card-class">agents/validity_agent.py</div>
+        </div>
+      </div>
+      <div class="card-body">
+        <p>Determines whether the article's solution would actually work for the customer. Weighted at <strong>30%</strong>.</p>
+        <div class="card-field"><strong>Evaluation Criteria</strong></div>
+        <ul>
+          <li><code>addresses_root_cause</code> &mdash; targets the actual problem</li>
+          <li><code>is_current_solution</code> &mdash; not outdated</li>
+          <li><code>environment_compatible</code> &mdash; works in customer's environment</li>
+        </ul>
+        <div class="card-field"><strong>Output</strong></div>
+        <p><code>ValidityResult</code> with score, booleans above, potential_issues list, confidence_level (high/medium/low), verdict.</p>
+        <div class="card-field"><strong>Verdicts</strong></div>
+        <p>
+          <span class="card-tag" style="background:var(--success-light);color:var(--success);">&ge;80 valid</span>
+          <span class="card-tag" style="background:var(--accent-light);color:var(--accent);">&ge;60 likely_valid</span>
+          <span class="card-tag" style="background:var(--warning-light);color:var(--warning);">&ge;40 uncertain</span>
+          <span class="card-tag" style="background:var(--orange-light);color:var(--orange);">&ge;20 likely_invalid</span>
+          <span class="card-tag" style="background:var(--danger-light);color:var(--danger);">&lt;20 invalid</span>
+        </p>
+      </div>
+    </div>
+
+    <!-- SearchAgent -->
+    <div class="agent-card" data-agent="search" id="agent-search">
+      <div class="card-header">
+        <div class="card-icon">&#128270;</div>
+        <div>
+          <h3>SearchAgent</h3>
+          <div class="card-class">agents/search_agent.py</div>
+        </div>
+      </div>
+      <div class="card-body">
+        <p>Generates optimized search queries to find better or supplementary Microsoft documentation. <strong>Triggered when overall score &lt; 70</strong> (or always when no article is provided).</p>
+        <div class="card-field"><strong>Output</strong></div>
+        <p><code>SearchResult</code> with up to 5 <code>RecommendedArticle</code> objects (Microsoft Support URLs), search terms, and a <code>better_alternative_found</code> flag.</p>
+        <div class="card-field"><strong>Search Domains</strong></div>
+        <p><code>support.microsoft.com</code>, <code>learn.microsoft.com</code></p>
+        <div class="card-field"><strong>Fallback</strong></div>
+        <p>Builds queries from issue data: product + error codes, product + symptoms, product + issue type, keywords.</p>
+      </div>
+    </div>
+
+    <!-- GapAnalysisAgent -->
+    <div class="agent-card" data-agent="gap" id="agent-gap">
+      <div class="card-header">
+        <div class="card-icon">&#128203;</div>
+        <div>
+          <h3>GapAnalysisAgent</h3>
+          <div class="card-class">agents/gap_agent.py</div>
+        </div>
+      </div>
+      <div class="card-body">
+        <p>Identifies documentation gaps and recommends content creation actions. <strong>Triggered when overall score &lt; 60</strong> (or always when no article is provided).</p>
+        <div class="card-field"><strong>Output</strong></div>
+        <p><code>GapAnalysisResult</code> with documentation_gaps, suggested_content_outline, required_expertise, priority, estimated_effort, recommendation.</p>
+        <div class="card-field"><strong>Recommendations</strong></div>
+        <p>
+          <span class="card-tag" style="background:var(--danger-light);color:var(--danger);">create_new</span>
+          <span class="card-tag" style="background:var(--warning-light);color:var(--warning);">augment_existing</span>
+          <span class="card-tag" style="background:var(--accent-light);color:var(--accent);">combine_multiple</span>
+        </p>
+        <div class="card-field"><strong>Priority / Effort</strong></div>
+        <p>
+          Priority: <code>high | medium | low</code><br>
+          Effort: <code>small | medium | large</code>
+        </p>
+      </div>
+    </div>
+
+    <!-- TransferReasonAgent -->
+    <div class="agent-card full" data-agent="transfer" id="agent-transfer">
+      <div class="card-header">
+        <div class="card-icon">&#128257;</div>
+        <div>
+          <h3>TransferReasonAgent</h3>
+          <div class="card-class">agents/transfer_reason_agent.py</div>
+        </div>
+      </div>
+      <div class="card-body">
+        <p>Classifies the root cause of why a support case was transferred. <strong>Always runs last</strong> after all other agents, using their outputs as inputs to the classification decision tree.</p>
+        <div class="card-field"><strong>Input</strong></div>
+        <p><code>Issue</code>, <code>DescriptionQualityResult</code>, overall_score, relevance_score, contains_citations flag, verdict.</p>
+        <div class="card-field"><strong>Transfer Reason Values</strong></div>
+        <p>
+          <span class="card-tag" style="background:var(--success-light);color:var(--success);">not_transferred</span>
+          <span class="card-tag" style="background:var(--pink-light);color:var(--pink);">customer_escalation</span>
+          <span class="card-tag" style="background:var(--danger-light);color:var(--danger);">poor_description</span>
+          <span class="card-tag" style="background:var(--orange-light);color:var(--orange);">poor_description_bad_citation</span>
+          <span class="card-tag" style="background:var(--warning-light);color:var(--warning);">no_citation_found</span>
+          <span class="card-tag" style="background:var(--accent-light);color:var(--accent);">bad_citation_match</span>
+          <span class="card-tag" style="background:var(--purple-light);color:var(--purple);">inadequate_article</span>
+          <span class="card-tag" style="background:#f1f3f5;color:var(--text-muted);">unknown</span>
+        </p>
+        <div class="card-field"><strong>Escalation Detection</strong></div>
+        <p>Scans for 13+ regex patterns indicating customer frustration or explicit escalation requests (e.g., "speak to a manager", "SLA breach", "business is stopped"). LLM escalation scan is triggered when text &ge; 30 chars and heuristic signals found or text &gt; 200 chars.</p>
+
+        <h4>Decision Tree</h4>
+        <div class="decision-tree">
+          <div class="dt-condition">Case not transferred?</div>
+          <div class="dt-node">
+            <span class="dt-result green">not_transferred</span> (confidence: high)
+          </div>
+
+          <div class="dt-condition" style="margin-top:10px;">Escalation signals &ge; 2?</div>
+          <div class="dt-node">
+            <span class="dt-result pink">customer_escalation</span> (confidence: high)
+          </div>
+
+          <div class="dt-condition" style="margin-top:10px;">Description quality &lt; 40?</div>
+          <div class="dt-node">
+            <div class="dt-condition">Has citations AND relevance &lt; 50?</div>
+            <div class="dt-node"><span class="dt-result orange">poor_description_bad_citation</span></div>
+            <div class="dt-condition">Has citations AND relevance &ge; 50?</div>
+            <div class="dt-node"><span class="dt-result red">poor_description</span></div>
+            <div class="dt-condition">No citations?</div>
+            <div class="dt-node"><span class="dt-result red">poor_description</span></div>
+          </div>
+
+          <div class="dt-condition" style="margin-top:10px;">Description quality &ge; 40?</div>
+          <div class="dt-node">
+            <div class="dt-condition">No citations?</div>
+            <div class="dt-node"><span class="dt-result blue">no_citation_found</span></div>
+            <div class="dt-condition">Relevance &lt; 50?</div>
+            <div class="dt-node"><span class="dt-result blue">bad_citation_match</span></div>
+            <div class="dt-condition">Overall score &lt; 60?</div>
+            <div class="dt-node"><span class="dt-result purple">inadequate_article</span></div>
+            <div class="dt-condition">Otherwise</div>
+            <div class="dt-node"><span class="dt-result" style="background:#f1f3f5;color:var(--text-muted);">unknown</span> (confidence: low)</div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+  </div><!-- /agent-grid -->
+</section>
+
+<!-- ============ PIPELINE FLOW ============ -->
+<section id="pipeline">
+  <h2>Pipeline Flow</h2>
+  <p>The <code>Orchestrator</code> coordinates agent execution in the following sequence. Each step feeds outputs to downstream agents.</p>
+
+  <div class="pipeline">
+    <div class="pipe-step">
+      <div class="pipe-marker">1</div>
+      <div class="pipe-content">
+        <h4>Parse Issue</h4>
+        <p><code>IssueParserAgent.evaluate(customer_issue, product_info)</code> &rarr; structured <code>Issue</code> object. Transfer metadata (transferred, sr_status, reopened) is injected from CSV.</p>
+      </div>
+    </div>
+    <div class="pipe-connector"></div>
+
+    <div class="pipe-step">
+      <div class="pipe-marker">2</div>
+      <div class="pipe-content">
+        <h4>Evaluate Description Quality</h4>
+        <p><code>DescriptionQualityAgent.evaluate(issue)</code> &rarr; KT framework analysis. If score &lt; 40, sets <code>evaluation_reliability_warning = True</code>.</p>
+      </div>
+    </div>
+    <div class="pipe-connector"></div>
+
+    <div class="pipe-step">
+      <div class="pipe-marker decision">?</div>
+      <div class="pipe-content">
+        <h4>Branch: Has Article URL?</h4>
+        <p>The pipeline branches based on whether the input case contains article URLs (citations).</p>
+      </div>
+    </div>
+
+    <div class="pipe-branch">
+      <div class="branch-label">Path A &mdash; No Citation</div>
+      <div class="pipe-branch-item"><strong>SearchAgent</strong> generates recommended search queries</div>
+      <div class="pipe-branch-item"><strong>GapAnalysisAgent</strong> identifies documentation gaps (no prior evaluation data)</div>
+      <div class="pipe-branch-item"><strong>TransferReasonAgent</strong> classifies with <code>contains_citations=False</code></div>
+      <div class="pipe-branch-item">Result: <code>verdict="no_citation_provided"</code>, <code>score=0</code>, <code>action="find_better_article"</code></div>
+    </div>
+
+    <div class="pipe-branch">
+      <div class="branch-label alt">Path B &mdash; Has Citation(s)</div>
+      <div class="pipe-branch-item"><strong>ArticleFetcher</strong> fetches each URL (HTTP GET, BeautifulSoup parsing, 30s timeout)</div>
+      <div class="pipe-branch-item">For each valid article, run the <strong>scoring triad</strong> in sequence:</div>
+      <div class="pipe-branch-item" style="padding-left:20px;">&#9312; <strong>RelevanceAgent</strong> &rarr; <code>RelevanceResult</code></div>
+      <div class="pipe-branch-item" style="padding-left:20px;">&#9313; <strong>CompletenessAgent</strong> &rarr; <code>CompletenessResult</code></div>
+      <div class="pipe-branch-item" style="padding-left:20px;">&#9314; <strong>ValidityAgent</strong> &rarr; <code>ValidityResult</code></div>
+      <div class="pipe-branch-item">The best overall score across all URLs is selected.</div>
+    </div>
+    <div class="pipe-connector"></div>
+
+    <div class="pipe-step">
+      <div class="pipe-marker conditional">3</div>
+      <div class="pipe-content">
+        <h4>Search (Conditional)</h4>
+        <p>If <code>best_score &lt; 70</code>: <code>SearchAgent.evaluate(issue, best_score)</code> generates search recommendations.</p>
+      </div>
+    </div>
+    <div class="pipe-connector"></div>
+
+    <div class="pipe-step">
+      <div class="pipe-marker conditional">4</div>
+      <div class="pipe-content">
+        <h4>Gap Analysis (Conditional)</h4>
+        <p>If <code>best_score &lt; 60</code>: <code>GapAnalysisAgent.evaluate(issue, relevance_result, completeness_result, validity_result)</code> identifies documentation gaps.</p>
+      </div>
+    </div>
+    <div class="pipe-connector"></div>
+
+    <div class="pipe-step">
+      <div class="pipe-marker">5</div>
+      <div class="pipe-content">
+        <h4>Verdict &amp; Action</h4>
+        <p><code>ScoringUtils</code> computes the overall verdict and action required based on score, relevance verdict, and search results.</p>
+      </div>
+    </div>
+    <div class="pipe-connector"></div>
+
+    <div class="pipe-step">
+      <div class="pipe-marker final">6</div>
+      <div class="pipe-content">
+        <h4>Transfer Reason Classification (Always Last)</h4>
+        <p><code>TransferReasonAgent.evaluate(...)</code> runs with all evaluation data. Uses a cascading decision tree to classify the transfer reason.</p>
+      </div>
+    </div>
+    <div class="pipe-connector"></div>
+
+    <div class="pipe-step">
+      <div class="pipe-marker final">&check;</div>
+      <div class="pipe-content">
+        <h4>Output EvaluationResult</h4>
+        <p>The final <code>EvaluationResult</code> is written to CSV and/or JSON with all scores, verdicts, recommendations, and transfer analysis.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ SCORING ============ -->
+<section id="scoring">
+  <h2>Scoring Methodology</h2>
+
+  <h3>Overall Article Score</h3>
+  <div class="formula">
+    overall_score = relevance &times; <strong>0.40</strong> + completeness &times; <strong>0.30</strong> + validity &times; <strong>0.30</strong>
+  </div>
+  <div style="max-width:400px; margin:16px 0;">
+    <div class="weight-bar-container">
+      <span style="min-width:110px; font-size:13px;">Relevance</span>
+      <div class="weight-bar" style="width:160px; background:var(--teal);"></div>
+      <span class="weight-label">40%</span>
+    </div>
+    <div class="weight-bar-container">
+      <span style="min-width:110px; font-size:13px;">Completeness</span>
+      <div class="weight-bar" style="width:120px; background:var(--success);"></div>
+      <span class="weight-label">30%</span>
+    </div>
+    <div class="weight-bar-container">
+      <span style="min-width:110px; font-size:13px;">Validity</span>
+      <div class="weight-bar" style="width:120px; background:var(--warning);"></div>
+      <span class="weight-label">30%</span>
+    </div>
+  </div>
+
+  <h3>Description Quality Score (KT Framework)</h3>
+  <div class="formula">
+    quality_score = identity &times; <strong>0.35</strong> + location &times; <strong>0.25</strong> + timing &times; <strong>0.20</strong> + magnitude &times; <strong>0.20</strong>
+  </div>
+  <div style="max-width:400px; margin:16px 0;">
+    <div class="weight-bar-container">
+      <span style="min-width:110px; font-size:13px;">Identity (WHAT)</span>
+      <div class="weight-bar" style="width:140px; background:var(--purple);"></div>
+      <span class="weight-label">35%</span>
+    </div>
+    <div class="weight-bar-container">
+      <span style="min-width:110px; font-size:13px;">Location (WHERE)</span>
+      <div class="weight-bar" style="width:100px; background:var(--purple); opacity:.8;"></div>
+      <span class="weight-label">25%</span>
+    </div>
+    <div class="weight-bar-container">
+      <span style="min-width:110px; font-size:13px;">Timing (WHEN)</span>
+      <div class="weight-bar" style="width:80px; background:var(--purple); opacity:.6;"></div>
+      <span class="weight-label">20%</span>
+    </div>
+    <div class="weight-bar-container">
+      <span style="min-width:110px; font-size:13px;">Magnitude (EXTENT)</span>
+      <div class="weight-bar" style="width:80px; background:var(--purple); opacity:.6;"></div>
+      <span class="weight-label">20%</span>
+    </div>
+  </div>
+
+  <h3>Scoring Thresholds</h3>
+  <table>
+    <thead>
+      <tr><th>Agent</th><th>Threshold</th><th>Verdict</th></tr>
+    </thead>
+    <tbody>
+      <tr><td rowspan="4">Relevance</td><td>&ge; 85</td><td>excellent</td></tr>
+      <tr><td>&ge; 70</td><td>good</td></tr>
+      <tr><td>&ge; 50</td><td>partial</td></tr>
+      <tr><td>&ge; 30</td><td>poor</td></tr>
+      <tr><td rowspan="3">Completeness</td><td>&ge; 90</td><td>complete</td></tr>
+      <tr><td>&ge; 70</td><td>mostly_complete</td></tr>
+      <tr><td>&ge; 50</td><td>incomplete</td></tr>
+      <tr><td rowspan="3">Validity</td><td>&ge; 80</td><td>valid</td></tr>
+      <tr><td>&ge; 60</td><td>likely_valid</td></tr>
+      <tr><td>&ge; 40</td><td>uncertain</td></tr>
+      <tr><td rowspan="4">Description Quality</td><td>&ge; 80</td><td>well_defined</td></tr>
+      <tr><td>&ge; 60</td><td>mostly_defined</td></tr>
+      <tr><td>&ge; 40</td><td>partially_defined</td></tr>
+      <tr><td>&lt; 40</td><td>poorly_defined</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ============ VERDICTS ============ -->
+<section id="verdicts">
+  <h2>Verdicts &amp; Actions</h2>
+
+  <h3>Overall Verdict Logic</h3>
+  <p>Determined by <code>ScoringUtils.get_overall_verdict()</code>:</p>
+  <table>
+    <thead><tr><th>Condition</th><th>Verdict</th></tr></thead>
+    <tbody>
+      <tr><td>No article provided</td><td><code>no_citation_provided</code></td></tr>
+      <tr><td>Score &ge; 70 AND relevance is "excellent" or "good"</td><td><code>adequate</code></td></tr>
+      <tr><td>Score &ge; 70 but relevance is partial/poor/irrelevant</td><td><code>needs_supplementation</code></td></tr>
+      <tr><td>Score &ge; 50 (but &lt; 70)</td><td><code>needs_supplementation</code></td></tr>
+      <tr><td>Score &lt; 50</td><td><code>inadequate</code></td></tr>
+    </tbody>
+  </table>
+
+  <h3>Action Required</h3>
+  <p>Determined by <code>ScoringUtils.get_action_required()</code>:</p>
+  <table>
+    <thead><tr><th>Verdict</th><th>Condition</th><th>Action</th></tr></thead>
+    <tbody>
+      <tr><td><code>adequate</code></td><td>&mdash;</td><td><code>none</code></td></tr>
+      <tr><td><code>needs_supplementation</code></td><td>No better alternative found</td><td><code>add_context</code></td></tr>
+      <tr><td><code>needs_supplementation</code></td><td>Better alternative found</td><td><code>find_better_article</code></td></tr>
+      <tr><td><code>no_citation_provided</code></td><td>&mdash;</td><td><code>find_better_article</code></td></tr>
+      <tr><td><code>inadequate</code></td><td>No better alternative found</td><td><code>create_content</code></td></tr>
+      <tr><td><code>inadequate</code></td><td>Better alternative found</td><td><code>find_better_article</code></td></tr>
+    </tbody>
+  </table>
+
+  <h3>Conditional Agent Triggers</h3>
+  <div class="callout info">
+    <strong>SearchAgent</strong> triggers when <code>overall_score &lt; 70</code> &mdash; generates search queries to find supplementary or better articles.
+  </div>
+  <div class="callout warn">
+    <strong>GapAnalysisAgent</strong> triggers when <code>overall_score &lt; 60</code> &mdash; identifies documentation content that needs to be created or augmented.
+  </div>
+</section>
+
+<!-- ============ TRANSFER LOGIC ============ -->
+<section id="transfer-logic">
+  <h2>Transfer Classification</h2>
+  <p>The <code>TransferReasonAgent</code> uses threshold-based logic defined in <code>TRANSFER_CLASSIFICATION_THRESHOLDS</code>:</p>
+  <table>
+    <thead><tr><th>Threshold</th><th>Value</th><th>Meaning</th></tr></thead>
+    <tbody>
+      <tr><td><code>poor_description_ceiling</code></td><td>40</td><td>Description quality below this = poor description root cause</td></tr>
+      <tr><td><code>bad_citation_relevance_ceiling</code></td><td>50</td><td>Relevance below this = bad citation match</td></tr>
+      <tr><td><code>inadequate_article_overall_ceiling</code></td><td>60</td><td>Overall score below this = inadequate article</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Escalation Detection Patterns</h3>
+  <p>The agent scans issue text for 13+ regex patterns indicating customer frustration:</p>
+  <div style="display:flex; flex-wrap:wrap; gap:6px; margin:10px 0;">
+    <code>escalat(e|ed|ion)</code>
+    <code>transfer me/this</code>
+    <code>speak to a manager</code>
+    <code>need a specialist</code>
+    <code>unacceptable</code>
+    <code>Nth time calling</code>
+    <code>already contacted support</code>
+    <code>previous case</code>
+    <code>SLA breach</code>
+    <code>business is stopped</code>
+    <code>critical deadline</code>
+    <code>executive sponsor</code>
+    <code>VP is asking</code>
+  </div>
+  <p>If &ge; 2 escalation signals are detected, the transfer reason is immediately classified as <code>customer_escalation</code>.</p>
+</section>
+
+<!-- ============ OUTPUTS ============ -->
+<section id="outputs">
+  <h2>Output Formats</h2>
+  <p>The system produces both detailed and summary CSV outputs, plus optional JSON.</p>
+
+  <h3>Detailed CSV <span style="font-weight:400; font-size:13px; color:var(--text-muted);">(evaluation_results_*.csv)</span></h3>
+  <p>51 columns covering every aspect of the evaluation:</p>
+  <div style="display:flex; flex-wrap:wrap; gap:6px; margin:10px 0;">
+    <span class="card-tag" style="background:var(--accent-light);color:var(--accent);">Case Info</span>
+    <code>case_number</code> <code>issue_description</code> <code>issue_product</code> <code>issue_type</code> <code>article_url</code>
+  </div>
+  <div style="display:flex; flex-wrap:wrap; gap:6px; margin:4px 0;">
+    <span class="card-tag" style="background:var(--success-light);color:var(--success);">Overall</span>
+    <code>overall_score</code> <code>verdict</code> <code>action_required</code>
+  </div>
+  <div style="display:flex; flex-wrap:wrap; gap:6px; margin:4px 0;">
+    <span class="card-tag" style="background:var(--teal-light);color:var(--teal);">Relevance</span>
+    <code>relevance_score</code> <code>relevance_verdict</code> <code>relevance_matched_aspects</code> <code>relevance_unmatched_aspects</code> <code>relevance_product_match</code> <code>relevance_version_match</code> <code>relevance_is_outdated</code>
+  </div>
+  <div style="display:flex; flex-wrap:wrap; gap:6px; margin:4px 0;">
+    <span class="card-tag" style="background:var(--success-light);color:var(--success);">Completeness</span>
+    <code>completeness_score</code> <code>completeness_verdict</code> <code>completeness_missing_elements</code> <code>completeness_has_prerequisites</code> <code>completeness_has_step_by_step</code> <code>completeness_has_examples</code> <code>completeness_has_troubleshooting</code> <code>completeness_has_success_criteria</code>
+  </div>
+  <div style="display:flex; flex-wrap:wrap; gap:6px; margin:4px 0;">
+    <span class="card-tag" style="background:var(--warning-light);color:var(--warning);">Validity</span>
+    <code>validity_score</code> <code>validity_verdict</code> <code>validity_potential_issues</code> <code>validity_addresses_root_cause</code> <code>validity_is_current_solution</code> <code>validity_environment_compatible</code> <code>validity_confidence_level</code>
+  </div>
+  <div style="display:flex; flex-wrap:wrap; gap:6px; margin:4px 0;">
+    <span class="card-tag" style="background:var(--purple-light);color:var(--purple);">Description Quality</span>
+    <code>description_quality_score</code> <code>description_quality_verdict</code> <code>kt_identity_score</code> <code>kt_location_score</code> <code>kt_timing_score</code> <code>kt_magnitude_score</code> <code>kt_identity_analysis</code> <code>kt_location_analysis</code> <code>kt_timing_analysis</code> <code>kt_magnitude_analysis</code> <code>kt_missing_elements</code> <code>kt_improvement_suggestions</code> <code>evaluation_reliability_warning</code>
+  </div>
+  <div style="display:flex; flex-wrap:wrap; gap:6px; margin:4px 0;">
+    <span class="card-tag" style="background:var(--pink-light);color:var(--pink);">Transfer</span>
+    <code>transfer_reason</code> <code>transfer_confidence</code> <code>transferred</code> <code>sr_status</code> <code>reopened</code> <code>transfer_contributing_factors</code> <code>transfer_escalation_signals</code> <code>transfer_narrative</code>
+  </div>
+  <div style="display:flex; flex-wrap:wrap; gap:6px; margin:4px 0;">
+    <span class="card-tag" style="background:#f1f3f5;color:var(--text-muted);">Meta</span>
+    <code>final_recommendation</code> <code>processing_time_ms</code> <code>error</code>
+  </div>
+
+  <h3>Summary CSV <span style="font-weight:400; font-size:13px; color:var(--text-muted);">(evaluation_summary_*.csv)</span></h3>
+  <p>21 columns &mdash; a condensed view for quick review:</p>
+  <p><code>case_number</code>, <code>issue_description</code>, <code>overall_score</code>, <code>verdict</code>, scores &amp; verdicts for relevance/completeness/validity/description quality, <code>transfer_reason</code>, <code>transfer_narrative</code>, <code>final_recommendation</code>, <code>error</code>.</p>
+
+  <h3>JSON Output</h3>
+  <p>Full <code>EvaluationResult</code> serialized as JSON when <code>--format json</code> is specified. Contains the same data as the detailed CSV in a nested structure.</p>
+</section>
+
+<!-- ============ CONFIGURATION ============ -->
+<section id="configuration">
+  <h2>Configuration</h2>
+  <p>Configuration is defined in <code>config/settings.py</code> via the <code>Settings</code> dataclass and constant dictionaries.</p>
+
+  <h3>Settings Defaults</h3>
+  <table>
+    <thead><tr><th>Setting</th><th>Default</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td><code>model</code></td><td><code>claude-sonnet-4-20250514</code></td><td>Default LLM model</td></tr>
+      <tr><td><code>requests_per_minute</code></td><td>50</td><td>Rate limit for LLM calls</td></tr>
+      <tr><td><code>article_fetch_delay</code></td><td>0.5s</td><td>Delay between HTTP article fetches</td></tr>
+      <tr><td><code>cache_enabled</code></td><td>True</td><td>In-memory article cache</td></tr>
+      <tr><td><code>cache_ttl</code></td><td>3600s</td><td>Cache time-to-live</td></tr>
+      <tr><td><code>max_search_results</code></td><td>5</td><td>Max recommended articles from SearchAgent</td></tr>
+      <tr><td><code>search_domains</code></td><td><code>support.microsoft.com</code>, <code>learn.microsoft.com</code></td><td>Domains for search queries</td></tr>
+      <tr><td><code>output_format</code></td><td><code>json</code></td><td>Default output format</td></tr>
+    </tbody>
+  </table>
+
+  <h3>LLM Parameters</h3>
+  <table>
+    <thead><tr><th>Parameter</th><th>Value</th></tr></thead>
+    <tbody>
+      <tr><td><code>max_tokens</code></td><td>4096</td></tr>
+      <tr><td><code>temperature</code></td><td>0.1 (OpenAI provider)</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Supported Providers</h3>
+  <p>
+    <span class="card-tag" style="background:var(--success-light);color:var(--success);">openai</span>
+    <span class="card-tag" style="background:var(--accent-light);color:var(--accent);">anthropic</span>
+    <span class="card-tag" style="background:var(--purple-light);color:var(--purple);">mwai</span>
+  </p>
+
+  <h3>CLI Arguments</h3>
+  <table>
+    <thead><tr><th>Flag</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td><code>--input</code></td><td>Input CSV file path (default: <code>merged_output.csv</code>)</td></tr>
+      <tr><td><code>-o, --output</code></td><td>Output file path</td></tr>
+      <tr><td><code>--format</code></td><td><code>json</code> or <code>csv</code></td></tr>
+      <tr><td><code>-n, --limit</code></td><td>Max cases to evaluate (default: 50)</td></tr>
+      <tr><td><code>--skip</code></td><td>Number of cases to skip</td></tr>
+      <tr><td><code>--case</code></td><td>Evaluate a specific case number</td></tr>
+      <tr><td><code>--all</code></td><td>Evaluate all cases</td></tr>
+      <tr><td><code>-v, --verbose</code></td><td>Enable verbose logging</td></tr>
+      <tr><td><code>--debug</code></td><td>Enable debug logging</td></tr>
+      <tr><td><code>--api-key</code></td><td>LLM API key</td></tr>
+      <tr><td><code>--provider</code></td><td><code>openai</code>, <code>anthropic</code>, or <code>mwai</code></td></tr>
+      <tr><td><code>--model</code></td><td>LLM model name</td></tr>
+      <tr><td><code>--base-url</code></td><td>Custom API base URL</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Article Fetcher Settings</h3>
+  <table>
+    <thead><tr><th>Setting</th><th>Value</th></tr></thead>
+    <tbody>
+      <tr><td>HTTP Timeout</td><td>30 seconds</td></tr>
+      <tr><td>Content Truncation</td><td>10,000 chars (fetcher) / 8,000 chars (agent input)</td></tr>
+      <tr><td>Cache Key</td><td>MD5 hash of URL</td></tr>
+      <tr><td>Max Steps Extracted</td><td>20</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<footer style="text-align:center; padding:32px 0; color:var(--text-muted); font-size:13px; border-top:1px solid var(--border); margin-top:40px;">
+  Article Evaluation System &mdash; Documentation generated March 2026
+</footer>
+
+</main>
+</body>
+</html>
