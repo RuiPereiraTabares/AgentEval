@@ -13,14 +13,14 @@ logger = logging.getLogger(__name__)
 class BaseAgent(ABC):
     """Base class for all evaluation agents."""
 
-    def __init__(self, client, model: str = "gpt-4o", provider: str = "openai"):
+    def __init__(self, client, model: str = "gpt-4o", provider: str = "mwai"):
         """
         Initialize the agent.
 
         Args:
-            client: OpenAI or Anthropic client instance
+            client: MWAI client instance
             model: Model to use for evaluations
-            provider: API provider ("openai" or "anthropic")
+            provider: API provider ("mwai")
         """
         self.client = client
         self.model = model
@@ -49,9 +49,9 @@ class BaseAgent(ABC):
         """
         pass
 
-    def _call_claude(self, system_prompt: str, user_message: str) -> str:
+    def _call_llm(self, system_prompt: str, user_message: str) -> str:
         """
-        Make a call to LLM API (OpenAI, Anthropic, or MWAI).
+        Make a call to the MWAI LLM API.
 
         Args:
             system_prompt: The system prompt
@@ -69,52 +69,25 @@ class BaseAgent(ABC):
             f"[{agent_name}] User message (first 500 chars): {user_message[:500]}"
         )
 
-        # Use injected callable if available (e.g., for Semantic Kernel integration)
+        # Use injected callable if available
         if self._llm_callable is not None:
             response = self._llm_callable(system_prompt, user_message)
             logger.info(f"[{agent_name}] Got response via injected callable ({len(response)} chars)")
             logger.debug(f"[{agent_name}] Raw response (first 500 chars): {response[:500]}")
             return response
 
-        if self.provider == "mwai":
-            # MWAI ChatCompletionWithoutData API
-            response = self.client.chat_completion(system_prompt, user_message)
-            logger.info(f"[{agent_name}] Got MWAI response ({len(response)} chars)")
-            logger.debug(f"[{agent_name}] Raw response (first 500 chars): {response[:500]}")
-            return response
-        elif self.provider == "openai":
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_message}
-                ],
-                max_tokens=4096,
-                temperature=0.1
-            )
-            text = response.choices[0].message.content
-            logger.info(f"[{agent_name}] Got OpenAI response ({len(text)} chars)")
-            logger.debug(f"[{agent_name}] Raw response (first 500 chars): {text[:500]}")
-            return text
-        else:
-            # Anthropic API
-            response = self.client.messages.create(
-                model=self.model,
-                max_tokens=4096,
-                system=system_prompt,
-                messages=[{"role": "user", "content": user_message}]
-            )
-            text = response.content[0].text
-            logger.info(f"[{agent_name}] Got Anthropic response ({len(text)} chars)")
-            logger.debug(f"[{agent_name}] Raw response (first 500 chars): {text[:500]}")
-            return text
+        # MWAI ChatCompletionWithoutData API
+        response = self.client.chat_completion(system_prompt, user_message)
+        logger.info(f"[{agent_name}] Got MWAI response ({len(response)} chars)")
+        logger.debug(f"[{agent_name}] Raw response (first 500 chars): {response[:500]}")
+        return response
 
     def _parse_json_response(self, response: str) -> dict:
         """
-        Parse JSON from Claude's response, handling markdown code blocks.
+        Parse JSON from LLM response, handling markdown code blocks.
 
         Args:
-            response: Claude's response text
+            response: LLM response text
 
         Returns:
             Parsed JSON dictionary

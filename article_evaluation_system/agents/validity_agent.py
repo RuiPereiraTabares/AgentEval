@@ -22,7 +22,7 @@ class ValidityAgent(BaseAgent):
     is current (not deprecated), and would work in the customer's environment.
     """
 
-    def __init__(self, client, model: str = "gpt-4o", provider: str = "openai"):
+    def __init__(self, client, model: str = "gpt-4o", provider: str = "mwai"):
         super().__init__(client, model, provider)
         self.system_prompt = AgentPrompts.VALIDITY_AGENT
 
@@ -72,7 +72,7 @@ class ValidityAgent(BaseAgent):
 Evaluate validity and respond with JSON only."""
 
         try:
-            response = self._call_claude(self.system_prompt, user_message)
+            response = self._call_llm(self.system_prompt, user_message)
             parsed_data = self._parse_json_response(response)
 
             return ValidityResult.from_dict(parsed_data)

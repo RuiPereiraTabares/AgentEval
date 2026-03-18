@@ -10,10 +10,7 @@ The system reads support cases from a CSV file, parses each customer issue, fetc
 
 - **Python 3.12** or later
 - **pip** (comes with Python)
-- An API key for at least one LLM provider:
-  - [OpenAI](https://platform.openai.com/api-keys) (API key)
-  - [Anthropic](https://console.anthropic.com/settings/keys) (API key)
-  - MWAI (Microsoft internal — JWT bearer token)
+- An MWAI bearer token (Microsoft internal — JWT)
 - An input CSV file with support case data (see [Input Format](#input-csv-format))
 
 ## Installation
@@ -48,40 +45,25 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-If you also need Semantic Kernel support (optional):
-
-```bash
-pip install -r requirements-sk.txt
-```
-
 ### 4. Configure Environment Variables
 
 Create a `.env` file in the project root:
 
 ```env
-# ---- Pick ONE provider ----
-
-# Option A: OpenAI
-OPENAI_API_KEY=sk-proj-...
-
-# Option B: Anthropic / Claude
-# ANTHROPIC_API_KEY=sk-ant-api03-...
-
-# Option C: MWAI (Microsoft internal)
-# MWAI_TOKEN=eyJ0eXAiOiJKV1QiLCJhbGciOi...
+MWAI_TOKEN=eyJ0eXAiOiJKV1QiLCJhbGciOi...
 ```
 
 Alternatively, export the variable directly in your shell:
 
 ```bash
 # bash / zsh
-export OPENAI_API_KEY="sk-proj-..."
+export MWAI_TOKEN="eyJ0eX..."
 
 # PowerShell
-$env:OPENAI_API_KEY = "sk-proj-..."
+$env:MWAI_TOKEN = "eyJ0eX..."
 
 # Command Prompt
-set OPENAI_API_KEY=sk-proj-...
+set MWAI_TOKEN=eyJ0eX...
 ```
 
 ### 5. Verify Installation
@@ -105,11 +87,8 @@ python run_evaluation.py --case 2508270010003948
 # Verbose output (shows per-agent score breakdowns)
 python run_evaluation.py -n 5 -v
 
-# Use Anthropic instead of OpenAI
-python run_evaluation.py --provider anthropic --model claude-sonnet-4-20250514 -n 5
-
-# Use MWAI (will prompt for token if not cached)
-python run_evaluation.py --provider mwai -n 5
+# Provide token explicitly
+python run_evaluation.py --token eyJ0eX... -n 5
 
 # Output as CSV instead of JSON
 python run_evaluation.py -n 5 --format csv
@@ -146,11 +125,9 @@ See [docs/api-reference.md](docs/api-reference.md#csv-input-format) for the full
 
 ```
 AgentsArticleReviewer/
-  run_evaluation.py              # Main CLI runner (multi-provider)
-  run_evaluation_sk.py           # Semantic Kernel CLI runner
+  run_evaluation.py              # Main CLI runner
   requirements.txt               # Python dependencies
-  requirements-sk.txt            # Optional SK dependencies
-  .env                           # API keys (create this yourself)
+  .env                           # MWAI token (create this yourself)
   article_evaluation_system/     # Main package
     __init__.py                  #   ArticleEvaluator entry point
     main.py                      #   CSV I/O and alternative CLI
@@ -158,7 +135,6 @@ AgentsArticleReviewer/
     models/                      #   Data models (Issue, Article, results)
     config/                      #   Settings, thresholds, weights
     utils/                       #   Article fetcher, scoring, prompts, MWAI client
-    sk/                          #   Optional Semantic Kernel integration
   docs/                          #   Developer documentation
 ```
 
@@ -176,22 +152,10 @@ AgentsArticleReviewer/
 | [docs/api-reference.md](docs/api-reference.md) | Programmatic API, CLI usage, CSV/JSON formats |
 | [docs/kt-framework.md](docs/kt-framework.md) | Kepner-Tregoe description quality analysis |
 | [docs/transfer-analysis.md](docs/transfer-analysis.md) | Transfer reason classification decision tree |
-| [docs/providers.md](docs/providers.md) | LLM provider setup (OpenAI, Anthropic, MWAI, SK) |
-| [docs/contributing.md](docs/contributing.md) | Adding agents, providers, models; testing patterns |
+| [docs/providers.md](docs/providers.md) | MWAI provider setup |
+| [docs/contributing.md](docs/contributing.md) | Adding agents, models; testing patterns |
 
 ## Troubleshooting
-
-### `ModuleNotFoundError: No module named 'openai'`
-
-You haven't installed dependencies. Run:
-
-```bash
-pip install -r requirements.txt
-```
-
-### `ERROR: No API key provided`
-
-Set the API key for your chosen provider. See [Configure Environment Variables](#4-configure-environment-variables).
 
 ### `UnicodeDecodeError` when reading CSV
 
@@ -211,5 +175,5 @@ The article URL may be behind authentication or no longer available. The system 
 Re-run with `--new-token` to get a fresh token:
 
 ```bash
-python run_evaluation.py --provider mwai --new-token
+python run_evaluation.py --new-token
 ```

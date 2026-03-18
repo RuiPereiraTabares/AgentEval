@@ -292,7 +292,7 @@ class TransferReasonAgent(BaseAgent):
     def _llm_escalation_detection(self, text: str) -> list[str]:
         """Use LLM to detect escalation signals. Returns list of signals or empty on failure."""
         try:
-            response = self._call_claude(
+            response = self._call_llm(
                 system_prompt=AgentPrompts.TRANSFER_REASON_ESCALATION_DETECTION,
                 user_message=f"Analyze this support case description for escalation signals:\n\n{text[:2000]}",
             )

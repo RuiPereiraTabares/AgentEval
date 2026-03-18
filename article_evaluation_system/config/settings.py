@@ -61,8 +61,8 @@ class Settings:
     """Application settings."""
 
     # API Configuration
-    anthropic_api_key: str = field(default_factory=lambda: os.environ.get("ANTHROPIC_API_KEY", ""))
-    model: str = "claude-sonnet-4-20250514"
+    mwai_token: str = field(default_factory=lambda: os.environ.get("MWAI_TOKEN", ""))
+    model: str = "gpt-4o"
 
     # Rate Limiting
     requests_per_minute: int = 50
@@ -91,7 +91,7 @@ class Settings:
     def from_env(cls) -> "Settings":
         """Create settings from environment variables."""
         return cls(
-            anthropic_api_key=os.environ.get("ANTHROPIC_API_KEY", ""),
-            model=os.environ.get("CLAUDE_MODEL", "claude-sonnet-4-20250514"),
+            mwai_token=os.environ.get("MWAI_TOKEN", ""),
+            model=os.environ.get("MWAI_MODEL", "gpt-4o"),
             verbose=os.environ.get("VERBOSE", "").lower() == "true"
         )

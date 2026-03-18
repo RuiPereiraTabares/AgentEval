@@ -3,15 +3,12 @@
 Simple runner script for the Article Evaluation System.
 
 Usage:
-    python run_evaluation.py                    # Process first 5 cases (test mode)
+    python run_evaluation.py                    # Process first 50 cases
     python run_evaluation.py --all              # Process all cases
     python run_evaluation.py -n 10              # Process first 10 cases
     python run_evaluation.py --case 2508270010003948  # Process specific case
-
-    # Using MWAI API (ChatCompletionWithoutData):
-    python run_evaluation.py --provider mwai                    # uses cached token or prompts
-    python run_evaluation.py --provider mwai --token eyJ0eX...  # explicit token
-    python run_evaluation.py --provider mwai --new-token        # force re-prompt
+    python run_evaluation.py --token eyJ0eX...  # explicit MWAI token
+    python run_evaluation.py --new-token        # force re-prompt for token
 """
 
 import os
@@ -47,12 +44,8 @@ def main():
                         help='Debug output (shows raw LLM prompts, responses, and API details)')
 
     # API Configuration
-    parser.add_argument('--api-key', help='API key (OpenAI or Anthropic)')
-    parser.add_argument('--provider', choices=['openai', 'anthropic', 'mwai'], default='openai',
-                        help='API provider (default: openai). Use "mwai" for MWAI ChatCompletionWithoutData.')
     parser.add_argument('--model', default='gpt-4o', help='Model to use (default: gpt-4o)')
-    parser.add_argument('--base-url', help='Custom base URL for API (for proxies/custom endpoints)')
-    parser.add_argument('--token', help='MWAI bearer token (for --provider mwai). If not provided, will use cached token or prompt interactively.')
+    parser.add_argument('--token', help='MWAI bearer token. If not provided, will use cached token or prompt interactively.')
     parser.add_argument('--new-token', action='store_true', help='Force re-prompt for a new MWAI token (ignore cache)')
 
     args = parser.parse_args()
@@ -73,37 +66,12 @@ def main():
     else:
         logging.basicConfig(level=logging.WARNING)
 
-    # Check API key / token
-    api_key = None
-    mwai_token = None
-
-    if args.provider == 'mwai':
-        # MWAI uses bearer token, not API key
-        from article_evaluation_system.utils.mwai_client import resolve_mwai_token
-        mwai_token = resolve_mwai_token(
-            token=args.token,
-            force_new=args.new_token
-        )
-    elif args.provider == 'openai':
-        api_key = args.api_key or os.environ.get('OPENAI_API_KEY')
-        env_var = 'OPENAI_API_KEY'
-        if not api_key:
-            print(f"ERROR: No API key provided.")
-            print(f"Set {env_var} environment variable or use --api-key")
-            print("\nExample:")
-            print(f"  set {env_var}=your-key-here")
-            print("  python run_evaluation.py")
-            sys.exit(1)
-    else:
-        api_key = args.api_key or os.environ.get('ANTHROPIC_API_KEY')
-        env_var = 'ANTHROPIC_API_KEY'
-        if not api_key:
-            print(f"ERROR: No API key provided.")
-            print(f"Set {env_var} environment variable or use --api-key")
-            print("\nExample:")
-            print(f"  set {env_var}=your-key-here")
-            print("  python run_evaluation.py")
-            sys.exit(1)
+    # Resolve MWAI token
+    from article_evaluation_system.utils.mwai_client import resolve_mwai_token
+    mwai_token = resolve_mwai_token(
+        token=args.token,
+        force_new=args.new_token
+    )
 
     # Check input file
     if not os.path.exists(args.input):
@@ -132,7 +100,7 @@ def main():
             sys.exit(1)
 
     print(f"Loaded {len(cases)} cases to process")
-    print(f"Using provider: {args.provider}, model: {args.model}")
+    print(f"Using provider: mwai, model: {args.model}")
 
     if not cases:
         print("No cases to process")
@@ -141,10 +109,8 @@ def main():
     # Initialize evaluator
     print("Initializing evaluator...")
     evaluator = ArticleEvaluator(
-        api_key=api_key,
         model=args.model,
-        provider=args.provider,
-        base_url=args.base_url,
+        provider='mwai',
         mwai_token=mwai_token
     )
 

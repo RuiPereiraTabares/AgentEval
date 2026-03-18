@@ -34,7 +34,7 @@ class IssueParserAgent(BaseAgent):
     relevant information for downstream evaluation.
     """
 
-    def __init__(self, client, model: str = "gpt-4o", provider: str = "openai"):
+    def __init__(self, client, model: str = "gpt-4o", provider: str = "mwai"):
         super().__init__(client, model, provider)
         self.system_prompt = AgentPrompts.ISSUE_PARSER
 
@@ -81,7 +81,7 @@ Extract all relevant information and respond with JSON only."""
 Extract all relevant information and respond with JSON only."""
 
         try:
-            response = self._call_claude(self.system_prompt, user_message)
+            response = self._call_llm(self.system_prompt, user_message)
 
             # Detect LLM refusal (e.g. "Sorry, I can't help with that.")
             if any(p in response.lower() for p in _REFUSAL_PATTERNS):

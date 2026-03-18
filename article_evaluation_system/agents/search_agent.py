@@ -22,7 +22,7 @@ class SearchAgent(BaseAgent):
     to find better or supplementary documentation.
     """
 
-    def __init__(self, client, model: str = "gpt-4o", provider: str = "openai"):
+    def __init__(self, client, model: str = "gpt-4o", provider: str = "mwai"):
         super().__init__(client, model, provider)
         self.system_prompt = AgentPrompts.SEARCH_AGENT
 
@@ -53,7 +53,7 @@ class SearchAgent(BaseAgent):
 Generate optimal search queries for Microsoft documentation."""
 
         try:
-            response = self._call_claude(self.system_prompt, user_message)
+            response = self._call_llm(self.system_prompt, user_message)
             try:
                 parsed_data = self._parse_json_response(response)
                 raw_queries = parsed_data.get("search_queries", [])
