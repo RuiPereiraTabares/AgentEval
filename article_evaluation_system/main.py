@@ -373,13 +373,18 @@ def main():
         help='Verbose output'
     )
     parser.add_argument(
-        '--api-key',
-        help='Anthropic API key (or set ANTHROPIC_API_KEY env var)'
+        '--model',
+        default='gpt-4o',
+        help='Model to use (default: gpt-4o)'
     )
     parser.add_argument(
-        '--model',
-        default='claude-sonnet-4-20250514',
-        help='Claude model to use'
+        '--token',
+        help='MWAI bearer token (or set MWAI_TOKEN env var)'
+    )
+    parser.add_argument(
+        '--new-token',
+        action='store_true',
+        help='Force re-prompt for a new MWAI token (ignore cache)'
     )
 
     args = parser.parse_args()
@@ -389,15 +394,16 @@ def main():
         logger.error(f"Input file not found: {args.input_file}")
         sys.exit(1)
 
-    # Get API key
-    api_key = args.api_key or os.environ.get('ANTHROPIC_API_KEY')
-    if not api_key:
-        logger.error("No API key provided. Set ANTHROPIC_API_KEY or use --api-key")
-        sys.exit(1)
+    # Resolve MWAI token
+    from .utils.mwai_client import resolve_mwai_token
+    mwai_token = resolve_mwai_token(
+        token=getattr(args, 'token', None),
+        force_new=getattr(args, 'new_token', False)
+    )
 
     # Initialize evaluator
     logger.info("Initializing Article Evaluator...")
-    evaluator = ArticleEvaluator(api_key=api_key, model=args.model)
+    evaluator = ArticleEvaluator(model=args.model, mwai_token=mwai_token)
 
     # Read cases
     logger.info(f"Reading cases from {args.input_file}...")

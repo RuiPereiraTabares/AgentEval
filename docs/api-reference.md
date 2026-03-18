@@ -12,11 +12,7 @@ The main entry point for the evaluation system.
 from article_evaluation_system import ArticleEvaluator
 
 evaluator = ArticleEvaluator(
-    api_key="sk-...",          # API key (not needed for mwai)
-    model="gpt-4o",            # Model name (default: "gpt-4o")
-    provider="openai",         # "openai", "anthropic", or "mwai"
-    base_url=None,             # Custom API base URL (proxies)
-    mwai_token=None            # MWAI bearer token
+    mwai_token=None            # MWAI bearer token (or set MWAI_TOKEN env var)
 )
 ```
 
@@ -149,7 +145,7 @@ The `evaluate()` method returns a dict with this shape:
 
 ## CLI: `run_evaluation.py`
 
-The primary CLI runner. Supports all three providers.
+The primary CLI runner. Uses MWAI as the LLM provider.
 
 ### Usage
 
@@ -182,26 +178,17 @@ python run_evaluation.py --debug
 python run_evaluation.py --format csv
 ```
 
-### Provider Examples
+### MWAI Authentication Examples
 
 ```bash
-# OpenAI (default)
-python run_evaluation.py --provider openai --model gpt-4o
+# Interactive token prompt (default):
+python run_evaluation.py
 
-# OpenAI with custom proxy
-python run_evaluation.py --provider openai --base-url https://my-proxy.com/v1
+# Explicit token:
+python run_evaluation.py --token eyJ0eX...
 
-# Anthropic
-python run_evaluation.py --provider anthropic --model claude-sonnet-4-20250514
-
-# MWAI (interactive token prompt)
-python run_evaluation.py --provider mwai
-
-# MWAI (explicit token)
-python run_evaluation.py --provider mwai --token eyJ0eX...
-
-# MWAI (force new token)
-python run_evaluation.py --provider mwai --new-token
+# Force new token:
+python run_evaluation.py --new-token
 ```
 
 ### Output File Naming
@@ -214,16 +201,6 @@ When `--output` is not specified, files are auto-named with a timestamp:
 ### Full Argument Reference
 
 See [Configuration > CLI Arguments](configuration.md#cli-arguments).
-
-## CLI: `run_evaluation_sk.py`
-
-Semantic Kernel runner. Uses the SK integration layer instead of direct API calls.
-
-```bash
-python run_evaluation_sk.py
-```
-
-See [Providers > Semantic Kernel](providers.md#semantic-kernel-integration) for setup.
 
 ## CSV Input Format
 

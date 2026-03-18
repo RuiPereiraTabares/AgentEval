@@ -26,7 +26,7 @@ class GapAnalysisAgent(BaseAgent):
     and recommends what content should be created.
     """
 
-    def __init__(self, client, model: str = "gpt-4o", provider: str = "openai"):
+    def __init__(self, client, model: str = "gpt-4o", provider: str = "mwai"):
         super().__init__(client, model, provider)
         self.system_prompt = AgentPrompts.GAP_ANALYSIS_AGENT
 
@@ -72,7 +72,7 @@ class GapAnalysisAgent(BaseAgent):
 Identify gaps and recommend documentation improvements."""
 
         try:
-            response = self._call_claude(self.system_prompt, user_message)
+            response = self._call_llm(self.system_prompt, user_message)
             parsed_data = self._parse_json_response(response)
 
             return GapAnalysisResult.from_dict(parsed_data)

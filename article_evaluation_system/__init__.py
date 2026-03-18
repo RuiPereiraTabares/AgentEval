@@ -9,42 +9,27 @@ from .models.issue import Issue
 from .models.article import Article
 from .models.evaluation import EvaluationResult
 
-# Conditional Semantic Kernel imports
-try:
-    from .sk import SemanticKernelEvaluator, ArticleEvaluationPlugin
-    SK_AVAILABLE = True
-except ImportError:
-    SK_AVAILABLE = False
-    SemanticKernelEvaluator = None
-    ArticleEvaluationPlugin = None
-
 
 class ArticleEvaluator:
     """Main entry point for the article evaluation system."""
 
     def __init__(
         self,
-        api_key: str = None,
         model: str = "gpt-4o",
-        provider: str = "openai",
-        base_url: str = None,
+        provider: str = "mwai",
         mwai_token: str = None
     ):
         """
         Initialize the ArticleEvaluator.
 
         Args:
-            api_key: API key (OpenAI or Anthropic). Not needed for "mwai" provider.
             model: Model to use for evaluations
-            provider: API provider ("openai", "anthropic", or "mwai")
-            base_url: Custom base URL for API (for proxies/custom endpoints)
-            mwai_token: MWAI bearer token (required when provider is "mwai")
+            provider: API provider ("mwai")
+            mwai_token: MWAI bearer token (resolved automatically if not provided)
         """
         self.orchestrator = Orchestrator(
-            api_key=api_key,
             model=model,
             provider=provider,
-            base_url=base_url,
             mwai_token=mwai_token
         )
 
@@ -106,7 +91,4 @@ __all__ = [
     'Issue',
     'Article',
     'EvaluationResult',
-    'SK_AVAILABLE',
-    'SemanticKernelEvaluator',
-    'ArticleEvaluationPlugin'
 ]

@@ -10,14 +10,14 @@ Abstract base class for all agents.
 
 ```python
 class BaseAgent(ABC):
-    def __init__(self, client, model: str = "gpt-4o", provider: str = "openai")
+    def __init__(self, client, model: str = "gpt-4o", provider: str = "mwai")
     def evaluate(self, **kwargs) -> dict           # Abstract
-    def _call_claude(self, system_prompt, user_message) -> str
+    def _call_llm(self, system_prompt, user_message) -> str
     def _parse_json_response(self, response) -> dict
     def set_llm_callable(self, callable_fn)        # Inject custom LLM
 ```
 
-See [Architecture > BaseAgent](architecture.md#baseagent-class) for details on `_call_claude()` provider dispatch and `_parse_json_response()` 3-stage parsing.
+See [Architecture > BaseAgent](architecture.md#baseagent-class) for details on `_call_llm()` and `_parse_json_response()` 3-stage parsing.
 
 ---
 

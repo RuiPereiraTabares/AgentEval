@@ -51,7 +51,7 @@ A multi-agent AI system that evaluates whether Microsoft support articles adequa
 ### Prerequisites
 
 - Python 3.12+
-- An API key for at least one LLM provider (OpenAI, Anthropic, or MWAI)
+- An MWAI bearer token (Microsoft internal — JWT)
 - Input CSV file with support case data
 
 ### Install
@@ -65,10 +65,7 @@ pip install -r requirements.txt
 Create a `.env` file in the project root:
 
 ```env
-# Pick one provider:
-OPENAI_API_KEY=sk-...
-# ANTHROPIC_API_KEY=sk-ant-...
-# MWAI_TOKEN=eyJ0eX...
+MWAI_TOKEN=eyJ0eX...
 ```
 
 ### First Run
@@ -77,8 +74,8 @@ OPENAI_API_KEY=sk-...
 # Evaluate first 5 cases (test mode)
 python run_evaluation.py -n 5
 
-# Evaluate all cases with Anthropic
-python run_evaluation.py --all --provider anthropic --model claude-sonnet-4-20250514
+# Evaluate all cases
+python run_evaluation.py --all
 
 # Evaluate a specific case with verbose output
 python run_evaluation.py --case 2508270010003948 -v
@@ -114,6 +111,5 @@ python run_evaluation.py --case 2508270010003948 -v
 | [API Reference](api-reference.md) | `ArticleEvaluator` API, CLI usage, CSV/JSON formats |
 | [KT Framework](kt-framework.md) | Kepner-Tregoe description quality analysis |
 | [Transfer Analysis](transfer-analysis.md) | Transfer reason classification decision tree |
-| [Providers](providers.md) | LLM provider setup (OpenAI, Anthropic, MWAI, Semantic Kernel) |
-| [Contributing](contributing.md) | Adding agents, providers, models, and modifying the system |
-| [SK Integration Spec](SEMANTIC_KERNEL_INTEGRATION_SPEC.md) | Semantic Kernel integration specification |
+| [Providers](providers.md) | MWAI provider setup |
+| [Contributing](contributing.md) | Adding agents, models, and modifying the system |

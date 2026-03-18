@@ -37,42 +37,24 @@ class Orchestrator(BaseAgent):
 
     def __init__(
         self,
-        api_key: str = None,
         client=None,
         model: str = "gpt-4o",
-        provider: str = "openai",
-        base_url: str = None,
+        provider: str = "mwai",
         mwai_token: str = None
     ):
         """
         Initialize the orchestrator.
 
         Args:
-            api_key: API key (if client not provided)
-            client: Existing client instance (OpenAI, Anthropic, or MwaiClient)
+            client: Existing MwaiClient instance (optional)
             model: Model to use for all agents
-            provider: API provider ("openai", "anthropic", or "mwai")
-            base_url: Custom base URL for API (for proxies/custom endpoints)
-            mwai_token: MWAI bearer token (required when provider is "mwai")
+            provider: API provider ("mwai")
+            mwai_token: MWAI bearer token (resolved automatically if not provided)
         """
         if client is None:
-            if provider == "mwai":
-                from ..utils.mwai_client import MwaiClient, resolve_mwai_token
-                token = resolve_mwai_token(mwai_token)
-                client = MwaiClient(token=token)
-            elif provider == "openai":
-                from openai import OpenAI
-                if api_key is None:
-                    api_key = os.environ.get("OPENAI_API_KEY")
-                if base_url:
-                    client = OpenAI(api_key=api_key, base_url=base_url)
-                else:
-                    client = OpenAI(api_key=api_key)
-            else:
-                from anthropic import Anthropic
-                if api_key is None:
-                    api_key = os.environ.get("ANTHROPIC_API_KEY")
-                client = Anthropic(api_key=api_key)
+            from ..utils.mwai_client import MwaiClient, resolve_mwai_token
+            token = resolve_mwai_token(mwai_token)
+            client = MwaiClient(token=token)
 
         super().__init__(client, model, provider)
 

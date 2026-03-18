@@ -2,30 +2,18 @@
 
 ## Environment Variables
 
-| Variable | Provider | Description |
-|----------|----------|-------------|
-| `OPENAI_API_KEY` | OpenAI | OpenAI API key |
-| `ANTHROPIC_API_KEY` | Anthropic | Anthropic API key |
-| `MWAI_TOKEN` | MWAI | MWAI bearer token (JWT) |
-| `CLAUDE_MODEL` | Anthropic | Model override (default: `claude-sonnet-4-20250514`) |
-| `VERBOSE` | All | Set to `"true"` for verbose logging |
+| Variable | Description |
+|----------|-------------|
+| `MWAI_TOKEN` | MWAI bearer token (JWT) |
+| `VERBOSE` | Set to `"true"` for verbose logging |
 
 ## `.env` Example
 
 Create a `.env` file in the project root (loaded by `python-dotenv`):
 
 ```env
-# OpenAI
-OPENAI_API_KEY=sk-proj-...
-
-# Anthropic (alternative)
-# ANTHROPIC_API_KEY=sk-ant-api03-...
-
-# MWAI (alternative)
-# MWAI_TOKEN=eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiIs...
-
-# Model override
-# CLAUDE_MODEL=claude-sonnet-4-20250514
+# MWAI
+MWAI_TOKEN=eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiIs...
 ```
 
 ## Settings Dataclass
@@ -35,8 +23,7 @@ OPENAI_API_KEY=sk-proj-...
 ```python
 @dataclass
 class Settings:
-    anthropic_api_key: str        # from ANTHROPIC_API_KEY env var (default: "")
-    model: str                    # default: "claude-sonnet-4-20250514"
+    model: str                    # default: server-side (MWAI)
     requests_per_minute: int      # default: 50
     article_fetch_delay: float    # default: 0.5 (seconds)
     cache_enabled: bool           # default: True
@@ -49,7 +36,7 @@ class Settings:
     verbose: bool                 # default: False
 ```
 
-**Factory method:** `Settings.from_env()` reads `ANTHROPIC_API_KEY`, `CLAUDE_MODEL`, and `VERBOSE` from environment variables.
+**Factory method:** `Settings.from_env()` reads `MWAI_TOKEN` and `VERBOSE` from environment variables.
 
 ## Scoring Thresholds
 
@@ -132,7 +119,7 @@ KT_DIMENSION_WEIGHTS = {
 
 ## LLM Parameters
 
-All providers use the same parameters (set in `BaseAgent._call_claude()`):
+LLM parameters are set in `BaseAgent._call_llm()`:
 
 | Parameter | Value | Description |
 |-----------|-------|-------------|
@@ -150,28 +137,22 @@ MWAI additionally uses `response_format: {"type": "json_object"}`.
 | `--input`, `-i` | `merged_output.csv` | Input CSV file |
 | `--output`, `-o` | `evaluation_results_{timestamp}.{format}` | Output file |
 | `--limit`, `-n` | `50` | Number of cases to process |
-| `--all` | — | Process all cases |
-| `--case` | — | Process a specific case number |
+| `--all` | -- | Process all cases |
+| `--case` | -- | Process a specific case number |
 | `--skip` | `0` | Skip first N cases |
 | `--format` | `json` | Output format (`json` or `csv`) |
-| `--verbose`, `-v` | — | Show per-agent scores and verdict reasoning |
-| `--debug` | — | Show raw LLM prompts, responses, and API details |
-| `--api-key` | — | API key (or set env var) |
-| `--provider` | `openai` | API provider (`openai`, `anthropic`, `mwai`) |
-| `--model` | `gpt-4o` | Model to use |
-| `--base-url` | — | Custom base URL for API proxy |
-| `--token` | — | MWAI bearer token |
-| `--new-token` | — | Force re-prompt for new MWAI token |
+| `--verbose`, `-v` | -- | Show per-agent scores and verdict reasoning |
+| `--debug` | -- | Show raw LLM prompts, responses, and API details |
+| `--token` | -- | MWAI bearer token |
+| `--new-token` | -- | Force re-prompt for new MWAI token |
 
 **`article_evaluation_system/main.py`** (alternative CLI):
 
 | Argument | Default | Description |
 |----------|---------|-------------|
-| `input_file` (positional) | — | Path to input CSV file |
+| `input_file` (positional) | -- | Path to input CSV file |
 | `-o`, `--output` | `evaluation_results.json` | Output file path |
 | `--format` | `json` | Output format |
-| `-n`, `--limit` | — | Max cases to process |
+| `-n`, `--limit` | -- | Max cases to process |
 | `--skip` | `0` | Skip first N cases |
-| `-v`, `--verbose` | — | Verbose output |
-| `--api-key` | — | Anthropic API key |
-| `--model` | `claude-sonnet-4-20250514` | Claude model |
+| `-v`, `--verbose` | -- | Verbose output |

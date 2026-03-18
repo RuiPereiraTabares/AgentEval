@@ -1,6 +1,0 @@
-# Semantic Kernel integration (optional)
-# Install alongside the base requirements:
-#   pip install -r requirements.txt -r requirements-sk.txt
-
--r requirements.txt
-semantic-kernel>=1.0.0

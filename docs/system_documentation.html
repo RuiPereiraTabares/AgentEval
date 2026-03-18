@@ -1039,7 +1039,7 @@
   <table>
     <thead><tr><th>Setting</th><th>Default</th><th>Description</th></tr></thead>
     <tbody>
-      <tr><td><code>model</code></td><td><code>claude-sonnet-4-20250514</code></td><td>Default LLM model</td></tr>
+      <tr><td><code>model</code></td><td><code>gpt-4o</code></td><td>Default LLM model</td></tr>
       <tr><td><code>requests_per_minute</code></td><td>50</td><td>Rate limit for LLM calls</td></tr>
       <tr><td><code>article_fetch_delay</code></td><td>0.5s</td><td>Delay between HTTP article fetches</td></tr>
       <tr><td><code>cache_enabled</code></td><td>True</td><td>In-memory article cache</td></tr>
@@ -1055,14 +1055,12 @@
     <thead><tr><th>Parameter</th><th>Value</th></tr></thead>
     <tbody>
       <tr><td><code>max_tokens</code></td><td>4096</td></tr>
-      <tr><td><code>temperature</code></td><td>0.1 (OpenAI provider)</td></tr>
+      <tr><td><code>temperature</code></td><td>0.1</td></tr>
     </tbody>
   </table>
 
   <h3>Supported Providers</h3>
   <p>
-    <span class="card-tag" style="background:var(--success-light);color:var(--success);">openai</span>
-    <span class="card-tag" style="background:var(--accent-light);color:var(--accent);">anthropic</span>
     <span class="card-tag" style="background:var(--purple-light);color:var(--purple);">mwai</span>
   </p>
 
@@ -1079,10 +1077,9 @@
       <tr><td><code>--all</code></td><td>Evaluate all cases</td></tr>
       <tr><td><code>-v, --verbose</code></td><td>Enable verbose logging</td></tr>
       <tr><td><code>--debug</code></td><td>Enable debug logging</td></tr>
-      <tr><td><code>--api-key</code></td><td>LLM API key</td></tr>
-      <tr><td><code>--provider</code></td><td><code>openai</code>, <code>anthropic</code>, or <code>mwai</code></td></tr>
-      <tr><td><code>--model</code></td><td>LLM model name</td></tr>
-      <tr><td><code>--base-url</code></td><td>Custom API base URL</td></tr>
+      <tr><td><code>--model</code></td><td>LLM model name (default: <code>gpt-4o</code>)</td></tr>
+      <tr><td><code>--token</code></td><td>MWAI bearer token</td></tr>
+      <tr><td><code>--new-token</code></td><td>Force re-prompt for new MWAI token</td></tr>
     </tbody>
   </table>
 

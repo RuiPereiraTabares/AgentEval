@@ -33,14 +33,7 @@ article_evaluation_system/
     scoring.py         # ScoringUtils (score formulas, verdict logic)
     prompts.py         # All LLM system prompts (AgentPrompts)
     mwai_client.py     # MWAI API client + token management
-  sk/                  # Optional Semantic Kernel integration
-    __init__.py
-    anthropic_connector.py
-    llm_adapter.py
-    plugin.py
-    evaluator.py
-run_evaluation.py      # Primary CLI runner (multi-provider)
-run_evaluation_sk.py   # Semantic Kernel CLI runner
+run_evaluation.py      # Primary CLI runner
 ```
 
 ## BaseAgent Class
@@ -49,26 +42,19 @@ All agents inherit from `BaseAgent` (`agents/__init__.py`):
 
 ```python
 class BaseAgent(ABC):
-    def __init__(self, client, model: str = "gpt-4o", provider: str = "openai")
+    def __init__(self, client, model: str = "gpt-4o", provider: str = "mwai")
 
     @abstractmethod
     def evaluate(self, **kwargs) -> dict
 
-    def _call_claude(self, system_prompt: str, user_message: str) -> str
+    def _call_llm(self, system_prompt: str, user_message: str) -> str
     def _parse_json_response(self, response: str) -> dict
     def set_llm_callable(self, callable_fn)
 ```
 
-**`_call_claude()`** dispatches to the configured provider:
+**`_call_llm()`** calls the MWAI API via `client.chat_completion(system_prompt, user_message)`. If an injected callable is set via `set_llm_callable()`, it is used instead.
 
-| Provider | API Call |
-|----------|----------|
-| `openai` | `client.chat.completions.create(model, messages, max_tokens=4096, temperature=0.1)` |
-| `anthropic` | `client.messages.create(model, max_tokens=4096, system, messages)` |
-| `mwai` | `client.chat_completion(system_prompt, user_message)` |
-| (injected) | `self._llm_callable(system_prompt, user_message)` |
-
-**`set_llm_callable()`** allows injecting an alternative LLM implementation (e.g., Semantic Kernel) without modifying agent logic.
+**`set_llm_callable()`** allows injecting an alternative LLM implementation without modifying agent logic.
 
 ## Agent Interaction Sequence
 

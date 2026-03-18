@@ -45,7 +45,7 @@ class MyNewAgent(BaseAgent):
                 user_message += f"\n\nArticle: {article.get_content_summary(8000)}"
 
             # Call the LLM
-            response = self._call_claude(
+            response = self._call_llm(
                 system_prompt=AgentPrompts.MY_NEW_AGENT,
                 user_message=user_message,
             )
@@ -127,38 +127,6 @@ def evaluate(self, ...):
     my_result = self.my_new_agent.evaluate(issue, article)
 ```
 
-## Adding a New LLM Provider
-
-### Step 1: Update `BaseAgent._call_claude()`
-
-In `agents/__init__.py`, add a new branch:
-
-```python
-def _call_claude(self, system_prompt: str, user_message: str) -> str:
-    # ... existing provider checks ...
-    elif self.provider == "my_provider":
-        response = self.client.my_api_call(system_prompt, user_message)
-        return response
-```
-
-### Step 2: Update the Orchestrator Client Initialization
-
-In `agents/orchestrator.py`, handle the new provider in `__init__()`:
-
-```python
-if provider == "my_provider":
-    from my_provider_sdk import MyClient
-    client = MyClient(api_key=api_key)
-```
-
-### Step 3: Update CLI Arguments
-
-In `run_evaluation.py`, add the new provider to the `--provider` choices:
-
-```python
-parser.add_argument('--provider', choices=['openai', 'anthropic', 'mwai', 'my_provider'], ...)
-```
-
 ## Adding New Data Models
 
 Follow the existing pattern in `models/evaluation.py`:
@@ -230,17 +198,8 @@ All LLM system prompts are in `utils/prompts.py` as class attributes on `AgentPr
 When modifying prompts:
 
 - Keep the JSON output format specification — agents depend on specific field names
-- Test with multiple providers (LLMs respond differently to the same prompt)
 - Verify that `_parse_json_response()` can handle the expected output
 - If adding new fields, update the corresponding `from_dict()` in the data model
-
-## Adding to the SK Plugin
-
-Semantic Kernel functions are defined in `sk/plugin.py`. To add a new function:
-
-1. Add a native function to the plugin class
-2. Register it in the plugin's function list
-3. Update `sk/evaluator.py` to call it at the right pipeline stage
 
 ## Testing Patterns
 
@@ -251,7 +210,7 @@ Every agent supports injecting a mock LLM callable:
 ```python
 from article_evaluation_system.agents import RelevanceAgent
 
-agent = RelevanceAgent(client=None, model="test", provider="openai")
+agent = RelevanceAgent(client=None, model="test", provider="mwai")
 
 # Inject a mock LLM that returns a fixed response
 agent.set_llm_callable(lambda system, user: json.dumps({
@@ -284,5 +243,5 @@ result = agent.evaluate(issue=test_issue, article=test_article)
 - **Dataclasses** — all data models use `@dataclass` with `field(default_factory=...)` for mutable defaults
 - **Logging** — use `logging.getLogger(__name__)` per module, `INFO` for milestones, `DEBUG` for raw LLM I/O, `WARNING` for fallbacks
 - **Fallbacks** — every agent must have a heuristic fallback path when the LLM fails
-- **Provider agnostic** — all agent logic works identically across providers; use `_call_claude()` for all LLM calls
+- **MWAI provider** — all agent logic uses `_call_llm()` for LLM calls via MWAI
 - **No external state** — agents are stateless; all data flows through method parameters and return values
