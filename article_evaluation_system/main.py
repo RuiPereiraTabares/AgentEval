@@ -96,6 +96,80 @@ def read_csv_cases(
             count += 1
 
 
+def read_mweaeval_csv_cases(
+    filepath: str,
+    limit: int = None,
+    skip: int = 0
+) -> Generator[dict, None, None]:
+    """
+    Read cases from mweaeval CSV file format.
+
+    Expected columns: AiResponse (with [N] markers), Citations (JSON array of URLs),
+    plus standard columns like Case Number, Title_mwai, IssueDescription, etc.
+
+    Args:
+        filepath: Path to CSV file
+        limit: Maximum number of cases to read
+        skip: Number of cases to skip
+
+    Yields:
+        Dictionary for each case with ai_response and citation_urls keys
+    """
+    try:
+        f = open(filepath, 'r', encoding='utf-8-sig')
+        f.read()
+        f.seek(0)
+    except UnicodeDecodeError:
+        f = open(filepath, 'r', encoding='cp1252')
+    with f:
+        reader = csv.DictReader(f)
+        count = 0
+        skipped = 0
+
+        for row in reader:
+            if skipped < skip:
+                skipped += 1
+                continue
+
+            if limit and count >= limit:
+                break
+
+            # Parse Citations column as JSON array
+            citations_raw = row.get('Citations', '[]')
+            try:
+                citation_urls = json.loads(citations_raw) if citations_raw.strip() else []
+            except (json.JSONDecodeError, TypeError):
+                citation_urls = []
+
+            # Parse transfer metadata
+            transferred_raw = row.get('Transferred')
+            transferred = None
+            if transferred_raw is not None and transferred_raw.strip():
+                transferred = transferred_raw.strip().upper() == 'TRUE'
+
+            reopened_raw = row.get('Reopened')
+            reopened = None
+            if reopened_raw is not None and reopened_raw.strip():
+                reopened = reopened_raw.strip().upper() == 'TRUE'
+
+            yield {
+                'case_number': row.get('Case Number', '') or row.get('CaseNumber', ''),
+                'title': row.get('Title_mwai', '') or row.get('Title', ''),
+                'issue_description': row.get('IssueDescription', ''),
+                'ai_response': row.get('AiResponse', ''),
+                'citation_urls': citation_urls if isinstance(citation_urls, list) else [],
+                'language': row.get('Language', 'en-US'),
+                'sap_product_name': row.get('SapProductName', ''),
+                'sap_product_family': row.get('SapProductFamily', ''),
+                'sap_path': row.get('SapPath_mwai', '') or row.get('SapPath', ''),
+                'sap_name': row.get('SapName', ''),
+                'transferred': transferred,
+                'sr_status': row.get('SRStatus', '') or row.get('SR Status', ''),
+                'reopened': reopened,
+            }
+            count += 1
+
+
 def write_results_csv(results: list[dict], output_path: str):
     """Write evaluation results to CSV file."""
     if not results:
@@ -111,6 +185,8 @@ def write_results_csv(results: list[dict], output_path: str):
         comp = article_eval.get('completeness', {})
         val = article_eval.get('validity', {})
         dq = eval_data.get('description_quality', {})
+        cq = eval_data.get('citation_quality', {})
+        rq = eval_data.get('response_quality', {})
 
         flat = {
             'case_number': r.get('case_number', ''),
@@ -173,6 +249,26 @@ def write_results_csv(results: list[dict], output_path: str):
                 eval_data.get('transfer_analysis', {}).get('escalation_signals_detected', [])
             ),
             'transfer_narrative': eval_data.get('transfer_analysis', {}).get('narrative', ''),
+            # Citation quality
+            'citation_grounding_score': cq.get('overall_grounding_score', ''),
+            'citation_grounding_verdict': cq.get('overall_verdict', ''),
+            'cited_percentage': cq.get('cited_percentage', ''),
+            'uncited_percentage': cq.get('uncited_percentage', ''),
+            'citations_total': cq.get('citations_total', ''),
+            'citations_good': cq.get('citations_good', ''),
+            'citations_partial': cq.get('citations_partial', ''),
+            'citations_bad': cq.get('citations_bad', ''),
+            # Response quality (multi-dimensional)
+            'ai_response_quality_score': rq.get('ai_response_quality_score', ''),
+            'ai_response_quality_verdict': rq.get('ai_response_quality_verdict', ''),
+            'rq_response_quality_score': rq.get('response_quality_score', ''),
+            'rq_response_quality_analysis': rq.get('response_quality_analysis', ''),
+            'rq_groundedness_score': rq.get('groundedness_score', ''),
+            'rq_groundedness_analysis': rq.get('groundedness_analysis', ''),
+            'rq_issue_resolution_score': rq.get('issue_resolution_score', ''),
+            'rq_issue_resolution_analysis': rq.get('issue_resolution_analysis', ''),
+            'rq_quality_weaknesses': '; '.join(rq.get('quality_weaknesses', [])),
+            'rq_improvement_suggestions': '; '.join(rq.get('improvement_suggestions', [])),
             # Summary
             'final_recommendation': eval_data.get('final_recommendation', ''),
             'processing_time_ms': r.get('processing_time_ms', 0),
@@ -203,6 +299,8 @@ def write_results_csv_summary(results: list[dict], output_path: str):
         val = article_eval.get('validity', {})
         dq = eval_data.get('description_quality', {})
         ta = eval_data.get('transfer_analysis', {})
+        cq = eval_data.get('citation_quality', {})
+        rq = eval_data.get('response_quality', {})
 
         flat = {
             'case_number': r.get('case_number', ''),
@@ -227,6 +325,22 @@ def write_results_csv_summary(results: list[dict], output_path: str):
             'description_quality_verdict': dq.get('description_quality_verdict', ''),
             'description_missing': '; '.join(dq.get('missing_kt_elements', [])),
             'description_improvements': '; '.join(dq.get('improvement_suggestions', [])),
+            # Citation quality
+            'citation_grounding_score': cq.get('overall_grounding_score', ''),
+            'citation_grounding_verdict': cq.get('overall_verdict', ''),
+            'cited_percentage': cq.get('cited_percentage', ''),
+            'uncited_percentage': cq.get('uncited_percentage', ''),
+            'citations_total': cq.get('citations_total', ''),
+            'citations_good': cq.get('citations_good', ''),
+            'citations_partial': cq.get('citations_partial', ''),
+            'citations_bad': cq.get('citations_bad', ''),
+            # Response quality (multi-dimensional)
+            'ai_response_quality_score': rq.get('ai_response_quality_score', ''),
+            'ai_response_quality_verdict': rq.get('ai_response_quality_verdict', ''),
+            'rq_response_quality_score': rq.get('response_quality_score', ''),
+            'rq_groundedness_score': rq.get('groundedness_score', ''),
+            'rq_issue_resolution_score': rq.get('issue_resolution_score', ''),
+            'rq_quality_weaknesses': '; '.join(rq.get('quality_weaknesses', [])),
             # Transfer
             'transfer_reason': ta.get('transfer_reason', ''),
             'transfer_narrative': ta.get('narrative', ''),

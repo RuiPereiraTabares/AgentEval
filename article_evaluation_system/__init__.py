@@ -59,6 +59,35 @@ class ArticleEvaluator:
             transfer_metadata=transfer_metadata,
         )
 
+    def evaluate_with_citations(
+        self,
+        customer_issue: str,
+        ai_response: str,
+        citation_urls: list[str],
+        product_info: dict | None = None,
+        transfer_metadata: dict | None = None,
+    ) -> dict:
+        """
+        Evaluate an AI response with inline citation markers.
+
+        Args:
+            customer_issue: The customer's issue description
+            ai_response: AI-generated response with [N] markers
+            citation_urls: Ordered list of URLs ([1] = index 0)
+            product_info: SAP product metadata from CSV (optional)
+            transfer_metadata: Dict with 'transferred', 'sr_status', 'reopened'
+
+        Returns:
+            Evaluation result dictionary with citation_quality field
+        """
+        return self.orchestrator.evaluate_with_citations(
+            customer_issue=customer_issue,
+            ai_response=ai_response,
+            citation_urls=citation_urls,
+            product_info=product_info,
+            transfer_metadata=transfer_metadata,
+        )
+
     def evaluate_batch(
         self,
         cases: list[dict],

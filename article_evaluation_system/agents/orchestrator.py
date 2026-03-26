@@ -14,6 +14,8 @@ from .search_agent import SearchAgent
 from .gap_agent import GapAnalysisAgent
 from .description_quality_agent import DescriptionQualityAgent
 from .transfer_reason_agent import TransferReasonAgent
+from .citation_quality_agent import CitationQualityAgent
+from .response_quality_agent import ResponseQualityAgent
 
 from ..models.issue import Issue
 from ..models.article import Article
@@ -67,6 +69,8 @@ class Orchestrator(BaseAgent):
         self.gap_agent = GapAnalysisAgent(client, model, provider)
         self.description_quality_agent = DescriptionQualityAgent(client, model, provider)
         self.transfer_reason_agent = TransferReasonAgent(client, model, provider)
+        self.citation_quality_agent = CitationQualityAgent(client, model, provider)
+        self.response_quality_agent = ResponseQualityAgent(client, model, provider)
 
         # Initialize article fetcher
         self.article_fetcher = ArticleFetcher()
@@ -183,6 +187,200 @@ class Orchestrator(BaseAgent):
         )
 
         return result
+
+    def evaluate_with_citations(
+        self,
+        customer_issue: str,
+        ai_response: str,
+        citation_urls: list[str],
+        product_info: dict | None = None,
+        transfer_metadata: dict | None = None,
+    ) -> dict:
+        """
+        Evaluate an AI response with inline citations.
+
+        Runs:
+        1. IssueParserAgent (reuse)
+        2. DescriptionQualityAgent (reuse)
+        3. CitationQualityAgent on the AI response + citation URLs
+        4. TransferReasonAgent (reuse)
+
+        Args:
+            customer_issue: The customer's issue description
+            ai_response: The AI-generated response with [N] citation markers
+            citation_urls: Ordered list of cited URLs ([1] = index 0, etc.)
+            product_info: SAP product metadata from CSV (optional)
+            transfer_metadata: Dict with 'transferred', 'sr_status', 'reopened'
+
+        Returns:
+            Complete evaluation result as dictionary
+        """
+        logger.info("Starting citation-quality evaluation workflow")
+
+        # Step 1: Parse the customer issue
+        logger.info("Parsing customer issue...")
+        issue = self.issue_parser.evaluate(customer_issue, product_info=product_info)
+        logger.info(f"Issue parsed: product={issue.product}, type={issue.issue_type}")
+
+        if transfer_metadata:
+            issue.transferred = transfer_metadata.get("transferred")
+            issue.sr_status = transfer_metadata.get("sr_status", "")
+            issue.reopened = transfer_metadata.get("reopened")
+
+        # Step 2: Evaluate description quality
+        logger.info("--- Running DescriptionQualityAgent ---")
+        description_quality_result = self.description_quality_agent.evaluate(issue)
+        reliability_threshold = THRESHOLDS.get("description_quality_reliability", 40)
+        evaluation_reliability_warning = (
+            description_quality_result.description_quality_score < reliability_threshold
+        )
+        if evaluation_reliability_warning:
+            logger.warning(
+                f"[DescriptionQualityAgent] LOW CONFIDENCE: score "
+                f"{description_quality_result.description_quality_score} < {reliability_threshold}"
+            )
+
+        # Step 3: Citation quality evaluation
+        logger.info("--- Running CitationQualityAgent ---")
+        citation_quality_result = self.citation_quality_agent.evaluate(
+            ai_response=ai_response,
+            citation_urls=citation_urls,
+            article_fetcher=self.article_fetcher,
+        )
+        logger.info(
+            f"  CitationQualityAgent result: grounding_score={citation_quality_result.overall_grounding_score}, "
+            f"verdict={citation_quality_result.overall_verdict}, "
+            f"good={citation_quality_result.citations_good}, "
+            f"partial={citation_quality_result.citations_partial}, "
+            f"bad={citation_quality_result.citations_bad}"
+        )
+
+        # Step 3b: Evaluate best citation article with R/C/V agents (+3 LLM calls)
+        best_article_eval = {}
+        if citation_quality_result.per_citation_results:
+            best_pcr = max(
+                citation_quality_result.per_citation_results,
+                key=lambda r: r.support_score,
+            )
+            best_url = best_pcr.url
+            if best_url:
+                logger.info(
+                    f"--- Running R/C/V on best citation [{best_pcr.citation_index}]: "
+                    f"{best_url[:80]}... (support_score={best_pcr.support_score}) ---"
+                )
+                best_article_eval = self._evaluate_single_article(issue, best_url)
+
+        # Step 4: Response quality evaluation (1 LLM call — reuses groundedness)
+        logger.info("--- Running ResponseQualityAgent ---")
+        response_quality_result = self.response_quality_agent.evaluate(
+            issue=issue,
+            ai_response=ai_response,
+            citation_quality_result=citation_quality_result,
+        )
+        logger.info(
+            f"  ResponseQualityAgent result: overall={response_quality_result.ai_response_quality_score}, "
+            f"verdict={response_quality_result.ai_response_quality_verdict}, "
+            f"response_quality={response_quality_result.response_quality_score}, "
+            f"groundedness={response_quality_result.groundedness_score}, "
+            f"issue_resolution={response_quality_result.issue_resolution_score}"
+        )
+
+        # Use composite response quality score as the overall score
+        composite_score = response_quality_result.ai_response_quality_score
+
+        # Step 5: Transfer reason analysis
+        relevance_score = best_article_eval.get("relevance", {}).get("relevance_score", 0)
+        logger.info("--- Running TransferReasonAgent ---")
+        transfer_result = self.transfer_reason_agent.evaluate(
+            issue=issue,
+            description_quality_result=description_quality_result,
+            overall_score=composite_score,
+            relevance_score=relevance_score,
+            contains_citations=bool(citation_urls),
+            verdict="adequate" if composite_score >= 70 else "inadequate",
+        )
+        logger.info(
+            f"  TransferReasonAgent result: reason={transfer_result.transfer_reason}, "
+            f"confidence={transfer_result.confidence}"
+        )
+
+        # Build recommendation
+        recommendation = self._generate_citation_recommendation(
+            issue, citation_quality_result, evaluation_reliability_warning,
+            response_quality_result=response_quality_result,
+        )
+
+        # Clean internal objects from best article evaluation
+        clean_article_eval = {
+            k: v for k, v in best_article_eval.items() if not k.startswith("_")
+        } if best_article_eval else {}
+
+        return EvaluationResult(
+            issue_summary=issue.to_dict(),
+            current_article_evaluation=clean_article_eval,
+            overall_score=composite_score,
+            verdict="adequate" if composite_score >= 70 else (
+                "needs_supplementation" if composite_score >= 50 else "inadequate"
+            ),
+            action_required="none" if composite_score >= 70 else "add_context",
+            description_quality=description_quality_result.to_dict(),
+            evaluation_reliability_warning=evaluation_reliability_warning,
+            transfer_analysis=transfer_result.to_dict(),
+            citation_quality=citation_quality_result.to_dict(),
+            response_quality=response_quality_result.to_dict(),
+            final_recommendation=recommendation,
+        ).to_dict()
+
+    def _generate_citation_recommendation(
+        self,
+        issue: Issue,
+        cq_result,
+        evaluation_reliability_warning: bool,
+        response_quality_result=None,
+    ) -> str:
+        """Generate recommendation for citation-quality evaluation."""
+        # Use composite score when available, fall back to grounding score
+        if response_quality_result is not None:
+            composite = response_quality_result.ai_response_quality_score
+            rq_verdict = response_quality_result.ai_response_quality_verdict
+            rec = (
+                f"AI response quality for this {issue.product} issue: "
+                f"{rq_verdict} (score: {composite}/100). "
+                f"Breakdown — Response Quality: {response_quality_result.response_quality_score}/100, "
+                f"Groundedness: {response_quality_result.groundedness_score}/100, "
+                f"Issue Resolution: {response_quality_result.issue_resolution_score}/100."
+            )
+        else:
+            score = cq_result.overall_grounding_score
+            verdict = cq_result.overall_verdict
+            if verdict == "well_grounded":
+                rec = (
+                    f"The AI response for this {issue.product} issue is well-grounded "
+                    f"(score: {score}/100). {cq_result.citations_good} of "
+                    f"{cq_result.citations_total} citations are well-supported by their articles."
+                )
+            elif verdict == "partially_grounded":
+                rec = (
+                    f"The AI response is partially grounded (score: {score}/100). "
+                    f"{cq_result.citations_partial} citations have partial support. "
+                    f"Consider verifying unsupported claims."
+                )
+            else:
+                rec = (
+                    f"The AI response is poorly grounded (score: {score}/100). "
+                    f"{cq_result.citations_bad} of {cq_result.citations_total} citations "
+                    f"are not supported by their articles. Response reliability is low."
+                )
+
+        if cq_result.uncited_percentage > 30:
+            rec += f" Note: {cq_result.uncited_percentage:.0f}% of the response has no citations."
+
+        if evaluation_reliability_warning:
+            rec = (
+                "[LOW CONFIDENCE] The customer's issue description is vague or incomplete. "
+                + rec
+            )
+        return rec
 
     def _evaluate_single_article(self, issue: Issue, url: str) -> dict:
         """Evaluate a single article."""
