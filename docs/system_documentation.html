@@ -401,6 +401,11 @@
   <a href="#agent-transfer" class="indent">TransferReasonAgent</a>
   <a href="#pipeline">Pipeline Flow</a>
   <a href="#scoring">Scoring Methodology</a>
+  <a href="#scoring-guide">Scoring Guide</a>
+  <a href="#score-article" class="indent">Article Evaluation</a>
+  <a href="#score-description" class="indent">Description Quality</a>
+  <a href="#score-ai-response" class="indent">AI Response Quality</a>
+  <a href="#score-citation" class="indent">Citation Grounding</a>
   <a href="#verdicts">Verdicts &amp; Actions</a>
   <a href="#transfer-logic">Transfer Classification</a>
   <a href="#outputs">Output Formats</a>
@@ -905,6 +910,275 @@
       <tr><td>&ge; 60</td><td>mostly_defined</td></tr>
       <tr><td>&ge; 40</td><td>partially_defined</td></tr>
       <tr><td>&lt; 40</td><td>poorly_defined</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ============ SCORING GUIDE ============ -->
+<section id="scoring-guide">
+  <h2>Scoring Guide</h2>
+  <p>This section provides a detailed explanation of every score produced by the system, what each score measures, how to interpret it, and what constitutes a high or low score. All scores use a <strong>0&ndash;100</strong> scale.</p>
+
+  <!-- ARTICLE EVALUATION SCORES -->
+  <h3 id="score-article">Article Evaluation Scores</h3>
+  <p>These three scores evaluate the quality of a cited support article against the customer's issue. They are combined into a weighted <strong>Overall Article Score</strong> that drives the system's verdict and recommended action.</p>
+
+  <div style="background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); box-shadow:var(--shadow); padding:24px; margin:16px 0;">
+    <h4 style="color:var(--teal); margin-top:0;">1. Relevance Score <span style="font-weight:400; font-size:13px; color:var(--text-muted);">&mdash; Weight: 40% of Overall Article Score</span></h4>
+    <p><strong>What it measures:</strong> How well the cited article matches the customer's specific issue &mdash; does the article actually talk about the same product, the same problem, and the same context?</p>
+    <p><strong>Key evaluation criteria:</strong></p>
+    <ul>
+      <li><strong>Product match</strong> &mdash; Does the article discuss the correct product (e.g., Exchange Online vs Exchange Server)?</li>
+      <li><strong>Version match</strong> &mdash; Is the article written for the correct version or edition?</li>
+      <li><strong>Matched aspects</strong> &mdash; Which aspects of the customer's problem are covered by the article?</li>
+      <li><strong>Unmatched aspects</strong> &mdash; Which aspects of the problem are not addressed?</li>
+      <li><strong>Outdated flag</strong> &mdash; Is the article's solution based on deprecated features or old versions?</li>
+    </ul>
+    <p><strong>How to interpret the score:</strong></p>
+    <table style="box-shadow:none; margin:8px 0;">
+      <tr><td style="width:100px;"><span class="card-tag" style="background:var(--success-light);color:var(--success);">85&ndash;100</span></td><td><strong>Excellent</strong> &mdash; The article directly addresses the exact issue. Product, version, and symptoms all match. The customer can follow this article and it speaks to their specific problem.</td></tr>
+      <tr><td><span class="card-tag" style="background:var(--accent-light);color:var(--accent);">70&ndash;84</span></td><td><strong>Good</strong> &mdash; Most aspects of the issue are covered. The article is about the right product and problem area, but may miss a secondary symptom or a specific environmental detail.</td></tr>
+      <tr><td><span class="card-tag" style="background:var(--warning-light);color:var(--warning);">50&ndash;69</span></td><td><strong>Partial</strong> &mdash; The article is related to the issue but has significant gaps. It might cover the right product but address a different error, or cover a related scenario that doesn't quite match.</td></tr>
+      <tr><td><span class="card-tag" style="background:var(--orange-light);color:var(--orange);">30&ndash;49</span></td><td><strong>Poor</strong> &mdash; The article is only tangentially related. It might mention the same product family but addresses a completely different problem or scenario.</td></tr>
+      <tr><td><span class="card-tag" style="background:var(--danger-light);color:var(--danger);">0&ndash;29</span></td><td><strong>Irrelevant</strong> &mdash; The article does not match the customer's issue at all. Wrong product, wrong problem, or entirely unrelated content.</td></tr>
+    </table>
+  </div>
+
+  <div style="background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); box-shadow:var(--shadow); padding:24px; margin:16px 0;">
+    <h4 style="color:var(--success); margin-top:0;">2. Completeness Score <span style="font-weight:400; font-size:13px; color:var(--text-muted);">&mdash; Weight: 30% of Overall Article Score</span></h4>
+    <p><strong>What it measures:</strong> Whether the article provides sufficient, well-structured information to actually solve the customer's problem &mdash; not just whether it's relevant, but whether it contains all the information needed.</p>
+    <p><strong>Key evaluation criteria (5 aspects):</strong></p>
+    <ul>
+      <li><strong>Prerequisites</strong> &mdash; Does the article list required setup, permissions, or preconditions?</li>
+      <li><strong>Step-by-step instructions</strong> &mdash; Does it provide ordered resolution steps the customer can follow?</li>
+      <li><strong>Examples / Screenshots</strong> &mdash; Are there code samples, command examples, or visual aids?</li>
+      <li><strong>Troubleshooting guidance</strong> &mdash; Does it address common issues, alternative paths, or "what if this doesn't work"?</li>
+      <li><strong>Success criteria</strong> &mdash; Does it explain how to verify the fix worked?</li>
+    </ul>
+    <p><strong>How to interpret the score:</strong></p>
+    <table style="box-shadow:none; margin:8px 0;">
+      <tr><td style="width:100px;"><span class="card-tag" style="background:var(--success-light);color:var(--success);">90&ndash;100</span></td><td><strong>Complete</strong> &mdash; All five aspects are present. The article is a comprehensive guide: it tells you what you need before starting, walks you through each step, shows examples, covers edge cases, and tells you how to verify success.</td></tr>
+      <tr><td><span class="card-tag" style="background:var(--accent-light);color:var(--accent);">70&ndash;89</span></td><td><strong>Mostly Complete</strong> &mdash; Minor gaps only. For example, the article has great step-by-step instructions and examples but doesn't explain how to verify the fix, or lacks a troubleshooting section for common issues.</td></tr>
+      <tr><td><span class="card-tag" style="background:var(--warning-light);color:var(--warning);">50&ndash;69</span></td><td><strong>Incomplete</strong> &mdash; Significant gaps. The article covers the general topic but is missing key sections like step-by-step instructions, or provides steps without any troubleshooting guidance or examples.</td></tr>
+      <tr><td><span class="card-tag" style="background:var(--danger-light);color:var(--danger);">0&ndash;49</span></td><td><strong>Severely Lacking</strong> &mdash; The article is a stub or overview with insufficient content. It may describe the problem but provides little to no actionable guidance for resolution.</td></tr>
+    </table>
+  </div>
+
+  <div style="background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); box-shadow:var(--shadow); padding:24px; margin:16px 0;">
+    <h4 style="color:var(--warning); margin-top:0;">3. Validity Score <span style="font-weight:400; font-size:13px; color:var(--text-muted);">&mdash; Weight: 30% of Overall Article Score</span></h4>
+    <p><strong>What it measures:</strong> Whether the solution described in the article would actually work if the customer followed it &mdash; is it technically correct, up-to-date, and compatible with the customer's environment?</p>
+    <p><strong>Key evaluation criteria:</strong></p>
+    <ul>
+      <li><strong>Addresses root cause</strong> &mdash; Does the solution target the actual problem, or just address symptoms?</li>
+      <li><strong>Is current</strong> &mdash; Is the solution based on current features, not deprecated APIs, retired portals, or renamed services?</li>
+      <li><strong>Environment compatible</strong> &mdash; Would the solution work in the customer's specific environment (cloud vs on-prem, specific OS, specific license tier)?</li>
+    </ul>
+    <p><strong>Additional output:</strong> The agent also provides a <code>confidence_level</code> (high / medium / low) indicating how certain it is about the validity assessment, and a <code>potential_issues</code> list of concerns.</p>
+    <p><strong>How to interpret the score:</strong></p>
+    <table style="box-shadow:none; margin:8px 0;">
+      <tr><td style="width:100px;"><span class="card-tag" style="background:var(--success-light);color:var(--success);">80&ndash;100</span></td><td><strong>Valid</strong> &mdash; The solution is correct and current. It addresses the root cause, uses up-to-date methods, and is compatible with the customer's setup.</td></tr>
+      <tr><td><span class="card-tag" style="background:var(--accent-light);color:var(--accent);">60&ndash;79</span></td><td><strong>Likely Valid</strong> &mdash; The solution probably works but there are minor concerns. For example, it might reference an older admin center UI that has since been updated, or the solution is generic enough to work but isn't tailored to the customer's specific edition.</td></tr>
+      <tr><td><span class="card-tag" style="background:var(--warning-light);color:var(--warning);">40&ndash;59</span></td><td><strong>Uncertain</strong> &mdash; Questionable effectiveness. The solution may have worked at some point but it's unclear if it applies to the current environment, or it targets symptoms rather than root cause.</td></tr>
+      <tr><td><span class="card-tag" style="background:var(--orange-light);color:var(--orange);">20&ndash;39</span></td><td><strong>Likely Invalid</strong> &mdash; The solution probably won't work. It may reference deprecated features, target the wrong environment, or propose steps that are no longer available.</td></tr>
+      <tr><td><span class="card-tag" style="background:var(--danger-light);color:var(--danger);">0&ndash;19</span></td><td><strong>Invalid</strong> &mdash; The solution is incorrect or completely deprecated. Following it would not resolve the issue and could potentially cause additional problems.</td></tr>
+    </table>
+  </div>
+
+  <div style="background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); box-shadow:var(--shadow); padding:24px; margin:16px 0;">
+    <h4 style="color:var(--accent); margin-top:0;">4. Overall Article Score <span style="font-weight:400; font-size:13px; color:var(--text-muted);">&mdash; Composite</span></h4>
+    <p><strong>What it measures:</strong> A single weighted score that combines Relevance, Completeness, and Validity to produce an overall assessment of how well an article serves the customer's needs.</p>
+    <div class="formula">overall_score = relevance &times; 0.40 + completeness &times; 0.30 + validity &times; 0.30</div>
+    <p><strong>Why Relevance is weighted highest:</strong> An article that scores perfectly on completeness and validity is still useless if it's about the wrong problem. Relevance ensures the article is actually about what the customer needs before evaluating its content quality.</p>
+    <p><strong>How to interpret the score:</strong></p>
+    <table style="box-shadow:none; margin:8px 0;">
+      <tr><td style="width:100px;"><span class="card-tag" style="background:var(--success-light);color:var(--success);">&ge; 70</span></td><td><strong>Adequate</strong> &mdash; The article is good enough to help the customer (provided relevance is also "excellent" or "good"). No additional action needed.</td></tr>
+      <tr><td><span class="card-tag" style="background:var(--warning-light);color:var(--warning);">50&ndash;69</span></td><td><strong>Needs Supplementation</strong> &mdash; The article has value but isn't sufficient on its own. The agent should add context, provide additional steps, or find a better article.</td></tr>
+      <tr><td><span class="card-tag" style="background:var(--danger-light);color:var(--danger);">&lt; 50</span></td><td><strong>Inadequate</strong> &mdash; The article fails to address the customer's needs. A better article must be found, or new content must be created.</td></tr>
+    </table>
+    <div class="callout warn">
+      <strong>Special case:</strong> Even if the overall score is &ge; 70, the verdict can still be <code>needs_supplementation</code> if the relevance verdict is only "partial", "poor", or "irrelevant" &mdash; indicating the article scores well on content quality but for the wrong problem.
+    </div>
+  </div>
+
+  <!-- DESCRIPTION QUALITY SCORES -->
+  <h3 id="score-description">Description Quality Scores (Kepner-Tregoe Framework)</h3>
+  <p>These scores evaluate the quality of the <em>customer's issue description</em> &mdash; not the article. A well-structured problem statement enables more accurate evaluation of articles. The system uses the <strong>Kepner-Tregoe (KT) Problem Statement</strong> framework, which breaks a problem description into four dimensions.</p>
+
+  <div style="background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); box-shadow:var(--shadow); padding:24px; margin:16px 0;">
+    <h4 style="color:var(--purple); margin-top:0;">5. KT Identity Score &mdash; WHAT <span style="font-weight:400; font-size:13px; color:var(--text-muted);">&mdash; Weight: 35% of Description Quality</span></h4>
+    <p><strong>What it measures:</strong> Clarity on <em>what</em> the problem is &mdash; has the customer clearly identified the product, feature, symptom, and error?</p>
+    <p><strong>What makes a high score (80&ndash;100):</strong> The customer names a specific product (e.g., "Exchange Online"), identifies the affected feature (e.g., "mail flow rules"), provides a clear symptom (e.g., "emails are being silently dropped"), and includes error codes (e.g., "NDR 5.7.1").</p>
+    <p><strong>What makes a low score (0&ndash;39):</strong> Vague descriptions like "email isn't working" or "something is broken" with no product name, no error codes, and no clear symptom description.</p>
+    <p><strong>Why it matters most (35% weight):</strong> Without knowing <em>what</em> the problem is, it's impossible to evaluate whether an article addresses it. This dimension has the highest weight because it's the foundation of all downstream evaluation.</p>
+  </div>
+
+  <div style="background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); box-shadow:var(--shadow); padding:24px; margin:16px 0;">
+    <h4 style="color:var(--purple); margin-top:0;">6. KT Location Score &mdash; WHERE <span style="font-weight:400; font-size:13px; color:var(--text-muted);">&mdash; Weight: 25% of Description Quality</span></h4>
+    <p><strong>What it measures:</strong> Clarity on <em>where</em> the problem occurs &mdash; the environment, server, region, module, URL, or specific page.</p>
+    <p><strong>What makes a high score (80&ndash;100):</strong> The customer specifies the exact environment (e.g., "Azure AD tenant contoso.onmicrosoft.com"), deployment type (e.g., "hybrid Exchange with on-prem AD"), region (e.g., "EMEA datacenter"), or specific URL/page where the issue appears.</p>
+    <p><strong>What makes a low score (0&ndash;39):</strong> No environment details at all. The customer doesn't mention whether they're using cloud or on-premises, what tenant or server is affected, or any contextual location information.</p>
+  </div>
+
+  <div style="background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); box-shadow:var(--shadow); padding:24px; margin:16px 0;">
+    <h4 style="color:var(--purple); margin-top:0;">7. KT Timing Score &mdash; WHEN <span style="font-weight:400; font-size:13px; color:var(--text-muted);">&mdash; Weight: 20% of Description Quality</span></h4>
+    <p><strong>What it measures:</strong> Clarity on <em>when</em> the problem started and its temporal pattern &mdash; is it continuous, intermittent, or triggered by a specific event?</p>
+    <p><strong>What makes a high score (80&ndash;100):</strong> The customer provides a specific start date (e.g., "started on March 15, 2026"), identifies the pattern (e.g., "intermittent, happens 3-4 times per day"), and describes any triggering event (e.g., "started after we migrated to Exchange Online").</p>
+    <p><strong>What makes a low score (0&ndash;39):</strong> No temporal information. The customer doesn't say when it started, whether it's always happening or sometimes, or whether anything changed before it began.</p>
+  </div>
+
+  <div style="background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); box-shadow:var(--shadow); padding:24px; margin:16px 0;">
+    <h4 style="color:var(--purple); margin-top:0;">8. KT Magnitude Score &mdash; EXTENT <span style="font-weight:400; font-size:13px; color:var(--text-muted);">&mdash; Weight: 20% of Description Quality</span></h4>
+    <p><strong>What it measures:</strong> Clarity on the <em>scale and scope</em> of the problem &mdash; how many users, systems, or processes are affected, and what is the trend?</p>
+    <p><strong>What makes a high score (80&ndash;100):</strong> The customer quantifies the impact (e.g., "200 users in the EMEA office are affected"), describes the scope (e.g., "all Exchange Online mailboxes on Plan E3"), and indicates the trend (e.g., "the number of affected users is growing daily").</p>
+    <p><strong>What makes a low score (0&ndash;39):</strong> No indication of how widespread the problem is. The customer doesn't mention whether it affects one user or thousands, one server or the entire tenant.</p>
+  </div>
+
+  <div style="background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); box-shadow:var(--shadow); padding:24px; margin:16px 0;">
+    <h4 style="color:var(--purple); margin-top:0;">9. Description Quality Score <span style="font-weight:400; font-size:13px; color:var(--text-muted);">&mdash; Composite</span></h4>
+    <p><strong>What it measures:</strong> A single weighted score that combines all four KT dimensions to assess how well-structured the customer's issue description is.</p>
+    <div class="formula">description_quality = identity &times; 0.35 + location &times; 0.25 + timing &times; 0.20 + magnitude &times; 0.20</div>
+    <p><strong>How to interpret the score:</strong></p>
+    <table style="box-shadow:none; margin:8px 0;">
+      <tr><td style="width:100px;"><span class="card-tag" style="background:var(--success-light);color:var(--success);">80&ndash;100</span></td><td><strong>Well Defined</strong> &mdash; The issue description is clear, specific, and structured. All four KT dimensions are well covered. The system can evaluate articles with high confidence.</td></tr>
+      <tr><td><span class="card-tag" style="background:var(--accent-light);color:var(--accent);">60&ndash;79</span></td><td><strong>Mostly Defined</strong> &mdash; Adequate description with minor gaps. Most KT dimensions are addressed but one or two could be more specific.</td></tr>
+      <tr><td><span class="card-tag" style="background:var(--warning-light);color:var(--warning);">40&ndash;59</span></td><td><strong>Partially Defined</strong> &mdash; The description is missing key information. Multiple KT dimensions are vague or absent, making it harder to accurately evaluate articles.</td></tr>
+      <tr><td><span class="card-tag" style="background:var(--danger-light);color:var(--danger);">0&ndash;39</span></td><td><strong>Poorly Defined</strong> &mdash; The description is too vague or incomplete for reliable evaluation. The system sets <code>evaluation_reliability_warning = True</code> to flag that all downstream scores may have reduced accuracy.</td></tr>
+    </table>
+    <div class="callout warn">
+      <strong>Reliability Warning:</strong> When the description quality score falls below 40, the system flags <code>evaluation_reliability_warning = True</code> on the entire evaluation result. This warns consumers that the article evaluation scores (relevance, completeness, validity) may be less reliable because the system had insufficient information about the customer's actual problem to evaluate articles accurately.
+    </div>
+  </div>
+
+  <!-- AI RESPONSE QUALITY SCORES -->
+  <h3 id="score-ai-response">AI Response Quality Scores <span style="font-weight:400; font-size:14px; color:var(--text-muted);">(mweaeval mode only)</span></h3>
+  <p>These scores evaluate the quality of the <em>AI-generated response</em> given to the customer. They are only computed in the <code>mweaeval</code> pipeline mode, where the system has access to both the AI response text and the cited articles.</p>
+
+  <div style="background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); box-shadow:var(--shadow); padding:24px; margin:16px 0;">
+    <h4 style="color:var(--teal); margin-top:0;">10. Response Quality Score <span style="font-weight:400; font-size:13px; color:var(--text-muted);">&mdash; Weight: 40% of AI Response Quality</span></h4>
+    <p><strong>What it measures:</strong> The overall quality of the AI response itself &mdash; is it accurate, complete, clear, helpful, and professional?</p>
+    <p><strong>Key evaluation criteria:</strong></p>
+    <ul>
+      <li><strong>Accuracy</strong> &mdash; Is the technical information in the response correct?</li>
+      <li><strong>Completeness</strong> &mdash; Does the response cover everything the customer needs to know?</li>
+      <li><strong>Clarity</strong> &mdash; Is the language clear, professional, and easy to follow?</li>
+      <li><strong>Actionability</strong> &mdash; Does the response include concrete steps or guidance the customer can act on?</li>
+      <li><strong>Tone</strong> &mdash; Is the response written in an appropriate customer support tone?</li>
+    </ul>
+    <p><strong>How to interpret the score:</strong></p>
+    <table style="box-shadow:none; margin:8px 0;">
+      <tr><td style="width:100px;"><span class="card-tag" style="background:var(--success-light);color:var(--success);">80&ndash;100</span></td><td><strong>Excellent</strong> &mdash; High-quality, specific, actionable response tailored to the customer's issue. Clear steps, correct technical details, professional tone.</td></tr>
+      <tr><td><span class="card-tag" style="background:var(--accent-light);color:var(--accent);">60&ndash;79</span></td><td><strong>Good</strong> &mdash; Mostly helpful with minor gaps. Could be more specific, or may include some generic advice alongside targeted guidance.</td></tr>
+      <tr><td><span class="card-tag" style="background:var(--warning-light);color:var(--warning);">40&ndash;59</span></td><td><strong>Fair</strong> &mdash; Partially relevant but with significant gaps. The response may be too generic, miss key aspects of the problem, or lack actionable steps.</td></tr>
+      <tr><td><span class="card-tag" style="background:var(--danger-light);color:var(--danger);">0&ndash;39</span></td><td><strong>Poor</strong> &mdash; Largely unhelpful. The response may focus on the wrong issue, provide incorrect information, or lack meaningful guidance.</td></tr>
+    </table>
+  </div>
+
+  <div style="background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); box-shadow:var(--shadow); padding:24px; margin:16px 0;">
+    <h4 style="color:var(--orange); margin-top:0;">11. Groundedness Score <span style="font-weight:400; font-size:13px; color:var(--text-muted);">&mdash; Weight: 30% of AI Response Quality</span></h4>
+    <p><strong>What it measures:</strong> How well the cited articles actually support the claims made in the AI response. This is the bridge between citation quality and response quality &mdash; it checks whether the response is "grounded" in the evidence provided by the citations.</p>
+    <p><strong>How it works:</strong> This score is <em>inherited</em> from the <code>CitationQualityAgent</code>'s <code>overall_grounding_score</code> (no additional LLM call). It represents the aggregate grounding across all citations.</p>
+    <p><strong>How to interpret the score:</strong></p>
+    <table style="box-shadow:none; margin:8px 0;">
+      <tr><td style="width:100px;"><span class="card-tag" style="background:var(--success-light);color:var(--success);">70&ndash;100</span></td><td><strong>Well Grounded</strong> &mdash; The claims in the AI response are strongly supported by the cited articles. The citations provide substantive evidence for the technical advice given.</td></tr>
+      <tr><td><span class="card-tag" style="background:var(--warning-light);color:var(--warning);">50&ndash;69</span></td><td><strong>Partially Grounded</strong> &mdash; Some claims are supported by citations, but others are not backed by the referenced articles. The response may contain advice that goes beyond what the citations actually say.</td></tr>
+      <tr><td><span class="card-tag" style="background:var(--orange-light);color:var(--orange);">25&ndash;49</span></td><td><strong>Poorly Grounded</strong> &mdash; Weak citation support. Most claims in the response are not substantiated by the cited articles. The citations may be tangentially related but don't actually back up the specific advice given.</td></tr>
+      <tr><td><span class="card-tag" style="background:var(--danger-light);color:var(--danger);">0&ndash;24</span></td><td><strong>Ungrounded</strong> &mdash; The citations do not support the response. The AI may have cited articles that are about a different topic or that contain different technical guidance than what was provided.</td></tr>
+    </table>
+  </div>
+
+  <div style="background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); box-shadow:var(--shadow); padding:24px; margin:16px 0;">
+    <h4 style="color:var(--pink); margin-top:0;">12. Issue Resolution Score <span style="font-weight:400; font-size:13px; color:var(--text-muted);">&mdash; Weight: 30% of AI Response Quality</span></h4>
+    <p><strong>What it measures:</strong> Whether the AI response actually addresses the customer's <em>specific</em> issue &mdash; not just whether it's well-written, but whether it targets the right problem.</p>
+    <p><strong>Key evaluation criteria:</strong></p>
+    <ul>
+      <li>Does the response directly address the customer's reported problem?</li>
+      <li>Are the suggested actions likely to resolve the specific issue?</li>
+      <li>Does the response acknowledge the customer's context (product, environment, error)?</li>
+      <li>Would a support agent find this response helpful for resolving the case?</li>
+    </ul>
+    <p><strong>How to interpret the score:</strong></p>
+    <table style="box-shadow:none; margin:8px 0;">
+      <tr><td style="width:100px;"><span class="card-tag" style="background:var(--success-light);color:var(--success);">80&ndash;100</span></td><td><strong>Excellent</strong> &mdash; The response directly targets the reported issue with relevant, specific steps. It acknowledges the customer's environment and error, and provides actionable resolution guidance.</td></tr>
+      <tr><td><span class="card-tag" style="background:var(--accent-light);color:var(--accent);">60&ndash;79</span></td><td><strong>Good</strong> &mdash; Mostly addresses the issue with minor gaps. The response is on-topic but may miss a secondary aspect of the problem or provide slightly generic advice for one of the steps.</td></tr>
+      <tr><td><span class="card-tag" style="background:var(--warning-light);color:var(--warning);">40&ndash;59</span></td><td><strong>Fair</strong> &mdash; Partially relevant. The response addresses the general problem area but misses the specific issue, or provides generic guidance that isn't tailored to the customer's situation.</td></tr>
+      <tr><td><span class="card-tag" style="background:var(--danger-light);color:var(--danger);">0&ndash;39</span></td><td><strong>Poor</strong> &mdash; Wrong focus or largely irrelevant. The response may address the wrong product, error, or scenario, providing guidance that won't help resolve the customer's actual issue.</td></tr>
+    </table>
+  </div>
+
+  <div style="background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); box-shadow:var(--shadow); padding:24px; margin:16px 0;">
+    <h4 style="color:var(--accent); margin-top:0;">13. AI Response Quality Score <span style="font-weight:400; font-size:13px; color:var(--text-muted);">&mdash; Composite</span></h4>
+    <p><strong>What it measures:</strong> A single weighted score that combines Response Quality, Groundedness, and Issue Resolution to produce an overall assessment of the AI response.</p>
+    <div class="formula">ai_response_quality = response_quality &times; 0.40 + groundedness &times; 0.30 + issue_resolution &times; 0.30</div>
+    <p><strong>Why Response Quality has the highest weight:</strong> The overall quality of the response (accuracy, clarity, actionability) is the most important factor. Groundedness and Issue Resolution serve as checks that the response is evidence-based and on-target.</p>
+    <p><strong>How to interpret the score:</strong></p>
+    <table style="box-shadow:none; margin:8px 0;">
+      <tr><td style="width:100px;"><span class="card-tag" style="background:var(--success-light);color:var(--success);">80&ndash;100</span></td><td><strong>Excellent</strong> &mdash; A high-quality, well-grounded, issue-resolving response. The AI provided accurate, actionable guidance backed by cited evidence and targeted at the customer's specific problem.</td></tr>
+      <tr><td><span class="card-tag" style="background:var(--accent-light);color:var(--accent);">60&ndash;79</span></td><td><strong>Good</strong> &mdash; An adequate response with minor gaps. It's generally helpful and mostly supported by citations, but could be improved in specificity, grounding, or issue targeting.</td></tr>
+      <tr><td><span class="card-tag" style="background:var(--warning-light);color:var(--warning);">40&ndash;59</span></td><td><strong>Fair</strong> &mdash; The response has notable weaknesses. It may be partially helpful but suffers from weak citation support, generic advice, or incomplete issue coverage.</td></tr>
+      <tr><td><span class="card-tag" style="background:var(--danger-light);color:var(--danger);">0&ndash;39</span></td><td><strong>Poor</strong> &mdash; An inadequate or unsupported response. The AI response either provides wrong information, is not backed by citations, or fails to address the customer's actual issue.</td></tr>
+    </table>
+  </div>
+
+  <!-- CITATION GROUNDING SCORES -->
+  <h3 id="score-citation">Citation Grounding Scores <span style="font-weight:400; font-size:14px; color:var(--text-muted);">(mweaeval mode only)</span></h3>
+  <p>These scores evaluate whether individual cited articles actually support the claims made in the AI response. The <code>CitationQualityAgent</code> makes one LLM call per citation to assess grounding.</p>
+
+  <div style="background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); box-shadow:var(--shadow); padding:24px; margin:16px 0;">
+    <h4 style="color:var(--teal); margin-top:0;">14. Per-Citation Support Score <span style="font-weight:400; font-size:13px; color:var(--text-muted);">&mdash; Per citation</span></h4>
+    <p><strong>What it measures:</strong> Whether a single cited article supports the specific claims attributed to it in the AI response.</p>
+    <p><strong>Evaluation logic:</strong> The LLM reads the AI response and the full text of the cited article, then determines whether the article actually contains information that backs up the claims the response makes while referencing that citation.</p>
+    <p><strong>How to interpret the verdict:</strong></p>
+    <table style="box-shadow:none; margin:8px 0;">
+      <tr><td style="width:100px;"><span class="card-tag" style="background:var(--success-light);color:var(--success);">good</span></td><td><strong>Score 70&ndash;100</strong> &mdash; The article substantively supports the claims. The technical steps, commands, or guidance cited from this article are actually found in the article content. Paraphrased content counts as long as meaning is preserved.</td></tr>
+      <tr><td><span class="card-tag" style="background:var(--warning-light);color:var(--warning);">partial</span></td><td><strong>Score 40&ndash;69</strong> &mdash; The article partially supports some claims but misses others. The article may cover the general topic but doesn't contain all the specific technical details cited in the response.</td></tr>
+      <tr><td><span class="card-tag" style="background:var(--danger-light);color:var(--danger);">bad</span></td><td><strong>Score 0&ndash;39</strong> &mdash; The article does not meaningfully support the cited claims. It may be a generic product page that merely mentions the product but doesn't contain the specific guidance attributed to it.</td></tr>
+    </table>
+  </div>
+
+  <div style="background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); box-shadow:var(--shadow); padding:24px; margin:16px 0;">
+    <h4 style="color:var(--teal); margin-top:0;">15. Overall Grounding Score <span style="font-weight:400; font-size:13px; color:var(--text-muted);">&mdash; Aggregate</span></h4>
+    <p><strong>What it measures:</strong> The aggregate grounding quality across all citations in the AI response.</p>
+    <p><strong>How it's calculated:</strong> Aggregated from all per-citation scores. Also tracks <code>cited_percentage</code> (portion of the response that references citations) and <code>uncited_percentage</code> (portion without citation support).</p>
+    <p><strong>How to interpret the score:</strong></p>
+    <table style="box-shadow:none; margin:8px 0;">
+      <tr><td style="width:100px;"><span class="card-tag" style="background:var(--success-light);color:var(--success);">70&ndash;100</span></td><td><strong>Well Grounded</strong> &mdash; Most or all citations provide strong support. The AI response is well-evidenced.</td></tr>
+      <tr><td><span class="card-tag" style="background:var(--warning-light);color:var(--warning);">50&ndash;69</span></td><td><strong>Partially Grounded</strong> &mdash; Mixed citation quality. Some citations are strong, others are weak or irrelevant.</td></tr>
+      <tr><td><span class="card-tag" style="background:var(--orange-light);color:var(--orange);">25&ndash;49</span></td><td><strong>Poorly Grounded</strong> &mdash; Most citations are weak. The response makes claims that aren't well-supported by the referenced articles.</td></tr>
+      <tr><td><span class="card-tag" style="background:var(--danger-light);color:var(--danger);">0&ndash;24</span></td><td><strong>Ungrounded</strong> &mdash; Citations provide negligible support. The referenced articles don't back up the response content.</td></tr>
+    </table>
+    <div class="callout info">
+      <strong>Reuse:</strong> The overall grounding score from the <code>CitationQualityAgent</code> is directly reused as the "Groundedness" dimension (score #11) in the AI Response Quality composite score, avoiding redundant LLM calls.
+    </div>
+  </div>
+
+  <!-- SUMMARY TABLE -->
+  <h3>Complete Score Reference</h3>
+  <p>All 15 scores at a glance:</p>
+  <table>
+    <thead>
+      <tr><th>#</th><th>Score</th><th>Scale</th><th>Weight</th><th>Parent Composite</th><th>Pipeline</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>1</td><td>Relevance</td><td>0&ndash;100</td><td>40%</td><td>Overall Article Score</td><td>Standard</td></tr>
+      <tr><td>2</td><td>Completeness</td><td>0&ndash;100</td><td>30%</td><td>Overall Article Score</td><td>Standard</td></tr>
+      <tr><td>3</td><td>Validity</td><td>0&ndash;100</td><td>30%</td><td>Overall Article Score</td><td>Standard</td></tr>
+      <tr><td>4</td><td><strong>Overall Article Score</strong></td><td>0&ndash;100</td><td>&mdash;</td><td>(Composite)</td><td>Standard</td></tr>
+      <tr style="background:var(--purple-light);">
+        <td>5</td><td>KT Identity (WHAT)</td><td>0&ndash;100</td><td>35%</td><td>Description Quality</td><td>Both</td></tr>
+      <tr style="background:var(--purple-light);">
+        <td>6</td><td>KT Location (WHERE)</td><td>0&ndash;100</td><td>25%</td><td>Description Quality</td><td>Both</td></tr>
+      <tr style="background:var(--purple-light);">
+        <td>7</td><td>KT Timing (WHEN)</td><td>0&ndash;100</td><td>20%</td><td>Description Quality</td><td>Both</td></tr>
+      <tr style="background:var(--purple-light);">
+        <td>8</td><td>KT Magnitude (EXTENT)</td><td>0&ndash;100</td><td>20%</td><td>Description Quality</td><td>Both</td></tr>
+      <tr style="background:var(--purple-light);">
+        <td>9</td><td><strong>Description Quality</strong></td><td>0&ndash;100</td><td>&mdash;</td><td>(Composite)</td><td>Both</td></tr>
+      <tr><td>10</td><td>Response Quality</td><td>0&ndash;100</td><td>40%</td><td>AI Response Quality</td><td>mweaeval</td></tr>
+      <tr><td>11</td><td>Groundedness</td><td>0&ndash;100</td><td>30%</td><td>AI Response Quality</td><td>mweaeval</td></tr>
+      <tr><td>12</td><td>Issue Resolution</td><td>0&ndash;100</td><td>30%</td><td>AI Response Quality</td><td>mweaeval</td></tr>
+      <tr><td>13</td><td><strong>AI Response Quality</strong></td><td>0&ndash;100</td><td>&mdash;</td><td>(Composite)</td><td>mweaeval</td></tr>
+      <tr><td>14</td><td>Per-Citation Support</td><td>0&ndash;100</td><td>&mdash;</td><td>Overall Grounding</td><td>mweaeval</td></tr>
+      <tr><td>15</td><td><strong>Overall Grounding</strong></td><td>0&ndash;100</td><td>&mdash;</td><td>(Aggregate)</td><td>mweaeval</td></tr>
     </tbody>
   </table>
 </section>
