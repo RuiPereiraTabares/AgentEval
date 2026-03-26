@@ -26,7 +26,10 @@ load_dotenv()
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from article_evaluation_system import ArticleEvaluator
-from article_evaluation_system.main import read_csv_cases, write_results_json, write_results_csv, write_results_csv_summary
+from article_evaluation_system.main import (
+    read_csv_cases, read_mweaeval_csv_cases,
+    write_results_json, write_results_csv, write_results_csv_summary,
+)
 
 
 def main():
@@ -37,7 +40,9 @@ def main():
     parser.add_argument('--all', action='store_true', help='Process all cases')
     parser.add_argument('--case', help='Process specific case number')
     parser.add_argument('--skip', type=int, default=0, help='Skip first N cases')
-    parser.add_argument('--format', choices=['json', 'csv'], default='json', help='Output format')
+    parser.add_argument('--format', choices=['json', 'csv'], default='csv', help='Output format (default: csv)')
+    parser.add_argument('--mweaeval', action='store_true',
+                        help='Use mweaeval CSV format (AiResponse + Citations columns) for citation quality evaluation')
     parser.add_argument('--verbose', '-v', action='store_true',
                         help='Verbose output (shows per-agent scores and verdict reasoning)')
     parser.add_argument('--debug', action='store_true',
@@ -90,7 +95,10 @@ def main():
     # Read cases
     print(f"Reading cases from {args.input}...")
     limit = None if args.all else args.limit
-    cases = list(read_csv_cases(args.input, limit=limit, skip=args.skip))
+    if args.mweaeval:
+        cases = list(read_mweaeval_csv_cases(args.input, limit=limit, skip=args.skip))
+    else:
+        cases = list(read_csv_cases(args.input, limit=limit, skip=args.skip))
 
     # Filter for specific case if requested
     if args.case:
@@ -101,6 +109,8 @@ def main():
 
     print(f"Loaded {len(cases)} cases to process")
     print(f"Using provider: mwai, model: {args.model}")
+    if args.mweaeval:
+        print(f"Mode: mweaeval (citation quality evaluation)")
 
     if not cases:
         print("No cases to process")
@@ -124,11 +134,6 @@ def main():
 
         try:
             full_issue = f"{case['title']}\n\n{case['issue_description']}"
-            has_citation = case.get('contains_citations', False)
-            urls = case.get('urls', []) if has_citation else []
-
-            if not has_citation:
-                print(f"  No citation found — kicking search agent")
 
             product_info = None
             if case.get('sap_product_name') or case.get('sap_name'):
@@ -145,12 +150,33 @@ def main():
                 'reopened': case.get('reopened'),
             }
 
-            evaluation = evaluator.evaluate(
-                customer_issue=full_issue,
-                recommended_article=urls[0] if urls else None,
-                product_info=product_info,
-                transfer_metadata=transfer_metadata,
-            )
+            if args.mweaeval:
+                # Citation quality evaluation mode
+                ai_response = case.get('ai_response', '')
+                citation_urls = case.get('citation_urls', [])
+                print(f"  Citations: {len(citation_urls)} URLs")
+
+                evaluation = evaluator.evaluate_with_citations(
+                    customer_issue=full_issue,
+                    ai_response=ai_response,
+                    citation_urls=citation_urls,
+                    product_info=product_info,
+                    transfer_metadata=transfer_metadata,
+                )
+            else:
+                # Standard evaluation mode
+                has_citation = case.get('contains_citations', False)
+                urls = case.get('urls', []) if has_citation else []
+
+                if not has_citation:
+                    print(f"  No citation found — kicking search agent")
+
+                evaluation = evaluator.evaluate(
+                    customer_issue=full_issue,
+                    recommended_article=urls[0] if urls else None,
+                    product_info=product_info,
+                    transfer_metadata=transfer_metadata,
+                )
 
             elapsed = (datetime.now() - start).total_seconds()
 
@@ -237,6 +263,44 @@ def main():
                 print(f"  Action: {evaluation.get('action_required', '?')}")
                 print(f"  Recommendation: {evaluation.get('final_recommendation', '')[:200]}")
 
+                # Show citation quality (mweaeval mode)
+                cq = evaluation.get('citation_quality', {})
+                if cq and cq.get('citations_total', 0) > 0:
+                    print(f"  --- Citation Quality ---")
+                    print(f"  Grounding:  {cq.get('overall_grounding_score', '?'):>3}/100  "
+                          f"({cq.get('overall_verdict', '?')})")
+                    print(f"  Cited: {cq.get('cited_percentage', 0):.1f}%  "
+                          f"Uncited: {cq.get('uncited_percentage', 0):.1f}%")
+                    print(f"  Citations: {cq.get('citations_total', 0)} total  "
+                          f"({cq.get('citations_good', 0)} good, "
+                          f"{cq.get('citations_partial', 0)} partial, "
+                          f"{cq.get('citations_bad', 0)} bad)")
+                    for pcr in cq.get('per_citation_results', []):
+                        print(f"    [{pcr.get('citation_index', '?')}] "
+                              f"score={pcr.get('support_score', 0):>3}  "
+                              f"verdict={pcr.get('verdict', '?'):<8}  "
+                              f"coverage={pcr.get('coverage_percentage', 0):.1f}%  "
+                              f"url={pcr.get('url', '')[:60]}")
+                        if pcr.get('support_reasoning'):
+                            print(f"        {pcr['support_reasoning'][:120]}")
+
+                # Show response quality (multi-dimensional)
+                rq = evaluation.get('response_quality', {})
+                if rq and rq.get('ai_response_quality_score') is not None:
+                    print(f"  --- AI Response Quality ---")
+                    print(f"  Overall:          {rq.get('ai_response_quality_score', '?'):>3}/100  "
+                          f"({rq.get('ai_response_quality_verdict', '?')})")
+                    print(f"    Response Quality:  {rq.get('response_quality_score', '?'):>3}/100  "
+                          f"- {rq.get('response_quality_analysis', '')[:80]}")
+                    print(f"    Groundedness:     {rq.get('groundedness_score', '?'):>3}/100  "
+                          f"- {rq.get('groundedness_analysis', '')[:80]}")
+                    print(f"    Issue Resolution: {rq.get('issue_resolution_score', '?'):>3}/100  "
+                          f"- {rq.get('issue_resolution_analysis', '')[:80]}")
+                    if rq.get('quality_weaknesses'):
+                        print(f"    Weaknesses: {'; '.join(rq['quality_weaknesses'][:3])}")
+                    if rq.get('improvement_suggestions'):
+                        print(f"    Suggestions: {'; '.join(rq['improvement_suggestions'][:3])}")
+
                 # Show transfer analysis
                 ta = evaluation.get('transfer_analysis', {})
                 if ta:
@@ -304,6 +368,42 @@ def main():
     print(f"Description quality:")
     print(f"  - Average KT score: {avg_dq}/100")
     print(f"  - Low confidence evaluations: {low_confidence}")
+
+    # Response quality summary (mweaeval mode)
+    rq_scores = [
+        r.get('evaluation', {}).get('response_quality', {}).get('ai_response_quality_score', 0)
+        for r in results
+        if r.get('evaluation', {}).get('response_quality', {}).get('ai_response_quality_score') is not None
+        and r.get('evaluation', {}).get('response_quality', {}).get('ai_response_quality_score', 0) > 0
+    ]
+    if rq_scores:
+        avg_rq = round(sum(rq_scores) / len(rq_scores))
+        print(f"AI Response quality:")
+        print(f"  - Average composite score: {avg_rq}/100")
+
+    # Citation quality summary (mweaeval mode)
+    cq_scores = [
+        r.get('evaluation', {}).get('citation_quality', {}).get('overall_grounding_score', 0)
+        for r in results
+        if r.get('evaluation', {}).get('citation_quality', {}).get('citations_total', 0) > 0
+    ]
+    if cq_scores:
+        avg_cq = round(sum(cq_scores) / len(cq_scores))
+        total_good = sum(
+            r.get('evaluation', {}).get('citation_quality', {}).get('citations_good', 0)
+            for r in results
+        )
+        total_partial = sum(
+            r.get('evaluation', {}).get('citation_quality', {}).get('citations_partial', 0)
+            for r in results
+        )
+        total_bad = sum(
+            r.get('evaluation', {}).get('citation_quality', {}).get('citations_bad', 0)
+            for r in results
+        )
+        print(f"Citation quality:")
+        print(f"  - Average grounding score: {avg_cq}/100")
+        print(f"  - Citations: {total_good} good, {total_partial} partial, {total_bad} bad")
 
     # Transfer reason breakdown
     transfer_reasons = {}

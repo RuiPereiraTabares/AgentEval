@@ -12,6 +12,8 @@ from .evaluation import (
     SearchResult,
     GapAnalysisResult,
     TransferReasonResult,
+    CitationQualityResult,
+    ResponseQualityResult,
     EvaluationResult
 )
 
@@ -25,5 +27,7 @@ __all__ = [
     'SearchResult',
     'GapAnalysisResult',
     'TransferReasonResult',
+    'CitationQualityResult',
+    'ResponseQualityResult',
     'EvaluationResult'
 ]

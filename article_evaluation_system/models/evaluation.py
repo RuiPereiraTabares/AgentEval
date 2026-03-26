@@ -245,6 +245,28 @@ TransferReason = Literal[
     "not_transferred",
     "unknown",
 ]
+CitationSupportVerdict = Literal["good", "partial", "bad"]
+CitationGroundingVerdict = Literal["well_grounded", "partially_grounded", "poorly_grounded", "ungrounded"]
+ResponseQualityVerdict = Literal["excellent", "good", "fair", "poor"]
+
+
+_RESPONSE_QUALITY_LABEL_MAP = {
+    # High tier (80-100)
+    "excellent": 95, "perfect": 95, "outstanding": 95, "very high": 90,
+    "comprehensive": 90, "thorough": 85,
+    # Good tier (60-79)
+    "high": 80, "good": 75, "strong": 75, "above average": 75,
+    "adequate": 70, "sufficient": 70, "mostly good": 70,
+    # Fair tier (40-59)
+    "medium": 55, "moderate": 55, "average": 55, "fair": 55,
+    "partial": 45, "mixed": 45, "somewhat": 45, "limited": 40,
+    # Poor tier (0-39)
+    "low": 25, "poor": 20, "weak": 20, "below average": 25,
+    "inadequate": 15, "bad": 10, "very low": 10,
+    "none": 0, "n/a": 0,
+    # Boolean-like
+    "true": 80, "false": 10, "yes": 80, "no": 10,
+}
 
 
 _DESCRIPTION_QUALITY_LABEL_MAP = {
@@ -761,6 +783,251 @@ class TransferReasonResult:
         )
 
 
+_CITATION_SUPPORT_LABEL_MAP = {
+    "excellent": 95, "perfect": 95, "strong": 90, "well supported": 90,
+    "supported": 85, "good": 80, "high": 85,
+    "mostly supported": 70, "mostly_supported": 70, "above average": 75,
+    "medium": 55, "moderate": 55, "partial": 50, "partially supported": 50,
+    "partially_supported": 50, "mixed": 50, "fair": 55,
+    "weak": 25, "low": 20, "poor": 15, "poorly supported": 15,
+    "poorly_supported": 15, "not supported": 5, "not_supported": 5,
+    "unsupported": 5, "none": 0, "n/a": 0,
+}
+
+
+@dataclass
+class PerCitationResult:
+    """Result of evaluating a single citation against its attributed text."""
+
+    citation_index: int = 0
+    url: str = ""
+    support_score: int = 0
+    verdict: CitationSupportVerdict = "bad"
+    coverage_percentage: float = 0.0
+    support_reasoning: str = ""
+    key_claims_supported: list[str] = field(default_factory=list)
+    key_claims_unsupported: list[str] = field(default_factory=list)
+
+    def to_dict(self) -> dict:
+        return {
+            "citation_index": self.citation_index,
+            "url": self.url,
+            "support_score": self.support_score,
+            "verdict": self.verdict,
+            "coverage_percentage": round(self.coverage_percentage, 1),
+            "support_reasoning": self.support_reasoning,
+            "key_claims_supported": self.key_claims_supported,
+            "key_claims_unsupported": self.key_claims_unsupported,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict, citation_index: int = 0,
+                  url: str = "", coverage_percentage: float = 0.0) -> "PerCitationResult":
+        flat = _collect_all_values(data)
+        score = _extract_score(
+            flat, "support_score",
+            ["support_score", "supportscore", "score", "support",
+             "grounding_score", "groundingscore"],
+            _CITATION_SUPPORT_LABEL_MAP,
+        )
+        verdict_map = {(0, 40): "bad", (40, 70): "partial", (70, 101): "good"}
+        verdict = _extract_str(
+            flat, "verdict", {"good", "partial", "bad"}, "bad"
+        )
+        if verdict == "bad" and score > 0:
+            for (lo, hi), v in verdict_map.items():
+                if lo <= score < hi:
+                    verdict = v
+                    break
+        return cls(
+            citation_index=citation_index,
+            url=url,
+            support_score=score,
+            verdict=verdict,
+            coverage_percentage=coverage_percentage,
+            support_reasoning=flat.get("support_reasoning", "") or flat.get("reasoning", "") or "",
+            key_claims_supported=_extract_list(flat, [
+                "key_claims_supported", "keyclaimssupported",
+                "claims_supported", "claimssupported",
+                "supported_claims", "supportedclaims",
+            ]),
+            key_claims_unsupported=_extract_list(flat, [
+                "key_claims_unsupported", "keyclaimsunsupported",
+                "claims_unsupported", "claimsunsupported",
+                "unsupported_claims", "unsupportedclaims",
+            ]),
+        )
+
+
+@dataclass
+class CitationQualityResult:
+    """Aggregated citation quality evaluation for an AI response."""
+
+    per_citation_results: list[PerCitationResult] = field(default_factory=list)
+    overall_grounding_score: int = 0
+    overall_verdict: CitationGroundingVerdict = "ungrounded"
+    cited_percentage: float = 0.0
+    uncited_percentage: float = 100.0
+    citations_total: int = 0
+    citations_good: int = 0
+    citations_partial: int = 0
+    citations_bad: int = 0
+
+    def to_dict(self) -> dict:
+        return {
+            "per_citation_results": [r.to_dict() for r in self.per_citation_results],
+            "overall_grounding_score": self.overall_grounding_score,
+            "overall_verdict": self.overall_verdict,
+            "cited_percentage": round(self.cited_percentage, 1),
+            "uncited_percentage": round(self.uncited_percentage, 1),
+            "citations_total": self.citations_total,
+            "citations_good": self.citations_good,
+            "citations_partial": self.citations_partial,
+            "citations_bad": self.citations_bad,
+        }
+
+    @classmethod
+    def from_per_citation(cls, results: list[PerCitationResult],
+                          cited_pct: float, uncited_pct: float) -> "CitationQualityResult":
+        """Build aggregate result from per-citation results."""
+        if not results:
+            return cls()
+
+        good = sum(1 for r in results if r.verdict == "good")
+        partial = sum(1 for r in results if r.verdict == "partial")
+        bad = sum(1 for r in results if r.verdict == "bad")
+
+        # Coverage-weighted overall score
+        total_coverage = sum(r.coverage_percentage for r in results)
+        if total_coverage > 0:
+            overall = round(
+                sum(r.support_score * r.coverage_percentage for r in results)
+                / total_coverage
+            )
+        else:
+            overall = round(sum(r.support_score for r in results) / len(results))
+
+        # Derive verdict from overall score
+        if overall >= 70:
+            verdict = "well_grounded"
+        elif overall >= 50:
+            verdict = "partially_grounded"
+        elif overall >= 25:
+            verdict = "poorly_grounded"
+        else:
+            verdict = "ungrounded"
+
+        return cls(
+            per_citation_results=results,
+            overall_grounding_score=overall,
+            overall_verdict=verdict,
+            cited_percentage=cited_pct,
+            uncited_percentage=uncited_pct,
+            citations_total=len(results),
+            citations_good=good,
+            citations_partial=partial,
+            citations_bad=bad,
+        )
+
+
+@dataclass
+class ResponseQualityResult:
+    """Result from the ResponseQualityAgent — multi-dimensional AI response evaluation."""
+
+    # Per-dimension scores (0-100)
+    response_quality_score: int = 0
+    response_quality_analysis: str = ""
+    groundedness_score: int = 0
+    groundedness_analysis: str = ""
+    issue_resolution_score: int = 0
+    issue_resolution_analysis: str = ""
+
+    # Aggregate
+    ai_response_quality_score: int = 0
+    ai_response_quality_verdict: ResponseQualityVerdict = "poor"
+
+    # Detail lists
+    quality_weaknesses: list[str] = field(default_factory=list)
+    improvement_suggestions: list[str] = field(default_factory=list)
+
+    def to_dict(self) -> dict:
+        return {
+            "response_quality_score": self.response_quality_score,
+            "response_quality_analysis": self.response_quality_analysis,
+            "groundedness_score": self.groundedness_score,
+            "groundedness_analysis": self.groundedness_analysis,
+            "issue_resolution_score": self.issue_resolution_score,
+            "issue_resolution_analysis": self.issue_resolution_analysis,
+            "ai_response_quality_score": self.ai_response_quality_score,
+            "ai_response_quality_verdict": self.ai_response_quality_verdict,
+            "quality_weaknesses": self.quality_weaknesses,
+            "improvement_suggestions": self.improvement_suggestions,
+        }
+
+    @classmethod
+    def from_dict(
+        cls,
+        data: dict,
+        groundedness_score: int = 0,
+        groundedness_analysis: str = "",
+    ) -> "ResponseQualityResult":
+        """Build from LLM JSON output. Groundedness is passed in from CitationQualityAgent."""
+        flat = _collect_all_values(data)
+
+        rq_score = _extract_score(
+            flat, "response_quality_score",
+            ["response_quality_score", "responsequalityscore",
+             "quality_score", "qualityscore", "response_quality"],
+            _RESPONSE_QUALITY_LABEL_MAP,
+        )
+        ir_score = _extract_score(
+            flat, "issue_resolution_score",
+            ["issue_resolution_score", "issueresolutionscore",
+             "resolution_score", "resolutionscore", "issue_resolution"],
+            _RESPONSE_QUALITY_LABEL_MAP,
+        )
+
+        rq_analysis = flat.get("response_quality_analysis", "") or flat.get("quality_analysis", "") or ""
+        ir_analysis = flat.get("issue_resolution_analysis", "") or flat.get("resolution_analysis", "") or ""
+
+        # Compute weighted overall
+        from ..config.settings import RESPONSE_QUALITY_WEIGHTS
+        overall = round(
+            rq_score * RESPONSE_QUALITY_WEIGHTS["response_quality"]
+            + groundedness_score * RESPONSE_QUALITY_WEIGHTS["groundedness"]
+            + ir_score * RESPONSE_QUALITY_WEIGHTS["issue_resolution"]
+        )
+
+        # Derive verdict
+        if overall >= 80:
+            verdict = "excellent"
+        elif overall >= 60:
+            verdict = "good"
+        elif overall >= 40:
+            verdict = "fair"
+        else:
+            verdict = "poor"
+
+        return cls(
+            response_quality_score=rq_score,
+            response_quality_analysis=rq_analysis,
+            groundedness_score=groundedness_score,
+            groundedness_analysis=groundedness_analysis,
+            issue_resolution_score=ir_score,
+            issue_resolution_analysis=ir_analysis,
+            ai_response_quality_score=overall,
+            ai_response_quality_verdict=verdict,
+            quality_weaknesses=_extract_list(flat, [
+                "quality_weaknesses", "qualityweaknesses",
+                "weaknesses", "issues", "problems",
+            ]),
+            improvement_suggestions=_extract_list(flat, [
+                "improvement_suggestions", "improvementsuggestions",
+                "suggestions", "recommendations", "improvements",
+            ]),
+        )
+
+
 @dataclass
 class EvaluationResult:
     """Complete evaluation result from the Orchestrator."""
@@ -776,6 +1043,8 @@ class EvaluationResult:
     description_quality: dict = field(default_factory=dict)
     evaluation_reliability_warning: bool = False
     transfer_analysis: dict = field(default_factory=dict)
+    citation_quality: dict = field(default_factory=dict)
+    response_quality: dict = field(default_factory=dict)
 
     def to_dict(self) -> dict:
         return {
@@ -790,6 +1059,8 @@ class EvaluationResult:
             "description_quality": self.description_quality,
             "evaluation_reliability_warning": self.evaluation_reliability_warning,
             "transfer_analysis": self.transfer_analysis,
+            "citation_quality": self.citation_quality,
+            "response_quality": self.response_quality,
         }
 
     @classmethod
@@ -806,4 +1077,6 @@ class EvaluationResult:
             description_quality=data.get("description_quality", {}),
             evaluation_reliability_warning=data.get("evaluation_reliability_warning", False),
             transfer_analysis=data.get("transfer_analysis", {}),
+            citation_quality=data.get("citation_quality", {}),
+            response_quality=data.get("response_quality", {}),
         )

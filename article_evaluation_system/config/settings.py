@@ -48,6 +48,13 @@ KT_DIMENSION_WEIGHTS = {
     "magnitude": 0.20   # EXTENT
 }
 
+# Weights for AI response quality composite score
+RESPONSE_QUALITY_WEIGHTS = {
+    "response_quality": 0.40,   # Accuracy, completeness, clarity, helpfulness
+    "groundedness": 0.30,       # Citation grounding (reused from CitationQualityAgent)
+    "issue_resolution": 0.30,   # Does the response address the customer's specific issue?
+}
+
 # Weights for overall score calculation
 SCORE_WEIGHTS = {
     "relevance": 0.40,
