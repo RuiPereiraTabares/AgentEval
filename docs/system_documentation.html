@@ -399,12 +399,16 @@
   <a href="#agent-search" class="indent">SearchAgent</a>
   <a href="#agent-gap" class="indent">GapAnalysisAgent</a>
   <a href="#agent-transfer" class="indent">TransferReasonAgent</a>
+  <a href="#agent-citation" class="indent">CitationQualityAgent</a>
+  <a href="#agent-response" class="indent">ResponseQualityAgent</a>
   <a href="#pipeline">Pipeline Flow</a>
+  <a href="#pipeline-mweaeval">mweaeval Pipeline</a>
   <a href="#scoring">Scoring Methodology</a>
   <a href="#verdicts">Verdicts &amp; Actions</a>
   <a href="#transfer-logic">Transfer Classification</a>
   <a href="#outputs">Output Formats</a>
   <a href="#configuration">Configuration</a>
+  <a href="#benchmarks">Benchmark Results</a>
 </nav>
 
 <!-- MAIN CONTENT -->
@@ -413,9 +417,9 @@
 <!-- ============ HERO ============ -->
 <section class="hero" id="overview">
   <h1>Article Evaluation System</h1>
-  <p>A multi-agent LLM pipeline that evaluates whether Microsoft support articles adequately address customer support cases. Eight specialized agents collaborate through an orchestrated pipeline to score articles, identify documentation gaps, and classify transfer reasons.</p>
+  <p>A multi-agent LLM pipeline that evaluates whether Microsoft support articles adequately address customer support cases. Ten specialized agents collaborate through an orchestrated pipeline to score articles, evaluate AI response quality, assess citation grounding, identify documentation gaps, and classify transfer reasons.</p>
   <div class="badge-row">
-    <span class="badge">8 Specialized Agents</span>
+    <span class="badge">10 Specialized Agents</span>
     <span class="badge">Kepner-Tregoe Framework</span>
     <span class="badge">Weighted Scoring</span>
     <span class="badge">Multi-Provider LLM</span>
@@ -732,6 +736,64 @@
       </div>
     </div>
 
+    <!-- CitationQualityAgent -->
+    <div class="agent-card" data-agent="citation" id="agent-citation">
+      <div class="card-header">
+        <div class="card-icon">&#128279;</div>
+        <div>
+          <h3>CitationQualityAgent</h3>
+          <div class="card-class">agents/citation_quality_agent.py</div>
+        </div>
+      </div>
+      <div class="card-body">
+        <p>Evaluates whether cited articles actually support the claims made in the AI response. Performs <strong>per-citation LLM calls</strong> to assess grounding of each referenced source.</p>
+        <div class="card-field"><strong>Input</strong></div>
+        <p>AI response text + list of cited article contents</p>
+        <div class="card-field"><strong>Output</strong></div>
+        <p><code>CitationQualityResult</code> with <code>overall_grounding_score</code> (0&ndash;100), per-citation verdicts, <code>cited_percentage</code>, and <code>uncited_percentage</code>.</p>
+        <div class="card-field"><strong>Per-Citation Verdicts</strong></div>
+        <p>
+          <span class="card-tag" style="background:var(--success-light);color:var(--success);">good</span>
+          <span class="card-tag" style="background:var(--warning-light);color:var(--warning);">partial</span>
+          <span class="card-tag" style="background:var(--danger-light);color:var(--danger);">bad</span>
+        </p>
+        <div class="card-field"><strong>LLM Cost</strong></div>
+        <p>N LLM calls, where N = number of citations. Each call evaluates whether one citation supports the AI response claims.</p>
+        <div class="callout info">The <code>overall_grounding_score</code> from this agent is reused by <code>ResponseQualityAgent</code> as the groundedness dimension, avoiding redundant LLM calls.</div>
+      </div>
+    </div>
+
+    <!-- ResponseQualityAgent -->
+    <div class="agent-card full" data-agent="response" id="agent-response">
+      <div class="card-header">
+        <div class="card-icon">&#9889;</div>
+        <div>
+          <h3>ResponseQualityAgent</h3>
+          <div class="card-class">agents/response_quality_agent.py</div>
+        </div>
+      </div>
+      <div class="card-body">
+        <p>Evaluates overall AI response quality across three weighted dimensions, producing a composite <code>ai_response_quality_score</code>.</p>
+        <div class="card-field"><strong>Dimensions &amp; Weights</strong></div>
+        <table style="box-shadow:none; margin:6px 0;">
+          <tr><td><strong>Response Quality</strong></td><td>40% weight</td><td>Accuracy, completeness, clarity, helpfulness</td></tr>
+          <tr><td><strong>Groundedness</strong></td><td>30% weight</td><td>Reused from CitationQualityAgent (no extra LLM cost)</td></tr>
+          <tr><td><strong>Issue Resolution</strong></td><td>30% weight</td><td>Does the response address the specific issue?</td></tr>
+        </table>
+        <div class="card-field"><strong>Output</strong></div>
+        <p><code>ResponseQualityResult</code> with per-dimension scores (0&ndash;100) and a weighted composite <code>ai_response_quality_score</code>.</p>
+        <div class="card-field"><strong>Verdict Thresholds</strong></div>
+        <p>
+          <span class="card-tag" style="background:var(--success-light);color:var(--success);">&ge;80 excellent</span>
+          <span class="card-tag" style="background:var(--accent-light);color:var(--accent);">&ge;60 good</span>
+          <span class="card-tag" style="background:var(--warning-light);color:var(--warning);">&ge;40 fair</span>
+          <span class="card-tag" style="background:var(--danger-light);color:var(--danger);">&lt;40 poor</span>
+        </p>
+        <div class="card-field"><strong>LLM Cost</strong></div>
+        <p>1 LLM call (groundedness dimension is inherited from <code>CitationQualityAgent</code>).</p>
+      </div>
+    </div>
+
   </div><!-- /agent-grid -->
 </section>
 
@@ -832,6 +894,80 @@
   </div>
 </section>
 
+<!-- ============ MWEAEVAL PIPELINE ============ -->
+<section id="pipeline-mweaeval">
+  <h2>mweaeval (Citation Quality) Pipeline</h2>
+  <p>The <code>evaluate_with_citations()</code> flow is used when AI response text and cited articles are available. It evaluates citation grounding and overall AI response quality in addition to the standard description quality and transfer analysis.</p>
+
+  <div class="pipeline">
+    <div class="pipe-step">
+      <div class="pipe-marker">1</div>
+      <div class="pipe-content">
+        <h4>IssueParserAgent</h4>
+        <p>Parse raw customer issue into a structured <code>Issue</code> object. <strong>1 LLM call.</strong></p>
+      </div>
+    </div>
+    <div class="pipe-connector"></div>
+
+    <div class="pipe-step">
+      <div class="pipe-marker">2</div>
+      <div class="pipe-content">
+        <h4>DescriptionQualityAgent</h4>
+        <p>Evaluate issue description quality using the Kepner-Tregoe framework. <strong>1 LLM call.</strong></p>
+      </div>
+    </div>
+    <div class="pipe-connector"></div>
+
+    <div class="pipe-step">
+      <div class="pipe-marker">3</div>
+      <div class="pipe-content">
+        <h4>CitationQualityAgent</h4>
+        <p>Evaluate whether each cited article supports the AI response claims. <strong>N LLM calls</strong> (one per citation). Produces <code>CitationQualityResult</code> with per-citation verdicts and <code>overall_grounding_score</code>.</p>
+      </div>
+    </div>
+    <div class="pipe-connector"></div>
+
+    <div class="pipe-step">
+      <div class="pipe-marker conditional">3b</div>
+      <div class="pipe-content">
+        <h4>R/C/V on Best-Grounding Citation</h4>
+        <p>Run <strong>RelevanceAgent</strong>, <strong>CompletenessAgent</strong>, and <strong>ValidityAgent</strong> on the citation with the highest grounding score. <strong>+3 LLM calls.</strong></p>
+      </div>
+    </div>
+    <div class="pipe-connector"></div>
+
+    <div class="pipe-step">
+      <div class="pipe-marker">4</div>
+      <div class="pipe-content">
+        <h4>ResponseQualityAgent</h4>
+        <p>Evaluate AI response quality across response quality (40%), groundedness (30%, reused from step 3), and issue resolution (30%). <strong>1 LLM call.</strong> Produces <code>ResponseQualityResult</code> with composite <code>ai_response_quality_score</code>.</p>
+      </div>
+    </div>
+    <div class="pipe-connector"></div>
+
+    <div class="pipe-step">
+      <div class="pipe-marker final">5</div>
+      <div class="pipe-content">
+        <h4>TransferReasonAgent</h4>
+        <p>Classify transfer reason using all evaluation data. <strong>0&ndash;1 LLM calls</strong> (skipped if not transferred).</p>
+      </div>
+    </div>
+    <div class="pipe-connector"></div>
+
+    <div class="pipe-step">
+      <div class="pipe-marker final">&check;</div>
+      <div class="pipe-content">
+        <h4>Output EvaluationResult</h4>
+        <p>Final result includes citation grounding scores, AI response quality dimensions, plus all standard evaluation fields. Written to CSV / JSON.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="callout info">
+    <strong>Total LLM cost per case:</strong> 1 (parser) + 1 (description) + N (citations) + 3 (R/C/V) + 1 (response quality) + 0&ndash;1 (transfer) = <strong>N + 6 to N + 7 calls</strong>, where N is the number of citations.
+  </div>
+</section>
+
 <!-- ============ SCORING ============ -->
 <section id="scoring">
   <h2>Scoring Methodology</h2>
@@ -885,6 +1021,28 @@
     </div>
   </div>
 
+  <h3>AI Response Quality Score</h3>
+  <div class="formula">
+    ai_response_quality_score = response_quality &times; <strong>0.40</strong> + groundedness &times; <strong>0.30</strong> + issue_resolution &times; <strong>0.30</strong>
+  </div>
+  <div style="max-width:400px; margin:16px 0;">
+    <div class="weight-bar-container">
+      <span style="min-width:130px; font-size:13px;">Response Quality</span>
+      <div class="weight-bar" style="width:160px; background:var(--teal);"></div>
+      <span class="weight-label">40%</span>
+    </div>
+    <div class="weight-bar-container">
+      <span style="min-width:130px; font-size:13px;">Groundedness</span>
+      <div class="weight-bar" style="width:120px; background:var(--orange);"></div>
+      <span class="weight-label">30%</span>
+    </div>
+    <div class="weight-bar-container">
+      <span style="min-width:130px; font-size:13px;">Issue Resolution</span>
+      <div class="weight-bar" style="width:120px; background:var(--pink);"></div>
+      <span class="weight-label">30%</span>
+    </div>
+  </div>
+
   <h3>Scoring Thresholds</h3>
   <table>
     <thead>
@@ -905,6 +1063,13 @@
       <tr><td>&ge; 60</td><td>mostly_defined</td></tr>
       <tr><td>&ge; 40</td><td>partially_defined</td></tr>
       <tr><td>&lt; 40</td><td>poorly_defined</td></tr>
+      <tr><td rowspan="3">Citation Quality</td><td>&ge; 70</td><td>good</td></tr>
+      <tr><td>&ge; 40</td><td>partial</td></tr>
+      <tr><td>&lt; 40</td><td>bad</td></tr>
+      <tr><td rowspan="4">AI Response Quality</td><td>&ge; 80</td><td>excellent</td></tr>
+      <tr><td>&ge; 60</td><td>good</td></tr>
+      <tr><td>&ge; 40</td><td>fair</td></tr>
+      <tr><td>&lt; 40</td><td>poor</td></tr>
     </tbody>
   </table>
 </section>
@@ -1026,6 +1191,21 @@
   <p>21 columns &mdash; a condensed view for quick review:</p>
   <p><code>case_number</code>, <code>issue_description</code>, <code>overall_score</code>, <code>verdict</code>, scores &amp; verdicts for relevance/completeness/validity/description quality, <code>transfer_reason</code>, <code>transfer_narrative</code>, <code>final_recommendation</code>, <code>error</code>.</p>
 
+  <h3>Data Models: CitationQualityResult &amp; ResponseQualityResult</h3>
+  <p>Two new dataclasses introduced by the mweaeval pipeline:</p>
+
+  <h4>CitationQualityResult</h4>
+  <div style="display:flex; flex-wrap:wrap; gap:6px; margin:10px 0;">
+    <code>overall_grounding_score</code> <code>per_citation_verdicts</code> <code>cited_percentage</code> <code>uncited_percentage</code>
+  </div>
+  <p>Each entry in <code>per_citation_verdicts</code> contains: <code>url</code>, <code>verdict</code> (<code>good</code> | <code>partial</code> | <code>bad</code>), <code>score</code> (0&ndash;100), and <code>reasoning</code>.</p>
+
+  <h4>ResponseQualityResult</h4>
+  <div style="display:flex; flex-wrap:wrap; gap:6px; margin:10px 0;">
+    <code>ai_response_quality_score</code> <code>response_quality_score</code> <code>groundedness_score</code> <code>issue_resolution_score</code> <code>verdict</code>
+  </div>
+  <p>The composite <code>ai_response_quality_score</code> is computed as: response_quality &times; 0.40 + groundedness &times; 0.30 + issue_resolution &times; 0.30. Verdict thresholds: excellent (&ge;80), good (60&ndash;79), fair (40&ndash;59), poor (&lt;40).</p>
+
   <h3>JSON Output</h3>
   <p>Full <code>EvaluationResult</code> serialized as JSON when <code>--format json</code> is specified. Contains the same data as the detailed CSV in a nested structure.</p>
 </section>
@@ -1083,6 +1263,14 @@
     </tbody>
   </table>
 
+  <h3>Response Quality Weights</h3>
+  <p>Defined in <code>RESPONSE_QUALITY_WEIGHTS</code>:</p>
+  <pre><code>RESPONSE_QUALITY_WEIGHTS = {
+    "response_quality": 0.40,
+    "groundedness": 0.30,
+    "issue_resolution": 0.30,
+}</code></pre>
+
   <h3>Article Fetcher Settings</h3>
   <table>
     <thead><tr><th>Setting</th><th>Value</th></tr></thead>
@@ -1093,6 +1281,46 @@
       <tr><td>Max Steps Extracted</td><td>20</td></tr>
     </tbody>
   </table>
+</section>
+
+<!-- ============ BENCHMARKS ============ -->
+<section id="benchmarks">
+  <h2>Benchmark Results</h2>
+  <p>Latest 10-case run using the mweaeval (Citation Quality) pipeline:</p>
+
+  <h3>Average Scores</h3>
+  <table>
+    <thead><tr><th>Metric</th><th>Score</th></tr></thead>
+    <tbody>
+      <tr><td>AI Response Quality</td><td><strong>64</strong> / 100</td></tr>
+      <tr><td>Citation Grounding</td><td><strong>74</strong> / 100</td></tr>
+      <tr><td>Description Quality (KT)</td><td><strong>33</strong> / 100</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Verdict Distribution</h3>
+  <table>
+    <thead><tr><th>Verdict</th><th>Count</th></tr></thead>
+    <tbody>
+      <tr><td><span class="card-tag" style="background:var(--success-light);color:var(--success);">adequate</span></td><td>4</td></tr>
+      <tr><td><span class="card-tag" style="background:var(--warning-light);color:var(--warning);">needs_supplementation</span></td><td>3</td></tr>
+      <tr><td><span class="card-tag" style="background:var(--danger-light);color:var(--danger);">inadequate</span></td><td>2</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Citation Verdict Breakdown</h3>
+  <table>
+    <thead><tr><th>Citation Verdict</th><th>Count</th></tr></thead>
+    <tbody>
+      <tr><td><span class="card-tag" style="background:var(--success-light);color:var(--success);">good</span></td><td>19</td></tr>
+      <tr><td><span class="card-tag" style="background:var(--warning-light);color:var(--warning);">partial</span></td><td>6</td></tr>
+      <tr><td><span class="card-tag" style="background:var(--danger-light);color:var(--danger);">bad</span></td><td>2</td></tr>
+    </tbody>
+  </table>
+
+  <div class="callout info">
+    <strong>Note:</strong> The low average Description Quality (KT) score of 33/100 reflects that many customer issue descriptions are poorly structured, triggering the <code>evaluation_reliability_warning</code>. This is a characteristic of the input data, not a system deficiency.
+  </div>
 </section>
 
 <footer style="text-align:center; padding:32px 0; color:var(--text-muted); font-size:13px; border-top:1px solid var(--border); margin-top:40px;">

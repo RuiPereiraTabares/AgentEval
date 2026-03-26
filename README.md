@@ -4,7 +4,7 @@ A multi-agent AI system that evaluates whether Microsoft support articles adequa
 
 ## How It Works
 
-The system reads support cases from a CSV file, parses each customer issue, fetches the cited article, and runs 8 specialized AI agents to evaluate relevance, completeness, validity, description quality (Kepner-Tregoe framework), and transfer reason classification. Each case receives an overall score (0-100), a verdict, and an actionable recommendation.
+The system reads support cases from a CSV file, parses each customer issue, fetches the cited article, and runs 10 specialized AI agents to evaluate relevance, completeness, validity, description quality (Kepner-Tregoe framework), citation quality, AI response quality, and transfer reason classification. Each case receives an overall score (0-100), a verdict, and an actionable recommendation.
 
 ## Prerequisites
 
@@ -92,6 +92,9 @@ python run_evaluation.py --token eyJ0eX... -n 5
 
 # Output as CSV instead of JSON
 python run_evaluation.py -n 5 --format csv
+
+# Evaluate AI response + citation quality (mweaeval mode)
+python run_evaluation.py -n 5 --mweaeval
 ```
 
 ### Output
@@ -100,7 +103,7 @@ Each run produces two files:
 
 | File | Description |
 |------|-------------|
-| `evaluation_results_{timestamp}.json` | Full evaluation results (or `.csv` with `--format csv`) |
+| `evaluation_results_{timestamp}.csv` | Full evaluation results (default CSV; use `--format json` for JSON) |
 | `evaluation_summary_{timestamp}.csv` | Summary with key scores and reasons only |
 
 ## Input CSV Format
@@ -121,6 +124,17 @@ The input CSV needs at minimum these columns:
 
 See [docs/api-reference.md](docs/api-reference.md#csv-input-format) for the full column list.
 
+### mweaeval Input CSV Format
+
+When using `--mweaeval` mode, the input CSV needs these columns:
+
+| Column | Required | Description |
+|--------|----------|-------------|
+| `AiResponse` | Yes | The AI-generated response text |
+| `Citations` | Yes | Comma-separated citation URLs |
+
+All standard columns listed above are also supported and used when present.
+
 ## Project Structure
 
 ```
@@ -131,10 +145,10 @@ AgentsArticleReviewer/
   article_evaluation_system/     # Main package
     __init__.py                  #   ArticleEvaluator entry point
     main.py                      #   CSV I/O and alternative CLI
-    agents/                      #   All 9 agents
+    agents/                      #   All 11 agents (incl. citation_quality_agent.py, response_quality_agent.py)
     models/                      #   Data models (Issue, Article, results)
     config/                      #   Settings, thresholds, weights
-    utils/                       #   Article fetcher, scoring, prompts, MWAI client
+    utils/                       #   Article fetcher, scoring, prompts, citation_parser.py, MWAI client
   docs/                          #   Developer documentation
 ```
 
@@ -144,7 +158,7 @@ AgentsArticleReviewer/
 |----------|---------------|
 | [docs/index.md](docs/index.md) | Overview, architecture diagram, quick start, glossary |
 | [docs/architecture.md](docs/architecture.md) | System design, module tree, error handling |
-| [docs/agents.md](docs/agents.md) | All 9 agents — role, inputs, outputs, fallbacks |
+| [docs/agents.md](docs/agents.md) | All 11 agents — role, inputs, outputs, fallbacks (incl. CitationQuality, ResponseQuality) |
 | [docs/pipeline.md](docs/pipeline.md) | Step-by-step evaluation workflow with flowchart |
 | [docs/data-models.md](docs/data-models.md) | All dataclasses, type aliases, label maps |
 | [docs/scoring.md](docs/scoring.md) | Score formula, verdict logic, threshold tables |

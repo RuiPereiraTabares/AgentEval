@@ -19,6 +19,8 @@ article_evaluation_system/
     gap_agent.py
     description_quality_agent.py
     transfer_reason_agent.py
+    citation_quality_agent.py
+    response_quality_agent.py
   models/
     __init__.py
     issue.py           # Issue dataclass
@@ -32,6 +34,7 @@ article_evaluation_system/
     article_fetcher.py # HTTP fetch + HTML parsing + cache
     scoring.py         # ScoringUtils (score formulas, verdict logic)
     prompts.py         # All LLM system prompts (AgentPrompts)
+    citation_parser.py # Citation URL extraction and parsing
     mwai_client.py     # MWAI API client + token management
 run_evaluation.py      # Primary CLI runner
 ```
@@ -94,6 +97,41 @@ Orchestrator.evaluate()
             -> EvaluationResult.to_dict()
 ```
 
+## Citation Quality Interaction Sequence (mweaeval)
+
+```
+Orchestrator.evaluate_with_citations()
+    |
+    |-- IssueParserAgent.evaluate(customer_issue)
+    |       -> Issue
+    |
+    |-- DescriptionQualityAgent.evaluate(issue)
+    |       -> DescriptionQualityResult
+    |
+    |-- CitationQualityAgent.evaluate(ai_response, citation_urls, article_fetcher)
+    |       |-- [for each citation URL]:
+    |       |       ArticleFetcher.fetch(url)
+    |       |       LLM evaluate citation support
+    |       -> CitationQualityResult
+    |
+    |-- [R/C/V on best-grounding citation]:
+    |       |-- RelevanceAgent.evaluate(issue, best_article)
+    |       |       -> RelevanceResult
+    |       |-- CompletenessAgent.evaluate(issue, best_article)
+    |       |       -> CompletenessResult
+    |       |-- ValidityAgent.evaluate(issue, best_article)
+    |       |       -> ValidityResult
+    |
+    |-- ResponseQualityAgent.evaluate(issue, ai_response, citation_quality_result)
+    |       -> ResponseQualityResult
+    |
+    |-- TransferReasonAgent.evaluate(issue, description_quality, scores, ...)
+    |       -> TransferReasonResult
+    |
+    |-- Orchestrator._build_final_result(...)
+            -> EvaluationResult.to_dict()
+```
+
 ## Data Flow
 
 ```
@@ -114,6 +152,8 @@ Orchestrator.evaluate()
   +-- SearchResult (conditional)
   +-- GapAnalysisResult (conditional)
   +-- DescriptionQualityResult
+  +-- CitationQualityResult (mweaeval mode)
+  +-- ResponseQualityResult (mweaeval mode)
   +-- TransferReasonResult
   |
   v
@@ -147,6 +187,8 @@ Every agent has a fallback path when the LLM call fails:
 | GapAnalysisAgent | Derives gaps from upstream result objects |
 | DescriptionQualityAgent | KT dimension heuristics via keyword detection |
 | TransferReasonAgent | Classification proceeds without LLM escalation detection |
+| CitationQualityAgent | Returns score 0 (bad) for unfetchable citations |
+| ResponseQualityAgent | Returns groundedness-only score from CitationQualityAgent |
 
 ### Score Normalization
 

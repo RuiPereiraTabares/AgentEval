@@ -32,7 +32,7 @@ class Settings:
     score_weights: dict           # default: SCORE_WEIGHTS (see below)
     max_search_results: int       # default: 5
     search_domains: list[str]     # default: ["support.microsoft.com", "learn.microsoft.com"]
-    output_format: str            # default: "json"
+    output_format: str            # default: "csv"
     verbose: bool                 # default: False
 ```
 
@@ -107,6 +107,18 @@ KT_DIMENSION_WEIGHTS = {
 }
 ```
 
+## Response Quality Weights
+
+**`RESPONSE_QUALITY_WEIGHTS`** dict (`config/settings.py`):
+
+```python
+RESPONSE_QUALITY_WEIGHTS = {
+    "response_quality": 0.40,
+    "groundedness": 0.30,
+    "issue_resolution": 0.30
+}
+```
+
 ## Rate Limiting and Caching
 
 | Setting | Default | Description |
@@ -140,7 +152,8 @@ MWAI additionally uses `response_format: {"type": "json_object"}`.
 | `--all` | -- | Process all cases |
 | `--case` | -- | Process a specific case number |
 | `--skip` | `0` | Skip first N cases |
-| `--format` | `json` | Output format (`json` or `csv`) |
+| `--format` | `csv` | Output format (`json` or `csv`) |
+| `--mweaeval` | -- | Enable citation quality + response quality evaluation mode |
 | `--verbose`, `-v` | -- | Show per-agent scores and verdict reasoning |
 | `--debug` | -- | Show raw LLM prompts, responses, and API details |
 | `--token` | -- | MWAI bearer token |
