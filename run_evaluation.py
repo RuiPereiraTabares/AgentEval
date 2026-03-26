@@ -182,6 +182,7 @@ def main():
 
             result = {
                 'case_number': case['case_number'],
+                'ai_response': case.get('ai_response', ''),
                 'evaluation': evaluation,
                 'processing_time_seconds': round(elapsed, 2),
                 'error': None
@@ -322,6 +323,7 @@ def main():
             print(f"  ERROR: {e}")
             result = {
                 'case_number': case['case_number'],
+                'ai_response': case.get('ai_response', ''),
                 'evaluation': {},
                 'processing_time_seconds': 0,
                 'error': str(e)
