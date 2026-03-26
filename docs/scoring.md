@@ -20,6 +20,24 @@ SCORE_WEIGHTS = {
 
 All component scores are integers in the range 0-100. The overall score is rounded to the nearest integer.
 
+## Response Quality Score Formula (mweaeval)
+
+```
+ai_response_quality_score = response_quality * 0.40 + groundedness * 0.30 + issue_resolution * 0.30
+```
+
+Defined in `config/settings.py`:
+
+```python
+RESPONSE_QUALITY_WEIGHTS = {
+    "response_quality": 0.40,
+    "groundedness": 0.30,
+    "issue_resolution": 0.30
+}
+```
+
+The groundedness dimension is derived from CitationQualityAgent results (no additional LLM call). Response quality and issue resolution are evaluated together in a single LLM call by ResponseQualityAgent.
+
 ## Verdict Determination
 
 The overall verdict is determined by `ScoringUtils.get_overall_verdict()`:
@@ -86,6 +104,24 @@ Determined by `ScoringUtils.get_action_required()`:
 | 0-39 | `poorly_defined` | Vague or incomplete |
 
 **Reliability threshold:** `40` — if description quality score falls below this, `evaluation_reliability_warning` is set to `True` and the recommendation is prefixed with a LOW CONFIDENCE notice.
+
+### Response Quality Thresholds
+
+| Score Range | Verdict | Description |
+|-------------|---------|-------------|
+| 80-100 | `excellent` | High-quality, well-grounded, issue-resolving response |
+| 60-79 | `good` | Adequate response with minor gaps |
+| 40-59 | `fair` | Response has notable weaknesses |
+| 0-39 | `poor` | Inadequate or unsupported response |
+
+### Citation Grounding Thresholds
+
+| Score Range | Verdict | Description |
+|-------------|---------|-------------|
+| 70-100 | `well_grounded` | Claims are strongly supported by citations |
+| 50-69 | `partially_grounded` | Some claims supported, others not |
+| 25-49 | `poorly_grounded` | Weak citation support |
+| 0-24 | `ungrounded` | Citations do not support the response |
 
 ## Conditional Agent Triggers
 

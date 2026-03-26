@@ -23,6 +23,10 @@ TransferReason = Literal[
     "not_transferred", "unknown"
 ]
 
+CitationSupportVerdict = Literal["good", "partial", "bad"]
+CitationGroundingVerdict = Literal["well_grounded", "partially_grounded", "poorly_grounded", "ungrounded"]
+ResponseQualityVerdict = Literal["excellent", "good", "fair", "poor"]
+
 OverallVerdict = Literal["adequate", "needs_supplementation", "inadequate", "no_citation_provided"]
 ActionRequired = Literal["none", "add_context", "find_better_article", "create_content"]
 GapPriority = Literal["high", "medium", "low"]
@@ -186,6 +190,53 @@ GapRecommendation = Literal["augment_existing", "create_new", "combine_multiple"
 | `escalation_signals_detected` | `list[str]` | `[]` | Detected escalation signals |
 | `narrative` | `str` | `""` | Human-readable explanation |
 
+## PerCitationResult
+
+**File:** `models/evaluation.py`
+
+Result for a single citation evaluated by CitationQualityAgent.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `url` | `str` | — | Citation URL |
+| `support_score` | `int` | `0` | 0-100 score for how well this citation supports the AI response |
+| `support_verdict` | `CitationSupportVerdict` | `"bad"` | Verdict label |
+| `support_analysis` | `str` | `""` | Analysis text |
+| `fetch_success` | `bool` | `False` | Whether the article was successfully fetched |
+
+## CitationQualityResult
+
+**File:** `models/evaluation.py`
+
+Aggregated result from CitationQualityAgent across all citations.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `per_citation_results` | `list[PerCitationResult]` | `[]` | Individual results per citation |
+| `best_citation_url` | `str` | `""` | URL of the citation with the highest support score |
+| `best_citation_score` | `int` | `0` | Highest support score across all citations |
+| `grounding_score` | `int` | `0` | Overall grounding score (0-100) |
+| `grounding_verdict` | `CitationGroundingVerdict` | `"ungrounded"` | Overall grounding verdict |
+
+## ResponseQualityResult
+
+**File:** `models/evaluation.py`
+
+Result from ResponseQualityAgent combining response quality, groundedness, and issue resolution.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `response_quality_score` | `int` | `0` | Response quality dimension score (0-100) |
+| `response_quality_analysis` | `str` | `""` | Response quality analysis text |
+| `groundedness_score` | `int` | `0` | Groundedness dimension score (0-100) |
+| `groundedness_analysis` | `str` | `""` | Groundedness analysis text |
+| `issue_resolution_score` | `int` | `0` | Issue resolution dimension score (0-100) |
+| `issue_resolution_analysis` | `str` | `""` | Issue resolution analysis text |
+| `ai_response_quality_score` | `int` | `0` | Weighted overall score (0-100) |
+| `ai_response_quality_verdict` | `ResponseQualityVerdict` | `"poor"` | Overall verdict label |
+| `quality_weaknesses` | `list[str]` | `[]` | Identified weaknesses in the AI response |
+| `improvement_suggestions` | `list[str]` | `[]` | Suggestions for improving the AI response |
+
 ## EvaluationResult
 
 **File:** `models/evaluation.py`
@@ -205,6 +256,7 @@ The final output model returned by the Orchestrator.
 | `description_quality` | `dict` | `{}` | From DescriptionQualityAgent |
 | `evaluation_reliability_warning` | `bool` | `False` | Low confidence flag |
 | `transfer_analysis` | `dict` | `{}` | From TransferReasonAgent |
+| `response_quality` | `dict` | `{}` | From ResponseQualityAgent (mweaeval mode only) |
 
 ## Label Normalization Maps
 
@@ -214,6 +266,8 @@ LLMs return unpredictable label variants. Four label maps in `models/evaluation.
 - **`_COMPLETENESS_LABEL_MAP`** — ~40 entries mapping labels like `"comprehensive"` -> 95, `"limited"` -> 40, `"empty"` -> 0
 - **`_VALIDITY_LABEL_MAP`** — ~40 entries mapping labels like `"confirmed"` -> 90, `"questionable"` -> 45, `"ineffective"` -> 10
 - **`_DESCRIPTION_QUALITY_LABEL_MAP`** — ~30 entries mapping labels like `"thorough"` -> 85, `"vague"` -> 20, `"missing"` -> 0
+- **`_RESPONSE_QUALITY_LABEL_MAP`** — maps labels for AI response quality verdicts (e.g., `"excellent"` -> 90, `"good"` -> 70, `"fair"` -> 50, `"poor"` -> 20)
+- **`_CITATION_SUPPORT_LABEL_MAP`** — maps labels for citation support verdicts (e.g., `"good"` -> 80, `"partial"` -> 55, `"bad"` -> 15)
 
 ## Score Parsing Helpers
 

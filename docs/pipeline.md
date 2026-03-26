@@ -177,6 +177,43 @@ description_quality_score < 40?
     NO --> evaluation_reliability_warning = False
 ```
 
+## Citation Quality Pipeline (mweaeval)
+
+When running with `--mweaeval`, the orchestrator uses `evaluate_with_citations()` to evaluate AI response quality and citation grounding. This pipeline extends the standard flow with CitationQualityAgent and ResponseQualityAgent.
+
+```
+                    START: Orchestrator.evaluate_with_citations()
+                              |
+                    [Step 1] IssueParserAgent
+                         (1 LLM call)
+                              |
+                    [Step 2] DescriptionQualityAgent
+                         (1 LLM call)
+                              |
+                    [Step 3] CitationQualityAgent
+                         (N LLM calls — one per unique citation)
+                              |
+                         For each citation:
+                           fetch article content
+                           evaluate support for AI response claims
+                              |
+                    [Step 3b] R/C/V on best-grounding citation
+                         RelevanceAgent  (1 LLM)
+                         CompletenessAgent (1 LLM)
+                         ValidityAgent  (1 LLM)
+                              |
+                    [Step 4] ResponseQualityAgent
+                         (1 LLM call — evaluates Response Quality + Issue Resolution)
+                         (groundedness reused from CitationQualityAgent — free)
+                              |
+                    [Step 5] TransferReasonAgent
+                         (0-1 LLM calls — escalation detection conditional)
+                              |
+                         _build_final_result()
+                              |
+                             END
+```
+
 ## Per-Case LLM Call Count
 
 | Scenario | LLM Calls | Agents Used |
@@ -186,5 +223,6 @@ description_quality_score < 40?
 | Single URL, 60 <= score < 70 | 6 | Above + Search |
 | Single URL, score < 60 | 7 | Above + Search + Gap |
 | Multi-URL (N URLs) | 2 + 3N + 0-2 | Parser, DQ, (R+C+V)*N, +Search, +Gap |
+| mweaeval, N citations | 5 + N + 0-1 | Parser, DQ, CitationQuality*N, R+C+V (best), ResponseQuality + optional escalation |
 
 The TransferReasonAgent adds 0-1 LLM calls (only for escalation detection on longer texts).

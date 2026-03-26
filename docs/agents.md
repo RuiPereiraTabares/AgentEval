@@ -1,6 +1,6 @@
 # Agent Reference
 
-The system contains 9 agents: 1 base class, 1 orchestrator, and 7 specialized evaluation agents. All inherit from `BaseAgent` and follow the same evaluate/fallback pattern.
+The system contains 11 agents: 1 base class, 1 orchestrator, and 9 specialized evaluation agents. All inherit from `BaseAgent` and follow the same evaluate/fallback pattern.
 
 ## BaseAgent
 
@@ -225,6 +225,69 @@ See [KT Framework](kt-framework.md) for the full scoring guide.
 
 ---
 
+## CitationQualityAgent
+
+**File:** `agents/citation_quality_agent.py`
+**Role:** Evaluate whether cited articles support the claims made in the AI response.
+**LLM Prompt:** `AgentPrompts.CITATION_QUALITY_AGENT`
+
+**Inputs:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `ai_response` | `str` | The AI-generated response text |
+| `citation_urls` | `list[str]` | List of citation URLs from the response |
+| `article_fetcher` | `ArticleFetcher` | Fetcher instance for retrieving citation content |
+
+**Output:** `CitationQualityResult`
+
+**Evaluation flow:** One LLM call per unique citation URL. Each citation is fetched and evaluated against the AI response claims it is supposed to support.
+
+**Scoring:**
+- 70+: `good` — citation strongly supports the claims
+- 40-69: `partial` — citation partially supports the claims
+- 0-39: `bad` — citation does not support the claims
+
+**Fallback:** Returns score 0 (`bad`) for citations that fail to fetch or when the LLM call fails.
+
+---
+
+## ResponseQualityAgent
+
+**File:** `agents/response_quality_agent.py`
+**Role:** Multi-dimensional AI response quality evaluation combining response quality, groundedness, and issue resolution.
+**LLM Prompt:** `AgentPrompts.RESPONSE_QUALITY_AGENT`
+
+**Inputs:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `issue` | `Issue` | Parsed customer issue |
+| `ai_response` | `str` | The AI-generated response text |
+| `citation_quality_result` | `CitationQualityResult` | Result from CitationQualityAgent |
+
+**Output:** `ResponseQualityResult`
+
+**LLM calls:** 1 LLM call evaluating Response Quality + Issue Resolution together. Groundedness is reused from CitationQualityAgent (free — no additional LLM call).
+
+**Scoring weights:**
+
+| Dimension | Weight | Description |
+|-----------|--------|-------------|
+| `response_quality` | 0.40 | Clarity, completeness, and usefulness of the response |
+| `groundedness` | 0.30 | How well the response is supported by cited sources |
+| `issue_resolution` | 0.30 | How effectively the response addresses the customer's issue |
+
+**Verdict thresholds:**
+- 80+: `excellent`
+- 60-79: `good`
+- 40-59: `fair`
+- <40: `poor`
+
+**Fallback:** Returns groundedness-only score when the LLM call fails.
+
+---
+
 ## Orchestrator
 
 **File:** `agents/orchestrator.py`
@@ -244,13 +307,15 @@ See [KT Framework](kt-framework.md) for the full scoring guide.
 
 **Coordination logic:**
 
-1. Initializes all 8 agents with the same client/model/provider
+1. Initializes all 10 agents with the same client/model/provider
 2. Parses issue via IssueParserAgent
 3. Runs DescriptionQualityAgent, checks reliability threshold
 4. For multi-URL cases, evaluates each article and keeps the **best score**
 5. Conditionally triggers SearchAgent and GapAnalysisAgent
 6. Runs TransferReasonAgent last (needs all upstream scores)
 7. Builds final result with `_build_final_result()` or `_handle_no_citation()`
+
+**Citation quality path (`evaluate_with_citations()`):** When running in `--mweaeval` mode, the orchestrator uses `evaluate_with_citations()` which coordinates the CitationQualityAgent and ResponseQualityAgent in addition to the standard pipeline agents.
 
 **No-citation path:** When no URLs are provided, the orchestrator calls `_handle_no_citation()` which runs SearchAgent and GapAnalysisAgent immediately, then TransferReasonAgent with `contains_citations=False`.
 
