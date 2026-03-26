@@ -170,11 +170,47 @@ def read_mweaeval_csv_cases(
             count += 1
 
 
+def _max_citations(results: list[dict]) -> int:
+    """Find the maximum number of per-citation results across all cases."""
+    mx = 0
+    for r in results:
+        pcr = r.get('evaluation', {}).get('citation_quality', {}).get('per_citation_results', [])
+        mx = max(mx, len(pcr))
+    return mx
+
+
+def _flatten_per_citation(pcr_list: list[dict], max_citations: int) -> dict:
+    """Flatten per-citation results into numbered columns.
+
+    Produces: citation_1_url, citation_1_score, citation_1_verdict, citation_1_coverage,
+              citation_1_reasoning, citation_2_url, ...
+    """
+    flat = {}
+    for idx in range(max_citations):
+        p = f'citation_{idx + 1}_'
+        if idx < len(pcr_list):
+            pcr = pcr_list[idx]
+            flat[f'{p}url'] = pcr.get('url', '')
+            flat[f'{p}score'] = pcr.get('support_score', 0)
+            flat[f'{p}verdict'] = pcr.get('verdict', '')
+            flat[f'{p}coverage'] = pcr.get('coverage_percentage', 0)
+            flat[f'{p}reasoning'] = pcr.get('support_reasoning', '')
+        else:
+            flat[f'{p}url'] = ''
+            flat[f'{p}score'] = ''
+            flat[f'{p}verdict'] = ''
+            flat[f'{p}coverage'] = ''
+            flat[f'{p}reasoning'] = ''
+    return flat
+
+
 def write_results_csv(results: list[dict], output_path: str):
     """Write evaluation results to CSV file."""
     if not results:
         logger.warning("No results to write")
         return
+
+    max_cit = _max_citations(results)
 
     # Flatten results for CSV
     flat_results = []
@@ -250,7 +286,7 @@ def write_results_csv(results: list[dict], output_path: str):
                 eval_data.get('transfer_analysis', {}).get('escalation_signals_detected', [])
             ),
             'transfer_narrative': eval_data.get('transfer_analysis', {}).get('narrative', ''),
-            # Citation quality
+            # Citation quality — summary
             'citation_grounding_score': cq.get('overall_grounding_score', ''),
             'citation_grounding_verdict': cq.get('overall_verdict', ''),
             'cited_percentage': cq.get('cited_percentage', ''),
@@ -259,6 +295,10 @@ def write_results_csv(results: list[dict], output_path: str):
             'citations_good': cq.get('citations_good', ''),
             'citations_partial': cq.get('citations_partial', ''),
             'citations_bad': cq.get('citations_bad', ''),
+        }
+        # Citation quality — per-citation breakdown
+        flat.update(_flatten_per_citation(cq.get('per_citation_results', []), max_cit))
+        flat.update({
             # Response quality (multi-dimensional)
             'ai_response_quality_score': rq.get('ai_response_quality_score', ''),
             'ai_response_quality_verdict': rq.get('ai_response_quality_verdict', ''),
@@ -274,11 +314,14 @@ def write_results_csv(results: list[dict], output_path: str):
             'final_recommendation': eval_data.get('final_recommendation', ''),
             'processing_time_ms': r.get('processing_time_ms', 0),
             'error': r.get('error', '')
-        }
+        })
         flat_results.append(flat)
 
+    # Collect all fieldnames in stable order
+    fieldnames = list(flat_results[0].keys()) if flat_results else []
+
     with open(output_path, 'w', newline='', encoding='utf-8') as f:
-        writer = csv.DictWriter(f, fieldnames=flat_results[0].keys())
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
         writer.writerows(flat_results)
 
@@ -327,7 +370,7 @@ def write_results_csv_summary(results: list[dict], output_path: str):
             'description_quality_verdict': dq.get('description_quality_verdict', ''),
             'description_missing': '; '.join(dq.get('missing_kt_elements', [])),
             'description_improvements': '; '.join(dq.get('improvement_suggestions', [])),
-            # Citation quality
+            # Citation quality — summary
             'citation_grounding_score': cq.get('overall_grounding_score', ''),
             'citation_grounding_verdict': cq.get('overall_verdict', ''),
             'cited_percentage': cq.get('cited_percentage', ''),
@@ -336,6 +379,11 @@ def write_results_csv_summary(results: list[dict], output_path: str):
             'citations_good': cq.get('citations_good', ''),
             'citations_partial': cq.get('citations_partial', ''),
             'citations_bad': cq.get('citations_bad', ''),
+        }
+        # Citation quality — per-citation breakdown
+        max_cit = _max_citations(results)
+        flat.update(_flatten_per_citation(cq.get('per_citation_results', []), max_cit))
+        flat.update({
             # Response quality (multi-dimensional)
             'ai_response_quality_score': rq.get('ai_response_quality_score', ''),
             'ai_response_quality_verdict': rq.get('ai_response_quality_verdict', ''),
@@ -349,11 +397,14 @@ def write_results_csv_summary(results: list[dict], output_path: str):
             # Final
             'final_recommendation': eval_data.get('final_recommendation', ''),
             'error': r.get('error', ''),
-        }
+        })
         flat_results.append(flat)
 
+    # Collect all fieldnames in stable order
+    fieldnames = list(flat_results[0].keys()) if flat_results else []
+
     with open(output_path, 'w', newline='', encoding='utf-8') as f:
-        writer = csv.DictWriter(f, fieldnames=flat_results[0].keys())
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
         writer.writerows(flat_results)
 
