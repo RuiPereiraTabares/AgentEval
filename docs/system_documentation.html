@@ -1427,7 +1427,7 @@
   <p>The system produces both detailed and summary CSV outputs, plus optional JSON.</p>
 
   <h3>Detailed CSV <span style="font-weight:400; font-size:13px; color:var(--text-muted);">(evaluation_results_*.csv)</span></h3>
-  <p>51 columns covering every aspect of the evaluation:</p>
+  <p>51+ columns covering every aspect of the evaluation (column count varies in mweaeval mode due to dynamic per-citation columns):</p>
   <div style="display:flex; flex-wrap:wrap; gap:6px; margin:10px 0;">
     <span class="card-tag" style="background:var(--accent-light);color:var(--accent);">Case Info</span>
     <code>case_number</code> <code>issue_description</code> <code>issue_product</code> <code>issue_type</code> <code>article_url</code>
@@ -1457,13 +1457,32 @@
     <code>transfer_reason</code> <code>transfer_confidence</code> <code>transferred</code> <code>sr_status</code> <code>reopened</code> <code>transfer_contributing_factors</code> <code>transfer_escalation_signals</code> <code>transfer_narrative</code>
   </div>
   <div style="display:flex; flex-wrap:wrap; gap:6px; margin:4px 0;">
+    <span class="card-tag" style="background:var(--teal-light);color:var(--teal);">Citation Quality</span>
+    <span style="font-size:12px; color:var(--text-muted);">(mweaeval mode)</span>
+    <code>citation_grounding_score</code> <code>citation_grounding_verdict</code> <code>cited_percentage</code> <code>uncited_percentage</code> <code>total_citations</code> <code>citations_good</code> <code>citations_partial</code> <code>citations_bad</code>
+  </div>
+  <div style="display:flex; flex-wrap:wrap; gap:6px; margin:4px 0;">
+    <span class="card-tag" style="background:var(--teal-light);color:var(--teal);">Per-Citation Breakdown</span>
+    <span style="font-size:12px; color:var(--text-muted);">(mweaeval mode &mdash; N columns per citation)</span>
+    <code>citation_N_url</code> <code>citation_N_score</code> <code>citation_N_verdict</code> <code>citation_N_coverage</code> <code>citation_N_reasoning</code>
+  </div>
+  <div style="background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:14px 18px; margin:8px 0 16px 0; font-size:13px;">
+    <strong>Note:</strong> The per-citation columns are dynamically generated based on the maximum number of citations across all evaluated cases.
+    For example, if the case with the most citations has 4, the CSV will contain <code>citation_1_url</code> through <code>citation_4_url</code> (and the same for <code>_score</code>, <code>_verdict</code>, <code>_coverage</code>, <code>_reasoning</code>).
+    Cases with fewer citations have empty values for the extra columns.
+  </div>
+  <div style="display:flex; flex-wrap:wrap; gap:6px; margin:4px 0;">
+    <span class="card-tag" style="background:var(--purple-light);color:var(--purple);">Response Quality</span>
+    <span style="font-size:12px; color:var(--text-muted);">(mweaeval mode)</span>
+    <code>ai_response_quality_score</code> <code>ai_response_quality_verdict</code> <code>response_quality_score</code> <code>groundedness_score</code> <code>issue_resolution_score</code> <code>ai_response</code>
+  </div>
+  <div style="display:flex; flex-wrap:wrap; gap:6px; margin:4px 0;">
     <span class="card-tag" style="background:#f1f3f5;color:var(--text-muted);">Meta</span>
     <code>final_recommendation</code> <code>processing_time_ms</code> <code>error</code>
   </div>
 
   <h3>Summary CSV <span style="font-weight:400; font-size:13px; color:var(--text-muted);">(evaluation_summary_*.csv)</span></h3>
-  <p>21 columns &mdash; a condensed view for quick review:</p>
-  <p><code>case_number</code>, <code>issue_description</code>, <code>overall_score</code>, <code>verdict</code>, scores &amp; verdicts for relevance/completeness/validity/description quality, <code>transfer_reason</code>, <code>transfer_narrative</code>, <code>final_recommendation</code>, <code>error</code>.</p>
+  <p>Condensed view for quick review, including all citation quality and response quality columns from the detailed CSV. Also includes per-citation breakdown columns (<code>citation_N_url</code>, <code>citation_N_score</code>, <code>citation_N_verdict</code>, <code>citation_N_coverage</code>, <code>citation_N_reasoning</code>).</p>
 
   <h3>Data Models: CitationQualityResult &amp; ResponseQualityResult</h3>
   <p>Two new dataclasses introduced by the mweaeval pipeline:</p>
