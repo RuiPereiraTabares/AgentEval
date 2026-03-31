@@ -9,6 +9,10 @@ Usage:
     python run_evaluation.py --case 2508270010003948  # Process specific case
     python run_evaluation.py --token eyJ0eX...  # explicit MWAI token
     python run_evaluation.py --new-token        # force re-prompt for token
+
+Batch mode:
+    python run_evaluation.py --batch-size 50 -i merged_output.csv   # Process first 50
+    python run_evaluation.py --batch-size 50 --continue -i merged_output.csv  # Next 50
 """
 
 import os
@@ -53,7 +57,43 @@ def main():
     parser.add_argument('--token', help='MWAI bearer token. If not provided, will use cached token or prompt interactively.')
     parser.add_argument('--new-token', action='store_true', help='Force re-prompt for a new MWAI token (ignore cache)')
 
+    # Batch mode
+    parser.add_argument('--batch-size', type=int, help='Number of cases per batch (enables batch mode)')
+    parser.add_argument('--continue', dest='continue_batch', action='store_true',
+                        help='Continue from where the last batch left off (requires --batch-size)')
+
     args = parser.parse_args()
+
+    BATCH_STATE_FILE = '.batch_state.json'
+
+    # Validate batch args
+    if args.continue_batch and not args.batch_size:
+        parser.error('--continue requires --batch-size')
+    if args.batch_size and args.all:
+        parser.error('--batch-size and --all are mutually exclusive')
+
+    # Resolve skip/limit for batch mode
+    batch_mode = args.batch_size is not None and not args.case
+    if batch_mode:
+        if args.continue_batch:
+            if not os.path.exists(BATCH_STATE_FILE):
+                print("ERROR: No batch state file found. Run without --continue first.")
+                sys.exit(1)
+            with open(BATCH_STATE_FILE, 'r') as f:
+                batch_state = json.load(f)
+            if os.path.abspath(args.input) != os.path.abspath(batch_state.get('input_file', '')):
+                print(f"ERROR: Input file mismatch. State expects '{batch_state['input_file']}', got '{args.input}'")
+                sys.exit(1)
+            skip = batch_state['last_offset']
+            limit = args.batch_size
+            print(f"Continuing from case {skip + 1} (batch size: {args.batch_size})")
+        else:
+            skip = args.skip
+            limit = args.batch_size
+            print(f"Batch mode: processing cases {skip + 1}-{skip + args.batch_size}")
+    else:
+        skip = args.skip
+        limit = None if args.all else args.limit
 
     # Configure logging based on verbosity
     if args.debug:
@@ -94,11 +134,10 @@ def main():
 
     # Read cases
     print(f"Reading cases from {args.input}...")
-    limit = None if args.all else args.limit
     if args.mweaeval:
-        cases = list(read_mweaeval_csv_cases(args.input, limit=limit, skip=args.skip))
+        cases = list(read_mweaeval_csv_cases(args.input, limit=limit, skip=skip))
     else:
-        cases = list(read_csv_cases(args.input, limit=limit, skip=args.skip))
+        cases = list(read_csv_cases(args.input, limit=limit, skip=skip))
 
     # Filter for specific case if requested
     if args.case:
@@ -341,6 +380,22 @@ def main():
         write_results_csv(results, output_file)
     print(f"Writing summary CSV to {output_summary}...")
     write_results_csv_summary(results, output_summary)
+
+    # Save batch state
+    if batch_mode:
+        new_offset = skip + len(results)
+        prev_total = batch_state.get('cases_processed_total', 0) if args.continue_batch else 0
+        state = {
+            'input_file': os.path.abspath(args.input),
+            'last_offset': new_offset,
+            'batch_size': args.batch_size,
+            'cases_processed_total': prev_total + len(results),
+            'timestamp': datetime.now().isoformat(),
+        }
+        with open(BATCH_STATE_FILE, 'w') as f:
+            json.dump(state, f, indent=2)
+        print(f"\nBatch complete. {len(results)} cases processed (total: {state['cases_processed_total']}).")
+        print(f"Run with --continue to process next {args.batch_size} cases.")
 
     # Summary
     print("\n" + "=" * 50)

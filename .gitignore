@@ -16,6 +16,9 @@ venv/
 evaluation_results_*
 evaluation_summary_*
 
+# Batch state
+.batch_state.json
+
 # IDE
 .vscode/
 .idea/
