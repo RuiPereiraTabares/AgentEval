@@ -228,7 +228,7 @@ def write_results_csv(results: list[dict], output_path: str):
             'case_number': r.get('case_number', ''),
             'ai_response': r.get('ai_response', ''),
             'issue_description': eval_data.get('issue_summary', {}).get('raw_description', ''),
-            'issue_product': eval_data.get('issue_summary', {}).get('product', ''),
+            'issue_product': r.get('sap_path', '').split('/')[0].strip() if r.get('sap_path') else '',
             'issue_type': eval_data.get('issue_summary', {}).get('issue_type', ''),
             'article_url': article_eval.get('url', ''),
             'overall_score': eval_data.get('overall_score', 0),
@@ -480,6 +480,7 @@ def process_cases(
 
             result = {
                 'case_number': case['case_number'],
+                'sap_path': case.get('sap_path', ''),
                 'evaluation': evaluation,
                 'processing_time_ms': round(processing_time),
                 'error': None
@@ -493,6 +494,7 @@ def process_cases(
             logger.error(f"Error processing case {case['case_number']}: {e}")
             result = {
                 'case_number': case['case_number'],
+                'sap_path': case.get('sap_path', ''),
                 'evaluation': {},
                 'processing_time_ms': 0,
                 'error': str(e)
