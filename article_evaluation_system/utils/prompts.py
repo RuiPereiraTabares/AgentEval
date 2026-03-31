@@ -33,7 +33,9 @@ Respond ONLY with valid JSON in this exact format:
     "keywords": ["search", "keywords"],
     "environment": {"os": "string", "browser": "string"},
     "severity": "low|medium|high|critical"
-}"""
+}
+
+IMPORTANT — REDACTED CONTENT: Issue descriptions may contain placeholders like [REDACTED], [PII], [EUII], or similar markers where personally identifiable information has been removed for privacy. Ignore these placeholders — do not treat them as missing information. Extract what you can from the surrounding technical content."""
 
     RELEVANCE_AGENT = """You are an expert at evaluating whether Microsoft support articles match customer issues.
 
@@ -221,6 +223,8 @@ Issue: "Email is not working for some users. Please help urgently."
 Output:
 {"identity_score": 25, "identity_analysis": "Email mentioned but no specific product (Outlook? Exchange? M365?), no error code, vague symptom (not working)", "location_score": 5, "location_analysis": "No environment, no server, no client info, no region", "timing_score": 5, "timing_analysis": "No start time, no pattern, no trigger mentioned", "magnitude_score": 20, "magnitude_analysis": "Some users mentioned but not quantified, no trend", "description_quality_score": 16, "description_quality_verdict": "poorly_defined", "missing_kt_elements": ["Specific email product/service", "Error messages or codes", "Environment details", "When the issue started", "How many users affected", "What exactly is not working"], "improvement_suggestions": ["Identify the specific email product (Outlook, Exchange Online, etc.)", "Capture any error messages or codes", "Document when the issue started and if it is continuous or intermittent", "Count the number of affected users and their location/region"]}
 
+IMPORTANT — REDACTED CONTENT: Issue descriptions may contain placeholders like [REDACTED], [PII], [EUII], or similar markers where personally identifiable information has been removed for privacy. Treat redacted placeholders as normal content — do NOT penalize scores, flag as missing information, or mention redaction in your analysis. Evaluate only the substantive technical content around the redactions.
+
 Be STRICT in your scoring. Most support tickets are poorly structured — do not give high scores unless the information is genuinely specific and actionable."""
 
     TRANSFER_REASON_ESCALATION_DETECTION = """You are an expert at detecting customer escalation signals in support case descriptions.
@@ -279,7 +283,9 @@ Scoring guide:
 - 0-39 (bad): Article does not meaningfully support the cited claims
 
 Example output:
-{"support_score": 75, "verdict": "good", "support_reasoning": "The article describes the exact PowerShell commands referenced in the AI response and covers the same configuration steps.", "key_claims_supported": ["Use Set-MsolUser to update UPN", "Azure AD Connect sync required after change"], "key_claims_unsupported": ["24-hour propagation delay claim not mentioned in article"]}"""
+{"support_score": 75, "verdict": "good", "support_reasoning": "The article describes the exact PowerShell commands referenced in the AI response and covers the same configuration steps.", "key_claims_supported": ["Use Set-MsolUser to update UPN", "Azure AD Connect sync required after change"], "key_claims_unsupported": ["24-hour propagation delay claim not mentioned in article"]}
+
+IMPORTANT — REDACTED CONTENT: The AI response text may contain placeholders like [REDACTED], [PII], [EUII], or similar markers where personally identifiable information has been removed for privacy. Ignore these placeholders — do not treat redacted text as unsupported claims or flag them in your analysis."""
 
     RESPONSE_QUALITY_AGENT = """You are an expert at evaluating the quality of AI-generated customer support responses.
 
@@ -333,6 +339,8 @@ Scoring guide per dimension:
 
 Example output:
 {"response_quality_score": 72, "response_quality_analysis": "Response provides clear PowerShell commands for the fix but lacks explanation of root cause and does not mention rollback steps.", "issue_resolution_score": 65, "issue_resolution_analysis": "Addresses the Teams connectivity issue but suggests steps for desktop client while customer is on mobile.", "quality_weaknesses": ["No root cause explanation", "Platform mismatch (desktop vs mobile)"], "improvement_suggestions": ["Add mobile-specific troubleshooting steps", "Explain why the issue occurs"]}
+
+IMPORTANT — REDACTED CONTENT: The customer issue and AI response may contain placeholders like [REDACTED], [PII], [EUII], or similar markers where personally identifiable information has been removed for privacy. Treat redacted placeholders as normal content — do NOT penalize scores, flag as a weakness, or mention redaction in your analysis. Evaluate only the substantive technical content around the redactions.
 
 Be STRICT. Most AI responses are generic — do not give high scores unless the response is genuinely specific, actionable, and tailored to the customer's issue."""
 
