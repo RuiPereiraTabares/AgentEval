@@ -342,23 +342,6 @@ def main():
                     if rq.get('improvement_suggestions'):
                         print(f"    Suggestions: {'; '.join(rq['improvement_suggestions'][:3])}")
 
-                # Show transfer analysis
-                ta = evaluation.get('transfer_analysis', {})
-                if ta:
-                    print(f"  --- Transfer Analysis ---")
-                    print(f"  Transfer reason: {ta.get('transfer_reason', '?')}")
-                    print(f"  Confidence: {ta.get('confidence', '?')}")
-                    print(f"  Transferred: {ta.get('transferred', '?')}  "
-                          f"SR Status: {ta.get('sr_status', '?')}  "
-                          f"Reopened: {ta.get('reopened', '?')}")
-                    if ta.get('contributing_factors'):
-                        for factor in ta['contributing_factors'][:4]:
-                            print(f"    - {factor}")
-                    if ta.get('escalation_signals_detected'):
-                        print(f"  Escalation signals: {', '.join(ta['escalation_signals_detected'][:3])}")
-                    if ta.get('narrative'):
-                        print(f"  Narrative: {ta['narrative'][:200]}")
-
         except Exception as e:
             print(f"  ERROR: {e}")
             result = {
@@ -463,17 +446,6 @@ def main():
         print(f"Citation quality:")
         print(f"  - Average grounding score: {avg_cq}/100")
         print(f"  - Citations: {total_good} good, {total_partial} partial, {total_bad} bad")
-
-    # Transfer reason breakdown
-    transfer_reasons = {}
-    for r in results:
-        reason = r.get('evaluation', {}).get('transfer_analysis', {}).get('transfer_reason', '')
-        if reason:
-            transfer_reasons[reason] = transfer_reasons.get(reason, 0) + 1
-    if transfer_reasons:
-        print(f"Transfer reason breakdown:")
-        for reason, count in sorted(transfer_reasons.items(), key=lambda x: -x[1]):
-            print(f"  - {reason}: {count}")
 
     print(f"\nResults saved to:")
     print(f"  Detailed: {output_file}")
