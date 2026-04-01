@@ -87,7 +87,7 @@ def read_csv_cases(
                 'datetime': row.get('DateTime', ''),
                 'sap_product_name': row.get('SapProductName', ''),
                 'sap_product_family': row.get('SapProductFamily', ''),
-                'sap_path': row.get('SapPath_mwai', '') or row.get('SapPath', ''),
+                'sap_path': row.get('SapPath_mwai', '') or row.get('SapPath', '') or row.get('SapPath1', ''),
                 'sap_name': row.get('SapName', ''),
                 'transferred': transferred,
                 'sr_status': row.get('SRStatus', '') or row.get('SR Status', ''),
@@ -161,7 +161,7 @@ def read_mweaeval_csv_cases(
                 'language': row.get('Language', 'en-US'),
                 'sap_product_name': row.get('SapProductName', ''),
                 'sap_product_family': row.get('SapProductFamily', ''),
-                'sap_path': row.get('SapPath_mwai', '') or row.get('SapPath', ''),
+                'sap_path': row.get('SapPath_mwai', '') or row.get('SapPath', '') or row.get('SapPath1', ''),
                 'sap_name': row.get('SapName', ''),
                 'transferred': transferred,
                 'sr_status': row.get('SRStatus', '') or row.get('SR Status', ''),
@@ -229,6 +229,7 @@ def write_results_csv(results: list[dict], output_path: str):
             'ai_response': r.get('ai_response', ''),
             'issue_description': eval_data.get('issue_summary', {}).get('raw_description', ''),
             'issue_product': r.get('sap_path', '').split('/')[0].strip() if r.get('sap_path') else '',
+            'sap_path': r.get('sap_path', ''),
             'issue_type': eval_data.get('issue_summary', {}).get('issue_type', ''),
             'article_url': article_eval.get('url', ''),
             'overall_score': eval_data.get('overall_score', 0),
@@ -273,19 +274,6 @@ def write_results_csv(results: list[dict], output_path: str):
             'kt_missing_elements': '; '.join(dq.get('missing_kt_elements', [])),
             'kt_improvement_suggestions': '; '.join(dq.get('improvement_suggestions', [])),
             'evaluation_reliability_warning': eval_data.get('evaluation_reliability_warning', False),
-            # Transfer analysis
-            'transfer_reason': eval_data.get('transfer_analysis', {}).get('transfer_reason', ''),
-            'transfer_confidence': eval_data.get('transfer_analysis', {}).get('confidence', ''),
-            'transferred': eval_data.get('transfer_analysis', {}).get('transferred', ''),
-            'sr_status': eval_data.get('transfer_analysis', {}).get('sr_status', ''),
-            'reopened': eval_data.get('transfer_analysis', {}).get('reopened', ''),
-            'transfer_contributing_factors': '; '.join(
-                eval_data.get('transfer_analysis', {}).get('contributing_factors', [])
-            ),
-            'transfer_escalation_signals': '; '.join(
-                eval_data.get('transfer_analysis', {}).get('escalation_signals_detected', [])
-            ),
-            'transfer_narrative': eval_data.get('transfer_analysis', {}).get('narrative', ''),
             # Citation quality — summary
             'citation_grounding_score': cq.get('overall_grounding_score', ''),
             'citation_grounding_verdict': cq.get('overall_verdict', ''),
@@ -342,7 +330,6 @@ def write_results_csv_summary(results: list[dict], output_path: str):
         comp = article_eval.get('completeness', {})
         val = article_eval.get('validity', {})
         dq = eval_data.get('description_quality', {})
-        ta = eval_data.get('transfer_analysis', {})
         cq = eval_data.get('citation_quality', {})
         rq = eval_data.get('response_quality', {})
 
@@ -350,6 +337,8 @@ def write_results_csv_summary(results: list[dict], output_path: str):
             'case_number': r.get('case_number', ''),
             'ai_response': r.get('ai_response', ''),
             'issue_description': eval_data.get('issue_summary', {}).get('raw_description', ''),
+            'issue_product': r.get('sap_path', '').split('/')[0].strip() if r.get('sap_path') else '',
+            'sap_path': r.get('sap_path', ''),
             'overall_score': eval_data.get('overall_score', 0),
             'verdict': eval_data.get('verdict', ''),
             # Relevance — score + reasons
@@ -391,9 +380,6 @@ def write_results_csv_summary(results: list[dict], output_path: str):
             'rq_groundedness_score': rq.get('groundedness_score', ''),
             'rq_issue_resolution_score': rq.get('issue_resolution_score', ''),
             'rq_quality_weaknesses': '; '.join(rq.get('quality_weaknesses', [])),
-            # Transfer
-            'transfer_reason': ta.get('transfer_reason', ''),
-            'transfer_narrative': ta.get('narrative', ''),
             # Final
             'final_recommendation': eval_data.get('final_recommendation', ''),
             'error': r.get('error', ''),
