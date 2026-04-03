@@ -178,6 +178,18 @@ python run_evaluation.py --debug
 python run_evaluation.py --format csv
 ```
 
+### Batch Mode
+
+```bash
+# Process first 50 cases as a batch
+python run_evaluation.py --batch-size 50 -i merged_output.csv
+
+# Continue from where the last batch left off
+python run_evaluation.py --batch-size 50 --continue -i merged_output.csv
+```
+
+Batch state is persisted in `.batch_state.json`. The `--continue` flag requires `--batch-size` and will error if no state file exists or if the input file has changed.
+
 ### MWAI Authentication Examples
 
 ```bash
@@ -227,7 +239,7 @@ See [Configuration > CLI Arguments](configuration.md#cli-arguments).
 | `DateTime` | Case datetime |
 | `SapProductName` | Product name from SAP taxonomy |
 | `SapProductFamily` | Product family from SAP taxonomy |
-| `SapPath_mwai` (or `SapPath`) | SAP path |
+| `SapPath_mwai` (or `SapPath` or `SapPath1`) | SAP path |
 | `SapName` | SAP short name |
 | `Transferred` | `TRUE`/`FALSE` — whether case was transferred |
 | `SRStatus` (or `SR Status`) | Service request status |
@@ -235,11 +247,11 @@ See [Configuration > CLI Arguments](configuration.md#cli-arguments).
 
 ## CSV Output Format
 
-### Detailed CSV (~45 columns)
+### Detailed CSV (~45+ columns)
 
-Produced by `write_results_csv()`. Contains every field from the evaluation:
+Produced by `write_results_csv()`. Contains every field from the evaluation (column count varies in mweaeval mode due to dynamic per-citation columns):
 
-**Core:** `case_number`, `issue_product`, `issue_type`, `article_url`, `overall_score`, `verdict`, `action_required`
+**Core:** `case_number`, `ai_response`, `issue_description`, `issue_product`, `sap_path`, `issue_type`, `article_url`, `overall_score`, `verdict`, `action_required`
 
 **Relevance:** `relevance_score`, `relevance_verdict`, `relevance_matched_aspects`, `relevance_unmatched_aspects`, `relevance_product_match`, `relevance_version_match`, `relevance_is_outdated`
 
@@ -249,17 +261,23 @@ Produced by `write_results_csv()`. Contains every field from the evaluation:
 
 **Description Quality:** `description_quality_score`, `description_quality_verdict`, `kt_identity_score`, `kt_location_score`, `kt_timing_score`, `kt_magnitude_score`, `kt_identity_analysis`, `kt_location_analysis`, `kt_timing_analysis`, `kt_magnitude_analysis`, `kt_missing_elements`, `kt_improvement_suggestions`, `evaluation_reliability_warning`
 
-**Transfer:** `transfer_reason`, `transfer_confidence`, `transferred`, `sr_status`, `reopened`, `transfer_contributing_factors`, `transfer_escalation_signals`, `transfer_narrative`
+**Citation Quality (mweaeval):** `citation_grounding_score`, `citation_grounding_verdict`, `cited_percentage`, `uncited_percentage`, `citations_total`, `citations_good`, `citations_partial`, `citations_bad`
+
+**Per-Citation Breakdown (mweaeval):** `citation_N_url`, `citation_N_score`, `citation_N_verdict`, `citation_N_coverage`, `citation_N_reasoning` (dynamically generated based on max citations across cases)
+
+**Response Quality (mweaeval):** `ai_response_quality_score`, `ai_response_quality_verdict`, `rq_response_quality_score`, `rq_response_quality_analysis`, `rq_groundedness_score`, `rq_groundedness_analysis`, `rq_issue_resolution_score`, `rq_issue_resolution_analysis`, `rq_quality_weaknesses`, `rq_improvement_suggestions`
 
 **Summary:** `final_recommendation`, `processing_time_ms`, `error`
 
+> **Note:** Transfer analysis columns (`transfer_reason`, `transfer_confidence`, etc.) are no longer exported to CSV. The TransferReasonAgent still runs internally and its results are available in the JSON output and the `EvaluationResult` object.
+
 List fields use `; ` as separator.
 
-### Summary CSV (21 columns)
+### Summary CSV
 
-Produced by `write_results_csv_summary()`. Key scores and reasons only:
+Produced by `write_results_csv_summary()`. Key scores and reasons, plus citation quality and response quality columns:
 
-`case_number`, `overall_score`, `verdict`, `relevance_score`, `relevance_verdict`, `relevance_matched`, `relevance_unmatched`, `completeness_score`, `completeness_verdict`, `completeness_missing`, `validity_score`, `validity_verdict`, `validity_issues`, `description_quality_score`, `description_quality_verdict`, `description_missing`, `description_improvements`, `transfer_reason`, `transfer_narrative`, `final_recommendation`, `error`
+`case_number`, `ai_response`, `issue_description`, `issue_product`, `sap_path`, `overall_score`, `verdict`, `relevance_score`, `relevance_verdict`, `relevance_matched`, `relevance_unmatched`, `completeness_score`, `completeness_verdict`, `completeness_missing`, `validity_score`, `validity_verdict`, `validity_issues`, `description_quality_score`, `description_quality_verdict`, `description_missing`, `description_improvements`, `citation_grounding_score`, `citation_grounding_verdict`, `cited_percentage`, `uncited_percentage`, `citations_total`, `citations_good`, `citations_partial`, `citations_bad`, `citation_N_*` (per-citation breakdown), `ai_response_quality_score`, `ai_response_quality_verdict`, `rq_response_quality_score`, `rq_groundedness_score`, `rq_issue_resolution_score`, `rq_quality_weaknesses`, `final_recommendation`, `error`
 
 ## JSON Output Format
 
