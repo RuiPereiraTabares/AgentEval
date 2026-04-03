@@ -1427,10 +1427,10 @@
   <p>The system produces both detailed and summary CSV outputs, plus optional JSON.</p>
 
   <h3>Detailed CSV <span style="font-weight:400; font-size:13px; color:var(--text-muted);">(evaluation_results_*.csv)</span></h3>
-  <p>51+ columns covering every aspect of the evaluation (column count varies in mweaeval mode due to dynamic per-citation columns):</p>
+  <p>45+ columns covering every aspect of the evaluation (column count varies in mweaeval mode due to dynamic per-citation columns):</p>
   <div style="display:flex; flex-wrap:wrap; gap:6px; margin:10px 0;">
     <span class="card-tag" style="background:var(--accent-light);color:var(--accent);">Case Info</span>
-    <code>case_number</code> <code>issue_description</code> <code>issue_product</code> <code>issue_type</code> <code>article_url</code>
+    <code>case_number</code> <code>ai_response</code> <code>issue_description</code> <code>issue_product</code> <code>sap_path</code> <code>issue_type</code> <code>article_url</code>
   </div>
   <div style="display:flex; flex-wrap:wrap; gap:6px; margin:4px 0;">
     <span class="card-tag" style="background:var(--success-light);color:var(--success);">Overall</span>
@@ -1452,9 +1452,8 @@
     <span class="card-tag" style="background:var(--purple-light);color:var(--purple);">Description Quality</span>
     <code>description_quality_score</code> <code>description_quality_verdict</code> <code>kt_identity_score</code> <code>kt_location_score</code> <code>kt_timing_score</code> <code>kt_magnitude_score</code> <code>kt_identity_analysis</code> <code>kt_location_analysis</code> <code>kt_timing_analysis</code> <code>kt_magnitude_analysis</code> <code>kt_missing_elements</code> <code>kt_improvement_suggestions</code> <code>evaluation_reliability_warning</code>
   </div>
-  <div style="display:flex; flex-wrap:wrap; gap:6px; margin:4px 0;">
-    <span class="card-tag" style="background:var(--pink-light);color:var(--pink);">Transfer</span>
-    <code>transfer_reason</code> <code>transfer_confidence</code> <code>transferred</code> <code>sr_status</code> <code>reopened</code> <code>transfer_contributing_factors</code> <code>transfer_escalation_signals</code> <code>transfer_narrative</code>
+  <div style="background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:14px 18px; margin:8px 0 16px 0; font-size:13px;">
+    <strong>Note:</strong> Transfer analysis columns (<code>transfer_reason</code>, <code>transfer_confidence</code>, etc.) are no longer exported to CSV. The TransferReasonAgent still runs internally and its results are available in the JSON output and the <code>EvaluationResult</code> object.
   </div>
   <div style="display:flex; flex-wrap:wrap; gap:6px; margin:4px 0;">
     <span class="card-tag" style="background:var(--teal-light);color:var(--teal);">Citation Quality</span>
@@ -1482,7 +1481,7 @@
   </div>
 
   <h3>Summary CSV <span style="font-weight:400; font-size:13px; color:var(--text-muted);">(evaluation_summary_*.csv)</span></h3>
-  <p>Condensed view for quick review, including all citation quality and response quality columns from the detailed CSV. Also includes per-citation breakdown columns (<code>citation_N_url</code>, <code>citation_N_score</code>, <code>citation_N_verdict</code>, <code>citation_N_coverage</code>, <code>citation_N_reasoning</code>).</p>
+  <p>Condensed view for quick review. Includes <code>case_number</code>, <code>ai_response</code>, <code>issue_description</code>, <code>issue_product</code>, <code>sap_path</code>, key scores (overall, relevance, completeness, validity, description quality), citation quality summary, per-citation breakdown columns (<code>citation_N_url</code>, <code>citation_N_score</code>, <code>citation_N_verdict</code>, <code>citation_N_coverage</code>, <code>citation_N_reasoning</code>), and response quality dimensions.</p>
 
   <h3>Data Models: CitationQualityResult &amp; ResponseQualityResult</h3>
   <p>Two new dataclasses introduced by the mweaeval pipeline:</p>
@@ -1553,6 +1552,9 @@
       <tr><td><code>--model</code></td><td>LLM model name (default: <code>gpt-4o</code>)</td></tr>
       <tr><td><code>--token</code></td><td>MWAI bearer token</td></tr>
       <tr><td><code>--new-token</code></td><td>Force re-prompt for new MWAI token</td></tr>
+      <tr><td><code>--mweaeval</code></td><td>Enable citation quality + response quality evaluation mode (mweaeval CSV input)</td></tr>
+      <tr><td><code>--batch-size</code></td><td>Number of cases per batch (enables batch mode with state persistence)</td></tr>
+      <tr><td><code>--continue</code></td><td>Continue from where the last batch left off (requires <code>--batch-size</code>)</td></tr>
     </tbody>
   </table>
 

@@ -1,6 +1,6 @@
 # Agent Reference
 
-The system contains 11 agents: 1 base class, 1 orchestrator, and 9 specialized evaluation agents. All inherit from `BaseAgent` and follow the same evaluate/fallback pattern.
+The system contains 12 agent classes: 1 base class, 1 orchestrator, and 10 specialized evaluation agents. All inherit from `BaseAgent` and follow the same evaluate/fallback pattern.
 
 ## BaseAgent
 

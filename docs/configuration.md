@@ -158,6 +158,9 @@ MWAI additionally uses `response_format: {"type": "json_object"}`.
 | `--debug` | -- | Show raw LLM prompts, responses, and API details |
 | `--token` | -- | MWAI bearer token |
 | `--new-token` | -- | Force re-prompt for new MWAI token |
+| `--mweaeval` | -- | Enable citation quality + response quality evaluation mode |
+| `--batch-size` | -- | Number of cases per batch (enables batch mode with state persistence via `.batch_state.json`) |
+| `--continue` | -- | Continue from where the last batch left off (requires `--batch-size`) |
 
 **`article_evaluation_system/main.py`** (alternative CLI):
 

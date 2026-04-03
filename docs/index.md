@@ -44,6 +44,11 @@ A multi-agent AI system that evaluates whether Microsoft support articles adequa
                   +---------------------+
                             |
                      EvaluationResult
+
+  --- mweaeval mode (citation quality evaluation) ---
+
+  CitationQualityAgent  -->  ResponseQualityAgent
+  (1 LLM call/citation)     (response quality + issue resolution)
 ```
 
 ## Quick Start
@@ -85,7 +90,7 @@ python run_evaluation.py --case 2508270010003948 -v
 
 **Input:** CSV file with columns `Case Number`, `Title_mwai`, `IssueDescription`, `Urls`, `ContainsCitations`, `Transferred`, `SRStatus`, `Reopened`, plus SAP product metadata.
 
-**Output:** JSON or CSV with per-case evaluation results containing overall score (0-100), verdict, per-agent breakdowns, description quality analysis, transfer reason classification, and recommendations.
+**Output:** JSON or CSV with per-case evaluation results containing overall score (0-100), verdict, per-agent breakdowns, description quality analysis, and recommendations. In mweaeval mode, also includes citation quality grounding scores, per-citation breakdowns, and AI response quality dimensions. Transfer analysis runs internally but is not exported to CSV.
 
 ## Key Concepts
 
@@ -103,7 +108,7 @@ python run_evaluation.py --case 2508270010003948 -v
 | Document | Description |
 |----------|-------------|
 | [Architecture](architecture.md) | System design, agent interaction patterns, module structure |
-| [Agents](agents.md) | Complete reference for all 9 agents (role, inputs, outputs, fallbacks) |
+| [Agents](agents.md) | Complete reference for all 10 specialized agents (role, inputs, outputs, fallbacks) |
 | [Pipeline](pipeline.md) | Step-by-step evaluation workflow with flowchart |
 | [Data Models](data-models.md) | All dataclasses, type aliases, and label normalization maps |
 | [Scoring](scoring.md) | Score formula, verdict logic, threshold tables |

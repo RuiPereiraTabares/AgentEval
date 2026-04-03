@@ -4,7 +4,7 @@ A multi-agent AI system that evaluates whether Microsoft support articles adequa
 
 ## How It Works
 
-The system reads support cases from a CSV file, parses each customer issue, fetches the cited article, and runs 10 specialized AI agents to evaluate relevance, completeness, validity, description quality (Kepner-Tregoe framework), citation quality, AI response quality, and transfer reason classification. Each case receives an overall score (0-100), a verdict, and an actionable recommendation.
+The system reads support cases from a CSV file, parses each customer issue, fetches the cited article, and runs 10 specialized AI agents to evaluate relevance, completeness, validity, description quality (Kepner-Tregoe framework), citation quality, and AI response quality. Each case receives an overall score (0-100), a verdict, and an actionable recommendation.
 
 ## Prerequisites
 
@@ -95,6 +95,12 @@ python run_evaluation.py -n 5 --format csv
 
 # Evaluate AI response + citation quality (mweaeval mode)
 python run_evaluation.py -n 5 --mweaeval
+
+# Batch mode: process 50 cases at a time
+python run_evaluation.py --batch-size 50 -i merged_output.csv
+
+# Continue from where the last batch left off
+python run_evaluation.py --batch-size 50 --continue -i merged_output.csv
 ```
 
 ### Output
@@ -121,6 +127,7 @@ The input CSV needs at minimum these columns:
 | `SRStatus` | No | Service request status |
 | `Reopened` | No | `TRUE` / `FALSE` — whether case was reopened |
 | `SapProductName` | No | Product name from SAP taxonomy |
+| `SapPath_mwai` (or `SapPath` or `SapPath1`) | No | SAP path (used to derive `issue_product`) |
 
 See [docs/api-reference.md](docs/api-reference.md#csv-input-format) for the full column list.
 
