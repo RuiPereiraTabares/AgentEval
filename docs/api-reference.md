@@ -251,25 +251,27 @@ See [Configuration > CLI Arguments](configuration.md#cli-arguments).
 
 Produced by `write_results_csv()`. Contains every field from the evaluation (column count varies in mweaeval mode due to dynamic per-citation columns):
 
-**Core:** `case_number`, `ai_response`, `issue_description`, `issue_product`, `sap_path`, `issue_type`, `article_url`, `overall_score`, `verdict`, `action_required`
+**Core:** `case_number`, `ai_response`, `issue_description`, `issue_product`, `sap_path`, `issue_type`
 
-**Relevance:** `relevance_score`, `relevance_verdict`, `relevance_matched_aspects`, `relevance_unmatched_aspects`, `relevance_product_match`, `relevance_version_match`, `relevance_is_outdated`
+**Primary Article:** `primary_article_url`, `primary_article_score`, `primary_article_verdict`, `primary_article_action_required`
 
-**Completeness:** `completeness_score`, `completeness_verdict`, `completeness_missing_elements`, `completeness_has_prerequisites`, `completeness_has_step_by_step`, `completeness_has_examples`, `completeness_has_troubleshooting`, `completeness_has_success_criteria`
+**Article Relevance:** `article_relevance_score`, `article_relevance_verdict`, `article_relevance_matched_aspects`, `article_relevance_unmatched_aspects`, `article_relevance_product_match`, `article_relevance_version_match`, `article_relevance_is_outdated`
 
-**Validity:** `validity_score`, `validity_verdict`, `validity_potential_issues`, `validity_addresses_root_cause`, `validity_is_current_solution`, `validity_environment_compatible`, `validity_confidence_level`
+**Article Completeness:** `article_completeness_score`, `article_completeness_verdict`, `article_completeness_missing_elements`, `article_completeness_has_prerequisites`, `article_completeness_has_step_by_step`, `article_completeness_has_examples`, `article_completeness_has_troubleshooting`, `article_completeness_has_success_criteria`
 
-**Description Quality:** `description_quality_score`, `description_quality_verdict`, `kt_identity_score`, `kt_location_score`, `kt_timing_score`, `kt_magnitude_score`, `kt_identity_analysis`, `kt_location_analysis`, `kt_timing_analysis`, `kt_magnitude_analysis`, `kt_missing_elements`, `kt_improvement_suggestions`, `evaluation_reliability_warning`
+**Article Validity:** `article_validity_score`, `article_validity_verdict`, `article_validity_potential_issues`, `article_validity_addresses_root_cause`, `article_validity_is_current_solution`, `article_validity_environment_compatible`, `article_validity_confidence_level`
+
+**Description Quality (KT):** `kt_description_quality_score`, `kt_description_quality_verdict`, `kt_identity_score`, `kt_location_score`, `kt_timing_score`, `kt_magnitude_score`, `kt_identity_analysis`, `kt_location_analysis`, `kt_timing_analysis`, `kt_magnitude_analysis`, `kt_missing_elements`, `kt_improvement_suggestions`, `kt_evaluation_reliability_warning`
 
 **Citation Quality (mweaeval):** `citation_grounding_score`, `citation_grounding_verdict`, `cited_percentage`, `uncited_percentage`, `citations_total`, `citations_good`, `citations_partial`, `citations_bad`
 
 **Per-Citation Breakdown (mweaeval):** `citation_N_url`, `citation_N_score`, `citation_N_verdict`, `citation_N_coverage`, `citation_N_reasoning` (dynamically generated based on max citations across cases)
 
-**Response Quality (mweaeval):** `ai_response_quality_score`, `ai_response_quality_verdict`, `rq_response_quality_score`, `rq_response_quality_analysis`, `rq_groundedness_score`, `rq_groundedness_analysis`, `rq_issue_resolution_score`, `rq_issue_resolution_analysis`, `rq_quality_weaknesses`, `rq_improvement_suggestions`
+**Response Quality (mweaeval):** `rq_ai_response_quality_score`, `rq_ai_response_quality_verdict`, `rq_response_quality_score`, `rq_response_quality_analysis`, `rq_groundedness_score`, `rq_groundedness_analysis`, `rq_issue_resolution_score`, `rq_issue_resolution_analysis`, `rq_quality_weaknesses`, `rq_improvement_suggestions`
+
+**Synthesis:** `synthesis_priority`, `synthesis_priority_reason`, `synthesis_pm_actions`, `synthesis_root_cause_category`
 
 **Summary:** `final_recommendation`, `processing_time_ms`, `error`
-
-> **Note:** Transfer analysis columns (`transfer_reason`, `transfer_confidence`, etc.) are no longer exported to CSV. The TransferReasonAgent still runs internally and its results are available in the JSON output and the `EvaluationResult` object.
 
 List fields use `; ` as separator.
 
@@ -277,7 +279,7 @@ List fields use `; ` as separator.
 
 Produced by `write_results_csv_summary()`. Key scores and reasons, plus citation quality and response quality columns:
 
-`case_number`, `ai_response`, `issue_description`, `issue_product`, `sap_path`, `overall_score`, `verdict`, `relevance_score`, `relevance_verdict`, `relevance_matched`, `relevance_unmatched`, `completeness_score`, `completeness_verdict`, `completeness_missing`, `validity_score`, `validity_verdict`, `validity_issues`, `description_quality_score`, `description_quality_verdict`, `description_missing`, `description_improvements`, `citation_grounding_score`, `citation_grounding_verdict`, `cited_percentage`, `uncited_percentage`, `citations_total`, `citations_good`, `citations_partial`, `citations_bad`, `citation_N_*` (per-citation breakdown), `ai_response_quality_score`, `ai_response_quality_verdict`, `rq_response_quality_score`, `rq_groundedness_score`, `rq_issue_resolution_score`, `rq_quality_weaknesses`, `final_recommendation`, `error`
+`case_number`, `ai_response`, `issue_description`, `issue_product`, `sap_path`, `primary_article_score`, `primary_article_verdict`, `article_relevance_score`, `article_relevance_verdict`, `article_relevance_matched`, `article_relevance_unmatched`, `article_completeness_score`, `article_completeness_verdict`, `article_completeness_missing`, `article_validity_score`, `article_validity_verdict`, `article_validity_issues`, `kt_description_quality_score`, `kt_description_quality_verdict`, `kt_description_missing`, `kt_description_improvements`, `citation_grounding_score`, `citation_grounding_verdict`, `cited_percentage`, `uncited_percentage`, `citations_total`, `citations_good`, `citations_partial`, `citations_bad`, `citation_N_*` (per-citation breakdown), `rq_ai_response_quality_score`, `rq_ai_response_quality_verdict`, `rq_response_quality_score`, `rq_groundedness_score`, `rq_issue_resolution_score`, `rq_quality_weaknesses`, `synthesis_priority`, `synthesis_priority_reason`, `synthesis_pm_actions`, `synthesis_root_cause_category`, `final_recommendation`, `error`
 
 ## JSON Output Format
 
