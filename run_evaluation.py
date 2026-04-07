@@ -183,12 +183,6 @@ def main():
                     'sap_name': case.get('sap_name', ''),
                 }
 
-            transfer_metadata = {
-                'transferred': case.get('transferred'),
-                'sr_status': case.get('sr_status', ''),
-                'reopened': case.get('reopened'),
-            }
-
             if args.mweaeval:
                 # Citation quality evaluation mode
                 ai_response = case.get('ai_response', '')
@@ -200,7 +194,6 @@ def main():
                     ai_response=ai_response,
                     citation_urls=citation_urls,
                     product_info=product_info,
-                    transfer_metadata=transfer_metadata,
                 )
             else:
                 # Standard evaluation mode
@@ -214,7 +207,6 @@ def main():
                     customer_issue=full_issue,
                     recommended_article=urls[0] if urls else None,
                     product_info=product_info,
-                    transfer_metadata=transfer_metadata,
                 )
 
             elapsed = (datetime.now() - start).total_seconds()
@@ -342,6 +334,19 @@ def main():
                     if rq.get('improvement_suggestions'):
                         print(f"    Suggestions: {'; '.join(rq['improvement_suggestions'][:3])}")
 
+                # Show LLM-synthesized recommendation
+                synth_priority = evaluation.get('synthesis_priority', '')
+                if synth_priority:
+                    print(f"  --- LLM Synthesis ---")
+                    print(f"  Priority: {synth_priority.upper()}  "
+                          f"({evaluation.get('synthesis_priority_reason', '')})")
+                    print(f"  Root cause: {evaluation.get('synthesis_root_cause_category', '')}")
+                    pm_actions = evaluation.get('synthesis_pm_actions', [])
+                    if pm_actions:
+                        print(f"  PM Actions:")
+                        for action in pm_actions:
+                            print(f"    - {action}")
+
         except Exception as e:
             print(f"  ERROR: {e}")
             result = {
@@ -401,12 +406,29 @@ def main():
     ]
     avg_dq = round(sum(dq_scores) / len(dq_scores)) if dq_scores else 0
 
+    # Synthesis priority distribution
+    priority_red = sum(
+        1 for r in results
+        if r.get('evaluation', {}).get('synthesis_priority', '').lower() == 'red'
+    )
+    priority_yellow = sum(
+        1 for r in results
+        if r.get('evaluation', {}).get('synthesis_priority', '').lower() == 'yellow'
+    )
+    priority_green = sum(
+        1 for r in results
+        if r.get('evaluation', {}).get('synthesis_priority', '').lower() == 'green'
+    )
+
     print(f"Total cases processed: {len(results)}")
     print(f"Successful evaluations: {successful}")
     print(f"  - Adequate: {adequate}")
     print(f"  - Needs supplementation: {needs_supp}")
     print(f"  - Inadequate: {inadequate}")
     print(f"  - No citation provided: {no_citation}")
+    if priority_red or priority_yellow or priority_green:
+        print(f"Synthesis priority distribution:")
+        print(f"  - RED: {priority_red}  YELLOW: {priority_yellow}  GREEN: {priority_green}")
     print(f"Description quality:")
     print(f"  - Average KT score: {avg_dq}/100")
     print(f"  - Low confidence evaluations: {low_confidence}")

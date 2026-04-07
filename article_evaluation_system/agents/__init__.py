@@ -136,7 +136,6 @@ from .validity_agent import ValidityAgent
 from .search_agent import SearchAgent
 from .gap_agent import GapAnalysisAgent
 from .description_quality_agent import DescriptionQualityAgent
-from .transfer_reason_agent import TransferReasonAgent
 from .citation_quality_agent import CitationQualityAgent
 from .response_quality_agent import ResponseQualityAgent
 from .orchestrator import Orchestrator
@@ -150,7 +149,6 @@ __all__ = [
     'SearchAgent',
     'GapAnalysisAgent',
     'DescriptionQualityAgent',
-    'TransferReasonAgent',
     'CitationQualityAgent',
     'ResponseQualityAgent',
     'Orchestrator'

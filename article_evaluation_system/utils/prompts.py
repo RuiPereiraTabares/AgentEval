@@ -227,31 +227,6 @@ IMPORTANT — REDACTED CONTENT: Issue descriptions may contain placeholders like
 
 Be STRICT in your scoring. Most support tickets are poorly structured — do not give high scores unless the information is genuinely specific and actionable."""
 
-    TRANSFER_REASON_ESCALATION_DETECTION = """You are an expert at detecting customer escalation signals in support case descriptions.
-
-Analyze the following text and determine whether the customer explicitly requested escalation, transfer to a specialist, or involvement of a higher-level support team.
-
-Escalation signals include (but are not limited to):
-- Explicit requests: "please escalate", "transfer to", "need a specialist", "speak to a manager"
-- Frustration-driven: "this is unacceptable", "been waiting too long", "nth time contacting"
-- Authority references: "my manager requires", "executive sponsor", "VP is asking"
-- Deadline pressure: "critical deadline", "business is stopped", "SLA breach"
-- Prior contact references: "already contacted support", "previous case", "been going back and forth"
-
-Do NOT flag normal urgency ("please help", "urgent") as escalation unless accompanied by an explicit transfer/escalation request.
-
-CRITICAL: You MUST use these EXACT field names. Do NOT rename, nest, or wrap them.
-
-Output format - return ONLY this JSON structure with no wrapper objects:
-{
-    "escalation_detected": <true or false>,
-    "escalation_signals": ["signal1", "signal2"],
-    "escalation_confidence": "<one of: high, medium, low>"
-}
-
-Example output:
-{"escalation_detected": true, "escalation_signals": ["Explicit request: 'please escalate this to a specialist'", "Prior contact: 'this is my 3rd time calling about this'"], "escalation_confidence": "high"}"""
-
     CITATION_QUALITY_AGENT = """You are an expert at evaluating whether a cited article actually supports the claims made in an AI-generated response.
 
 You will receive:
@@ -344,14 +319,42 @@ IMPORTANT — REDACTED CONTENT: The customer issue and AI response may contain p
 
 Be STRICT. Most AI responses are generic — do not give high scores unless the response is genuinely specific, actionable, and tailored to the customer's issue."""
 
-    ORCHESTRATOR_SUMMARY = """You are summarizing an article evaluation for a support case.
+    ORCHESTRATOR_SUMMARY = """You are a senior support program manager synthesizing multi-agent evaluation results for a customer support case into a structured, actionable recommendation.
 
-Given the evaluation results from multiple agents, provide a clear, actionable final recommendation.
+You will receive a JSON object containing all agent outputs: issue summary, article evaluation scores (relevance/completeness/validity), description quality (KT framework), transfer analysis, citation quality, response quality, gap analysis, and search results.
 
-Your summary should:
-1. State whether the article adequately addresses the customer's issue
-2. Highlight key strengths and weaknesses
-3. Provide specific actionable recommendations
-4. Be concise (2-4 sentences)
+Produce a JSON response with EXACTLY these fields:
 
-Focus on what the support agent should DO next to help the customer."""
+{
+    "priority": "<one of: red, yellow, green>",
+    "priority_reason": "1-2 sentence explanation of why this priority level was assigned",
+    "narrative_recommendation": "2-4 sentence narrative paragraph for the PM explaining the situation and what to do",
+    "pm_actions": ["specific action 1", "specific action 2"],
+    "root_cause_category": "<one of: content_gap, wrong_citation, poor_description, article_outdated, citation_quality_low, response_quality_low, adequate, no_content>"
+}
+
+PRIORITY RULES:
+- RED: overall_score < 40, OR any critical failure (article completely irrelevant, no article provided with no alternatives, response poorly grounded)
+- YELLOW: overall_score 40-69, OR article needs supplementation, OR citation quality is partial, OR description quality is low (evaluation confidence reduced)
+- GREEN: overall_score >= 70 AND article/response is adequate
+
+ROOT CAUSE CATEGORIES:
+- content_gap: Article exists but misses key aspects of the customer's issue
+- wrong_citation: Article is about a different product/feature/error than the customer's issue
+- poor_description: Customer issue description is too vague to evaluate properly (KT score < 40)
+- article_outdated: Article content is outdated or refers to deprecated features
+- citation_quality_low: AI response citations don't support the claims made
+- response_quality_low: AI response is generic, inaccurate, or unhelpful regardless of citations
+- adequate: Article/response adequately addresses the issue
+- no_content: No article or citation was provided
+
+PM ACTION GUIDELINES:
+- Be specific: "Update KB article [URL] to add troubleshooting steps for error 0x80004005" not "Update the article"
+- Include both content actions (update/create articles) and process actions (reassign, escalate, follow up)
+- Reference specific URLs, scores, and findings from the evaluation
+- Limit to 2-5 actions, ordered by priority
+- If evaluation confidence is low (reliability warning), include an action to gather more information from the customer
+
+If the evaluation has a reliability warning (low description quality), mention this in the narrative and adjust your confidence accordingly.
+
+Respond ONLY with valid JSON. No markdown, no explanation outside the JSON."""

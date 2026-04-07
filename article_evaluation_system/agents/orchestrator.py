@@ -2,6 +2,7 @@
 Orchestrator Agent - Coordinates all agents and produces final evaluation report.
 """
 
+import json
 import logging
 import os
 
@@ -13,7 +14,6 @@ from .validity_agent import ValidityAgent
 from .search_agent import SearchAgent
 from .gap_agent import GapAnalysisAgent
 from .description_quality_agent import DescriptionQualityAgent
-from .transfer_reason_agent import TransferReasonAgent
 from .citation_quality_agent import CitationQualityAgent
 from .response_quality_agent import ResponseQualityAgent
 
@@ -68,7 +68,6 @@ class Orchestrator(BaseAgent):
         self.search_agent = SearchAgent(client, model, provider)
         self.gap_agent = GapAnalysisAgent(client, model, provider)
         self.description_quality_agent = DescriptionQualityAgent(client, model, provider)
-        self.transfer_reason_agent = TransferReasonAgent(client, model, provider)
         self.citation_quality_agent = CitationQualityAgent(client, model, provider)
         self.response_quality_agent = ResponseQualityAgent(client, model, provider)
 
@@ -81,7 +80,6 @@ class Orchestrator(BaseAgent):
         article_url: str | None = None,
         article_urls: list[str] | None = None,
         product_info: dict | None = None,
-        transfer_metadata: dict | None = None,
     ) -> dict:
         """
         Perform comprehensive evaluation of article(s) for a customer issue.
@@ -90,7 +88,6 @@ class Orchestrator(BaseAgent):
             customer_issue: The customer's issue description
             article_url: Single article URL to evaluate (optional)
             article_urls: Multiple article URLs to evaluate (optional)
-            transfer_metadata: Dict with 'transferred', 'sr_status', 'reopened' from CSV
 
         Returns:
             Complete evaluation result as dictionary
@@ -101,12 +98,6 @@ class Orchestrator(BaseAgent):
         logger.info("Parsing customer issue...")
         issue = self.issue_parser.evaluate(customer_issue, product_info=product_info)
         logger.info(f"Issue parsed: product={issue.product}, type={issue.issue_type}")
-
-        # Inject transfer metadata into issue
-        if transfer_metadata:
-            issue.transferred = transfer_metadata.get("transferred")
-            issue.sr_status = transfer_metadata.get("sr_status", "")
-            issue.reopened = transfer_metadata.get("reopened")
 
         # Step 1b: Evaluate description quality (KT framework)
         logger.info("--- Running DescriptionQualityAgent ---")
@@ -183,7 +174,6 @@ class Orchestrator(BaseAgent):
             gap_result=gap_result,
             description_quality_result=description_quality_result,
             evaluation_reliability_warning=evaluation_reliability_warning,
-            contains_citations=has_citations,
         )
 
         return result
@@ -194,7 +184,6 @@ class Orchestrator(BaseAgent):
         ai_response: str,
         citation_urls: list[str],
         product_info: dict | None = None,
-        transfer_metadata: dict | None = None,
     ) -> dict:
         """
         Evaluate an AI response with inline citations.
@@ -203,14 +192,12 @@ class Orchestrator(BaseAgent):
         1. IssueParserAgent (reuse)
         2. DescriptionQualityAgent (reuse)
         3. CitationQualityAgent on the AI response + citation URLs
-        4. TransferReasonAgent (reuse)
 
         Args:
             customer_issue: The customer's issue description
             ai_response: The AI-generated response with [N] citation markers
             citation_urls: Ordered list of cited URLs ([1] = index 0, etc.)
             product_info: SAP product metadata from CSV (optional)
-            transfer_metadata: Dict with 'transferred', 'sr_status', 'reopened'
 
         Returns:
             Complete evaluation result as dictionary
@@ -221,11 +208,6 @@ class Orchestrator(BaseAgent):
         logger.info("Parsing customer issue...")
         issue = self.issue_parser.evaluate(customer_issue, product_info=product_info)
         logger.info(f"Issue parsed: product={issue.product}, type={issue.issue_type}")
-
-        if transfer_metadata:
-            issue.transferred = transfer_metadata.get("transferred")
-            issue.sr_status = transfer_metadata.get("sr_status", "")
-            issue.reopened = transfer_metadata.get("reopened")
 
         # Step 2: Evaluate description quality
         logger.info("--- Running DescriptionQualityAgent ---")
@@ -288,27 +270,29 @@ class Orchestrator(BaseAgent):
         # Use composite response quality score as the overall score
         composite_score = response_quality_result.ai_response_quality_score
 
-        # Step 5: Transfer reason analysis
-        relevance_score = best_article_eval.get("relevance", {}).get("relevance_score", 0)
-        logger.info("--- Running TransferReasonAgent ---")
-        transfer_result = self.transfer_reason_agent.evaluate(
-            issue=issue,
-            description_quality_result=description_quality_result,
-            overall_score=composite_score,
-            relevance_score=relevance_score,
-            contains_citations=bool(citation_urls),
-            verdict="adequate" if composite_score >= 70 else "inadequate",
-        )
-        logger.info(
-            f"  TransferReasonAgent result: reason={transfer_result.transfer_reason}, "
-            f"confidence={transfer_result.confidence}"
-        )
-
-        # Build recommendation
+        # Build recommendation (fallback)
         recommendation = self._generate_citation_recommendation(
             issue, citation_quality_result, evaluation_reliability_warning,
             response_quality_result=response_quality_result,
         )
+
+        # Synthesize recommendation via LLM
+        citation_verdict = "adequate" if composite_score >= 70 else (
+            "needs_supplementation" if composite_score >= 50 else "inadequate"
+        )
+        logger.info("--- Running Synthesis ---")
+        synthesis = self._synthesize_recommendation(
+            issue=issue,
+            overall_score=composite_score,
+            verdict=citation_verdict,
+            evaluation_reliability_warning=evaluation_reliability_warning,
+            best_evaluation=best_article_eval,
+            description_quality_result=description_quality_result,
+            citation_quality_result=citation_quality_result,
+            response_quality_result=response_quality_result,
+        )
+        if synthesis.get("narrative_recommendation"):
+            recommendation = synthesis["narrative_recommendation"]
 
         # Clean internal objects from best article evaluation
         clean_article_eval = {
@@ -319,16 +303,17 @@ class Orchestrator(BaseAgent):
             issue_summary=issue.to_dict(),
             current_article_evaluation=clean_article_eval,
             overall_score=composite_score,
-            verdict="adequate" if composite_score >= 70 else (
-                "needs_supplementation" if composite_score >= 50 else "inadequate"
-            ),
+            verdict=citation_verdict,
             action_required="none" if composite_score >= 70 else "add_context",
             description_quality=description_quality_result.to_dict(),
             evaluation_reliability_warning=evaluation_reliability_warning,
-            transfer_analysis=transfer_result.to_dict(),
             citation_quality=citation_quality_result.to_dict(),
             response_quality=response_quality_result.to_dict(),
             final_recommendation=recommendation,
+            synthesis_priority=synthesis.get("synthesis_priority", ""),
+            synthesis_priority_reason=synthesis.get("synthesis_priority_reason", ""),
+            synthesis_pm_actions=synthesis.get("synthesis_pm_actions", []),
+            synthesis_root_cause_category=synthesis.get("synthesis_root_cause_category", ""),
         ).to_dict()
 
     def _generate_citation_recommendation(
@@ -487,20 +472,19 @@ class Orchestrator(BaseAgent):
                 "reducing confidence in this evaluation. " + recommendation
             )
 
-        # Run TransferReasonAgent LAST
-        logger.info("--- Running TransferReasonAgent ---")
-        transfer_result = self.transfer_reason_agent.evaluate(
+        # Synthesize recommendation via LLM
+        logger.info("--- Running Synthesis ---")
+        synthesis = self._synthesize_recommendation(
             issue=issue,
-            description_quality_result=description_quality_result,
             overall_score=0,
-            relevance_score=0,
-            contains_citations=False,
             verdict="no_citation_provided",
+            evaluation_reliability_warning=evaluation_reliability_warning,
+            description_quality_result=description_quality_result,
+            gap_result=gap_result,
+            search_result=search_result,
         )
-        logger.info(
-            f"  TransferReasonAgent result: reason={transfer_result.transfer_reason}, "
-            f"confidence={transfer_result.confidence}"
-        )
+        if synthesis.get("narrative_recommendation"):
+            recommendation = synthesis["narrative_recommendation"]
 
         return EvaluationResult(
             issue_summary=issue.to_dict(),
@@ -513,7 +497,10 @@ class Orchestrator(BaseAgent):
             final_recommendation=recommendation,
             description_quality=description_quality_result.to_dict() if description_quality_result else {},
             evaluation_reliability_warning=evaluation_reliability_warning,
-            transfer_analysis=transfer_result.to_dict(),
+            synthesis_priority=synthesis.get("synthesis_priority", ""),
+            synthesis_priority_reason=synthesis.get("synthesis_priority_reason", ""),
+            synthesis_pm_actions=synthesis.get("synthesis_pm_actions", []),
+            synthesis_root_cause_category=synthesis.get("synthesis_root_cause_category", ""),
         ).to_dict()
 
     def _build_final_result(
@@ -525,7 +512,6 @@ class Orchestrator(BaseAgent):
         gap_result=None,
         description_quality_result=None,
         evaluation_reliability_warning: bool = False,
-        contains_citations: bool = False,
     ) -> dict:
         """Build the final evaluation result."""
         overall_score = best_evaluation["overall_score"] if best_evaluation else 0
@@ -581,21 +567,21 @@ class Orchestrator(BaseAgent):
             evaluation_reliability_warning=evaluation_reliability_warning,
         )
 
-        # Run TransferReasonAgent LAST
-        relevance_score = best_evaluation.get("relevance", {}).get("relevance_score", 0) if best_evaluation else 0
-        logger.info("--- Running TransferReasonAgent ---")
-        transfer_result = self.transfer_reason_agent.evaluate(
+        # Synthesize recommendation via LLM
+        logger.info("--- Running Synthesis ---")
+        synthesis = self._synthesize_recommendation(
             issue=issue,
-            description_quality_result=description_quality_result,
             overall_score=overall_score,
-            relevance_score=relevance_score,
-            contains_citations=contains_citations,
             verdict=verdict,
+            evaluation_reliability_warning=evaluation_reliability_warning,
+            best_evaluation=best_evaluation,
+            description_quality_result=description_quality_result,
+            gap_result=gap_result,
+            search_result=search_result,
         )
-        logger.info(
-            f"  TransferReasonAgent result: reason={transfer_result.transfer_reason}, "
-            f"confidence={transfer_result.confidence}"
-        )
+        # Use narrative as final_recommendation if available
+        if synthesis.get("narrative_recommendation"):
+            final_recommendation = synthesis["narrative_recommendation"]
 
         return EvaluationResult(
             issue_summary=issue.to_dict(),
@@ -617,8 +603,199 @@ class Orchestrator(BaseAgent):
             final_recommendation=final_recommendation,
             description_quality=description_quality_result.to_dict() if description_quality_result else {},
             evaluation_reliability_warning=evaluation_reliability_warning,
-            transfer_analysis=transfer_result.to_dict(),
+            synthesis_priority=synthesis.get("synthesis_priority", ""),
+            synthesis_priority_reason=synthesis.get("synthesis_priority_reason", ""),
+            synthesis_pm_actions=synthesis.get("synthesis_pm_actions", []),
+            synthesis_root_cause_category=synthesis.get("synthesis_root_cause_category", ""),
         ).to_dict()
+
+    def _synthesize_recommendation(
+        self,
+        issue: Issue,
+        overall_score: int,
+        verdict: str,
+        evaluation_reliability_warning: bool = False,
+        best_evaluation: dict | None = None,
+        description_quality_result=None,
+        citation_quality_result=None,
+        response_quality_result=None,
+        gap_result=None,
+        search_result=None,
+    ) -> dict:
+        """Synthesize all agent results into a structured recommendation via LLM.
+
+        Returns dict with keys: synthesis_priority, synthesis_priority_reason,
+        synthesis_pm_actions, synthesis_root_cause_category, narrative_recommendation.
+        Falls back to auto-computed values on failure.
+        """
+        # Build context dict with all agent outputs
+        context = {
+            "issue_summary": {
+                "product": issue.product,
+                "issue_type": issue.issue_type,
+                "severity": issue.severity,
+                "keywords": issue.keywords[:5] if issue.keywords else [],
+                "symptoms": issue.symptoms[:3] if issue.symptoms else [],
+            },
+            "overall_score": overall_score,
+            "verdict": verdict,
+            "evaluation_reliability_warning": evaluation_reliability_warning,
+        }
+
+        # Article evaluation (R/C/V scores)
+        if best_evaluation:
+            rel = best_evaluation.get("relevance", {})
+            comp = best_evaluation.get("completeness", {})
+            val = best_evaluation.get("validity", {})
+            context["article_evaluation"] = {
+                "url": best_evaluation.get("url", ""),
+                "relevance_score": rel.get("relevance_score", 0),
+                "relevance_verdict": rel.get("relevance_verdict", ""),
+                "unmatched_aspects": rel.get("unmatched_aspects", [])[:3],
+                "product_match": rel.get("product_match"),
+                "is_outdated": rel.get("is_outdated"),
+                "completeness_score": comp.get("completeness_score", 0),
+                "completeness_verdict": comp.get("completeness_verdict", ""),
+                "missing_elements": comp.get("missing_elements", [])[:3],
+                "validity_score": val.get("validity_score", 0),
+                "validity_verdict": val.get("validity_verdict", ""),
+                "potential_issues": val.get("potential_issues", [])[:3],
+                "addresses_root_cause": val.get("addresses_root_cause"),
+            }
+
+        # Description quality (KT)
+        if description_quality_result:
+            dq = description_quality_result.to_dict() if hasattr(description_quality_result, "to_dict") else description_quality_result
+            context["description_quality"] = {
+                "score": dq.get("description_quality_score", 0),
+                "verdict": dq.get("description_quality_verdict", ""),
+                "missing_elements": dq.get("missing_kt_elements", [])[:3],
+            }
+
+        # Citation quality — truncate per-citation reasoning
+        if citation_quality_result:
+            cq = citation_quality_result.to_dict() if hasattr(citation_quality_result, "to_dict") else citation_quality_result
+            pcr_truncated = []
+            for pcr in cq.get("per_citation_results", [])[:3]:
+                pcr_truncated.append({
+                    "url": pcr.get("url", ""),
+                    "support_score": pcr.get("support_score", 0),
+                    "verdict": pcr.get("verdict", ""),
+                    "reasoning": (pcr.get("support_reasoning", "") or "")[:200],
+                })
+            context["citation_quality"] = {
+                "overall_grounding_score": cq.get("overall_grounding_score", 0),
+                "overall_verdict": cq.get("overall_verdict", ""),
+                "citations_good": cq.get("citations_good", 0),
+                "citations_partial": cq.get("citations_partial", 0),
+                "citations_bad": cq.get("citations_bad", 0),
+                "uncited_percentage": cq.get("uncited_percentage", 0),
+                "per_citation": pcr_truncated,
+            }
+
+        # Response quality
+        if response_quality_result:
+            rq = response_quality_result.to_dict() if hasattr(response_quality_result, "to_dict") else response_quality_result
+            context["response_quality"] = {
+                "ai_response_quality_score": rq.get("ai_response_quality_score", 0),
+                "ai_response_quality_verdict": rq.get("ai_response_quality_verdict", ""),
+                "response_quality_score": rq.get("response_quality_score", 0),
+                "groundedness_score": rq.get("groundedness_score", 0),
+                "issue_resolution_score": rq.get("issue_resolution_score", 0),
+                "quality_weaknesses": rq.get("quality_weaknesses", [])[:3],
+            }
+
+        # Gap analysis
+        if gap_result:
+            ga = gap_result.to_dict() if hasattr(gap_result, "to_dict") else gap_result
+            context["gap_analysis"] = {
+                "documentation_gaps": ga.get("documentation_gaps", [])[:3],
+                "priority": ga.get("priority", ""),
+                "recommendation": ga.get("recommendation", ""),
+            }
+
+        # Search results
+        if search_result:
+            sr = search_result
+            if hasattr(sr, "recommended_articles"):
+                context["search_results"] = {
+                    "better_alternative_found": sr.better_alternative_found,
+                    "search_terms": sr.search_terms_used[:2] if sr.search_terms_used else [],
+                    "recommended_articles": [
+                        {"title": a.title, "url": a.url}
+                        for a in sr.recommended_articles[:3]
+                    ],
+                }
+
+        # Call LLM
+        try:
+            user_message = json.dumps(context, indent=2, default=str)
+            response = self._call_llm(AgentPrompts.ORCHESTRATOR_SUMMARY, user_message)
+            parsed = self._parse_json_response(response)
+
+            # Validate required keys and enum values
+            valid_priorities = {"red", "yellow", "green"}
+            valid_root_causes = {
+                "content_gap", "wrong_citation", "poor_description",
+                "article_outdated", "citation_quality_low", "response_quality_low",
+                "adequate", "no_content",
+            }
+
+            priority = str(parsed.get("priority", "")).lower().strip()
+            if priority not in valid_priorities:
+                raise ValueError(f"Invalid priority: {priority}")
+
+            root_cause = str(parsed.get("root_cause_category", "")).lower().strip()
+            if root_cause not in valid_root_causes:
+                raise ValueError(f"Invalid root_cause_category: {root_cause}")
+
+            pm_actions = parsed.get("pm_actions", [])
+            if not isinstance(pm_actions, list):
+                pm_actions = [str(pm_actions)]
+
+            narrative = str(parsed.get("narrative_recommendation", ""))
+            priority_reason = str(parsed.get("priority_reason", ""))
+
+            logger.info(
+                f"[Orchestrator] Synthesis complete: priority={priority.upper()}, "
+                f"root_cause={root_cause}, actions={len(pm_actions)}"
+            )
+
+            return {
+                "synthesis_priority": priority,
+                "synthesis_priority_reason": priority_reason,
+                "synthesis_pm_actions": pm_actions,
+                "synthesis_root_cause_category": root_cause,
+                "narrative_recommendation": narrative,
+            }
+
+        except Exception as e:
+            logger.warning(f"[Orchestrator] Synthesis LLM call failed, using fallback: {e}")
+            return self._synthesis_fallback(overall_score, verdict)
+
+    def _synthesis_fallback(self, overall_score: int, verdict: str) -> dict:
+        """Auto-compute synthesis fields when LLM call fails."""
+        if overall_score < 40 or verdict in ("inadequate", "no_citation_provided"):
+            priority = "red"
+        elif overall_score < 70 or verdict == "needs_supplementation":
+            priority = "yellow"
+        else:
+            priority = "green"
+
+        root_cause_map = {
+            "adequate": "adequate",
+            "no_citation_provided": "no_content",
+            "needs_supplementation": "content_gap",
+            "inadequate": "content_gap",
+        }
+
+        return {
+            "synthesis_priority": priority,
+            "synthesis_priority_reason": f"Auto-computed from overall_score={overall_score}, verdict={verdict}",
+            "synthesis_pm_actions": [],
+            "synthesis_root_cause_category": root_cause_map.get(verdict, "content_gap"),
+            "narrative_recommendation": "",
+        }
 
     def _generate_recommendation(
         self,
