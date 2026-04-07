@@ -63,17 +63,6 @@ def read_csv_cases(
             if limit and count >= limit:
                 break
 
-            # Parse transfer metadata (None if column absent from CSV)
-            transferred_raw = row.get('Transferred')
-            transferred = None
-            if transferred_raw is not None and transferred_raw.strip():
-                transferred = transferred_raw.strip().upper() == 'TRUE'
-
-            reopened_raw = row.get('Reopened')
-            reopened = None
-            if reopened_raw is not None and reopened_raw.strip():
-                reopened = reopened_raw.strip().upper() == 'TRUE'
-
             yield {
                 'case_number': row.get('Case Number', '') or row.get('CaseNumber', ''),
                 'title': row.get('Title_mwai', '') or row.get('Title', ''),
@@ -89,9 +78,6 @@ def read_csv_cases(
                 'sap_product_family': row.get('SapProductFamily', ''),
                 'sap_path': row.get('SapPath_mwai', '') or row.get('SapPath', '') or row.get('SapPath1', ''),
                 'sap_name': row.get('SapName', ''),
-                'transferred': transferred,
-                'sr_status': row.get('SRStatus', '') or row.get('SR Status', ''),
-                'reopened': reopened,
             }
             count += 1
 
@@ -141,17 +127,6 @@ def read_mweaeval_csv_cases(
             except (json.JSONDecodeError, TypeError):
                 citation_urls = []
 
-            # Parse transfer metadata
-            transferred_raw = row.get('Transferred')
-            transferred = None
-            if transferred_raw is not None and transferred_raw.strip():
-                transferred = transferred_raw.strip().upper() == 'TRUE'
-
-            reopened_raw = row.get('Reopened')
-            reopened = None
-            if reopened_raw is not None and reopened_raw.strip():
-                reopened = reopened_raw.strip().upper() == 'TRUE'
-
             yield {
                 'case_number': row.get('Case Number', '') or row.get('CaseNumber', ''),
                 'title': row.get('Title_mwai', '') or row.get('Title', ''),
@@ -163,9 +138,6 @@ def read_mweaeval_csv_cases(
                 'sap_product_family': row.get('SapProductFamily', ''),
                 'sap_path': row.get('SapPath_mwai', '') or row.get('SapPath', '') or row.get('SapPath1', ''),
                 'sap_name': row.get('SapName', ''),
-                'transferred': transferred,
-                'sr_status': row.get('SRStatus', '') or row.get('SR Status', ''),
-                'reopened': reopened,
             }
             count += 1
 
@@ -298,6 +270,11 @@ def write_results_csv(results: list[dict], output_path: str):
             'rq_issue_resolution_analysis': rq.get('issue_resolution_analysis', ''),
             'rq_quality_weaknesses': '; '.join(rq.get('quality_weaknesses', [])),
             'rq_improvement_suggestions': '; '.join(rq.get('improvement_suggestions', [])),
+            # LLM-synthesized recommendation
+            'synthesis_priority': eval_data.get('synthesis_priority', ''),
+            'synthesis_priority_reason': eval_data.get('synthesis_priority_reason', ''),
+            'synthesis_pm_actions': '; '.join(eval_data.get('synthesis_pm_actions', [])),
+            'synthesis_root_cause_category': eval_data.get('synthesis_root_cause_category', ''),
             # Summary
             'final_recommendation': eval_data.get('final_recommendation', ''),
             'processing_time_ms': r.get('processing_time_ms', 0),
@@ -380,6 +357,11 @@ def write_results_csv_summary(results: list[dict], output_path: str):
             'rq_groundedness_score': rq.get('groundedness_score', ''),
             'rq_issue_resolution_score': rq.get('issue_resolution_score', ''),
             'rq_quality_weaknesses': '; '.join(rq.get('quality_weaknesses', [])),
+            # LLM-synthesized recommendation
+            'synthesis_priority': eval_data.get('synthesis_priority', ''),
+            'synthesis_priority_reason': eval_data.get('synthesis_priority_reason', ''),
+            'synthesis_pm_actions': '; '.join(eval_data.get('synthesis_pm_actions', [])),
+            'synthesis_root_cause_category': eval_data.get('synthesis_root_cause_category', ''),
             # Final
             'final_recommendation': eval_data.get('final_recommendation', ''),
             'error': r.get('error', ''),
@@ -439,18 +421,10 @@ def process_cases(
             if not has_citation:
                 logger.info(f"  No citation found for case {case['case_number']} — triggering search agent")
 
-            # Build transfer metadata from CSV columns
-            transfer_metadata = {
-                'transferred': case.get('transferred'),
-                'sr_status': case.get('sr_status', ''),
-                'reopened': case.get('reopened'),
-            }
-
             if urls:
                 evaluation = evaluator.evaluate(
                     customer_issue=full_issue,
                     recommended_article=urls[0] if len(urls) == 1 else None,
-                    transfer_metadata=transfer_metadata,
                 )
                 # Handle multiple URLs if needed
                 if len(urls) > 1:
@@ -459,7 +433,6 @@ def process_cases(
                 evaluation = evaluator.evaluate(
                     customer_issue=full_issue,
                     recommended_article=None,
-                    transfer_metadata=transfer_metadata,
                 )
 
             processing_time = (datetime.now() - start_time).total_seconds() * 1000

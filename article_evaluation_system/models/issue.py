@@ -24,11 +24,6 @@ class Issue:
     severity: Severity = "medium"
     raw_description: str = ""
 
-    # Transfer metadata (populated from CSV; None = column absent)
-    transferred: bool | None = None
-    sr_status: str = ""
-    reopened: bool | None = None
-
     def to_dict(self) -> dict:
         """Convert to dictionary representation."""
         return {
@@ -41,9 +36,6 @@ class Issue:
             "environment": self.environment,
             "severity": self.severity,
             "raw_description": self.raw_description,
-            "transferred": self.transferred,
-            "sr_status": self.sr_status,
-            "reopened": self.reopened,
         }
 
     @classmethod
@@ -59,9 +51,6 @@ class Issue:
             environment=data.get("environment", {}),
             severity=data.get("severity", "medium"),
             raw_description=data.get("raw_description", ""),
-            transferred=data.get("transferred"),
-            sr_status=data.get("sr_status", ""),
-            reopened=data.get("reopened"),
         )
 
     def get_search_query(self) -> str:

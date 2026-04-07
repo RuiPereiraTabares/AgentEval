@@ -38,7 +38,6 @@ class ArticleEvaluator:
         customer_issue: str,
         recommended_article: str | None = None,
         product_info: dict | None = None,
-        transfer_metadata: dict | None = None,
     ) -> dict:
         """
         Evaluate whether an article adequately addresses a customer issue.
@@ -47,7 +46,6 @@ class ArticleEvaluator:
             customer_issue: The customer's issue description
             recommended_article: URL of the recommended article (optional)
             product_info: SAP product metadata from CSV (optional)
-            transfer_metadata: Dict with 'transferred', 'sr_status', 'reopened' from CSV
 
         Returns:
             Comprehensive evaluation result dictionary
@@ -56,7 +54,6 @@ class ArticleEvaluator:
             customer_issue=customer_issue,
             article_url=recommended_article,
             product_info=product_info,
-            transfer_metadata=transfer_metadata,
         )
 
     def evaluate_with_citations(
@@ -65,7 +62,6 @@ class ArticleEvaluator:
         ai_response: str,
         citation_urls: list[str],
         product_info: dict | None = None,
-        transfer_metadata: dict | None = None,
     ) -> dict:
         """
         Evaluate an AI response with inline citation markers.
@@ -75,7 +71,6 @@ class ArticleEvaluator:
             ai_response: AI-generated response with [N] markers
             citation_urls: Ordered list of URLs ([1] = index 0)
             product_info: SAP product metadata from CSV (optional)
-            transfer_metadata: Dict with 'transferred', 'sr_status', 'reopened'
 
         Returns:
             Evaluation result dictionary with citation_quality field
@@ -85,7 +80,6 @@ class ArticleEvaluator:
             ai_response=ai_response,
             citation_urls=citation_urls,
             product_info=product_info,
-            transfer_metadata=transfer_metadata,
         )
 
     def evaluate_batch(
