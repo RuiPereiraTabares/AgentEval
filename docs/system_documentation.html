@@ -1430,30 +1430,27 @@
   <p>45+ columns covering every aspect of the evaluation (column count varies in mweaeval mode due to dynamic per-citation columns):</p>
   <div style="display:flex; flex-wrap:wrap; gap:6px; margin:10px 0;">
     <span class="card-tag" style="background:var(--accent-light);color:var(--accent);">Case Info</span>
-    <code>case_number</code> <code>ai_response</code> <code>issue_description</code> <code>issue_product</code> <code>sap_path</code> <code>issue_type</code> <code>article_url</code>
+    <code>case_number</code> <code>ai_response</code> <code>issue_description</code> <code>issue_product</code> <code>sap_path</code> <code>issue_type</code>
   </div>
   <div style="display:flex; flex-wrap:wrap; gap:6px; margin:4px 0;">
-    <span class="card-tag" style="background:var(--success-light);color:var(--success);">Overall</span>
-    <code>overall_score</code> <code>verdict</code> <code>action_required</code>
+    <span class="card-tag" style="background:var(--success-light);color:var(--success);">Primary Article</span>
+    <code>primary_article_url</code> <code>primary_article_score</code> <code>primary_article_verdict</code> <code>primary_article_action_required</code>
   </div>
   <div style="display:flex; flex-wrap:wrap; gap:6px; margin:4px 0;">
-    <span class="card-tag" style="background:var(--teal-light);color:var(--teal);">Relevance</span>
-    <code>relevance_score</code> <code>relevance_verdict</code> <code>relevance_matched_aspects</code> <code>relevance_unmatched_aspects</code> <code>relevance_product_match</code> <code>relevance_version_match</code> <code>relevance_is_outdated</code>
+    <span class="card-tag" style="background:var(--teal-light);color:var(--teal);">Article Relevance</span>
+    <code>article_relevance_score</code> <code>article_relevance_verdict</code> <code>article_relevance_matched_aspects</code> <code>article_relevance_unmatched_aspects</code> <code>article_relevance_product_match</code> <code>article_relevance_version_match</code> <code>article_relevance_is_outdated</code>
   </div>
   <div style="display:flex; flex-wrap:wrap; gap:6px; margin:4px 0;">
-    <span class="card-tag" style="background:var(--success-light);color:var(--success);">Completeness</span>
-    <code>completeness_score</code> <code>completeness_verdict</code> <code>completeness_missing_elements</code> <code>completeness_has_prerequisites</code> <code>completeness_has_step_by_step</code> <code>completeness_has_examples</code> <code>completeness_has_troubleshooting</code> <code>completeness_has_success_criteria</code>
+    <span class="card-tag" style="background:var(--success-light);color:var(--success);">Article Completeness</span>
+    <code>article_completeness_score</code> <code>article_completeness_verdict</code> <code>article_completeness_missing_elements</code> <code>article_completeness_has_prerequisites</code> <code>article_completeness_has_step_by_step</code> <code>article_completeness_has_examples</code> <code>article_completeness_has_troubleshooting</code> <code>article_completeness_has_success_criteria</code>
   </div>
   <div style="display:flex; flex-wrap:wrap; gap:6px; margin:4px 0;">
-    <span class="card-tag" style="background:var(--warning-light);color:var(--warning);">Validity</span>
-    <code>validity_score</code> <code>validity_verdict</code> <code>validity_potential_issues</code> <code>validity_addresses_root_cause</code> <code>validity_is_current_solution</code> <code>validity_environment_compatible</code> <code>validity_confidence_level</code>
+    <span class="card-tag" style="background:var(--warning-light);color:var(--warning);">Article Validity</span>
+    <code>article_validity_score</code> <code>article_validity_verdict</code> <code>article_validity_potential_issues</code> <code>article_validity_addresses_root_cause</code> <code>article_validity_is_current_solution</code> <code>article_validity_environment_compatible</code> <code>article_validity_confidence_level</code>
   </div>
   <div style="display:flex; flex-wrap:wrap; gap:6px; margin:4px 0;">
-    <span class="card-tag" style="background:var(--purple-light);color:var(--purple);">Description Quality</span>
-    <code>description_quality_score</code> <code>description_quality_verdict</code> <code>kt_identity_score</code> <code>kt_location_score</code> <code>kt_timing_score</code> <code>kt_magnitude_score</code> <code>kt_identity_analysis</code> <code>kt_location_analysis</code> <code>kt_timing_analysis</code> <code>kt_magnitude_analysis</code> <code>kt_missing_elements</code> <code>kt_improvement_suggestions</code> <code>evaluation_reliability_warning</code>
-  </div>
-  <div style="background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:14px 18px; margin:8px 0 16px 0; font-size:13px;">
-    <strong>Note:</strong> Transfer analysis columns (<code>transfer_reason</code>, <code>transfer_confidence</code>, etc.) are no longer exported to CSV. The TransferReasonAgent still runs internally and its results are available in the JSON output and the <code>EvaluationResult</code> object.
+    <span class="card-tag" style="background:var(--purple-light);color:var(--purple);">Description Quality (KT)</span>
+    <code>kt_description_quality_score</code> <code>kt_description_quality_verdict</code> <code>kt_identity_score</code> <code>kt_location_score</code> <code>kt_timing_score</code> <code>kt_magnitude_score</code> <code>kt_identity_analysis</code> <code>kt_location_analysis</code> <code>kt_timing_analysis</code> <code>kt_magnitude_analysis</code> <code>kt_missing_elements</code> <code>kt_improvement_suggestions</code> <code>kt_evaluation_reliability_warning</code>
   </div>
   <div style="display:flex; flex-wrap:wrap; gap:6px; margin:4px 0;">
     <span class="card-tag" style="background:var(--teal-light);color:var(--teal);">Citation Quality</span>
@@ -1473,7 +1470,11 @@
   <div style="display:flex; flex-wrap:wrap; gap:6px; margin:4px 0;">
     <span class="card-tag" style="background:var(--purple-light);color:var(--purple);">Response Quality</span>
     <span style="font-size:12px; color:var(--text-muted);">(mweaeval mode)</span>
-    <code>ai_response_quality_score</code> <code>ai_response_quality_verdict</code> <code>response_quality_score</code> <code>groundedness_score</code> <code>issue_resolution_score</code> <code>ai_response</code>
+    <code>rq_ai_response_quality_score</code> <code>rq_ai_response_quality_verdict</code> <code>rq_response_quality_score</code> <code>rq_response_quality_analysis</code> <code>rq_groundedness_score</code> <code>rq_groundedness_analysis</code> <code>rq_issue_resolution_score</code> <code>rq_issue_resolution_analysis</code> <code>rq_quality_weaknesses</code> <code>rq_improvement_suggestions</code>
+  </div>
+  <div style="display:flex; flex-wrap:wrap; gap:6px; margin:4px 0;">
+    <span class="card-tag" style="background:var(--warning-light);color:var(--warning);">Synthesis</span>
+    <code>synthesis_priority</code> <code>synthesis_priority_reason</code> <code>synthesis_pm_actions</code> <code>synthesis_root_cause_category</code>
   </div>
   <div style="display:flex; flex-wrap:wrap; gap:6px; margin:4px 0;">
     <span class="card-tag" style="background:#f1f3f5;color:var(--text-muted);">Meta</span>
@@ -1481,7 +1482,7 @@
   </div>
 
   <h3>Summary CSV <span style="font-weight:400; font-size:13px; color:var(--text-muted);">(evaluation_summary_*.csv)</span></h3>
-  <p>Condensed view for quick review. Includes <code>case_number</code>, <code>ai_response</code>, <code>issue_description</code>, <code>issue_product</code>, <code>sap_path</code>, key scores (overall, relevance, completeness, validity, description quality), citation quality summary, per-citation breakdown columns (<code>citation_N_url</code>, <code>citation_N_score</code>, <code>citation_N_verdict</code>, <code>citation_N_coverage</code>, <code>citation_N_reasoning</code>), and response quality dimensions.</p>
+  <p>Condensed view for quick review. Includes <code>case_number</code>, <code>ai_response</code>, <code>issue_description</code>, <code>issue_product</code>, <code>sap_path</code>, key scores (primary article, article relevance/completeness/validity, KT description quality), citation quality summary, per-citation breakdown columns (<code>citation_N_url</code>, <code>citation_N_score</code>, <code>citation_N_verdict</code>, <code>citation_N_coverage</code>, <code>citation_N_reasoning</code>), response quality dimensions, and synthesis recommendations.</p>
 
   <h3>Data Models: CitationQualityResult &amp; ResponseQualityResult</h3>
   <p>Two new dataclasses introduced by the mweaeval pipeline:</p>
