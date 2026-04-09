@@ -1,5 +1,5 @@
 """
-Multi-Agent Article Evaluation System
+Agentic Insight Engine
 
 Evaluates whether Microsoft support articles adequately solve customer issues.
 """
@@ -11,7 +11,7 @@ from .models.evaluation import EvaluationResult
 
 
 class ArticleEvaluator:
-    """Main entry point for the article evaluation system."""
+    """Main entry point for the Agentic Insight Engine."""
 
     def __init__(
         self,

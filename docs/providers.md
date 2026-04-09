@@ -77,7 +77,7 @@ The client handles multiple response formats: `choices[0].message.content`, dire
 POST https://api.mwai.microsoft.com/ai/ChatCompletions/ChatCompletionWithoutData
 Authorization: Bearer <JWT>
 Content-Type: application/json
-User-Agent: ArticleEvaluationSystem/1.0
+User-Agent: AgenticInsightEngine/1.0
 ```
 
 ## Content Truncation

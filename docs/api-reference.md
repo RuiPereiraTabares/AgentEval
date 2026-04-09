@@ -6,7 +6,7 @@
 
 **File:** `article_evaluation_system/__init__.py`
 
-The main entry point for the evaluation system.
+The main entry point for the Agentic Insight Engine.
 
 ```python
 from article_evaluation_system import ArticleEvaluator

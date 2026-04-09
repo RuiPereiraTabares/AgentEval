@@ -1,5 +1,5 @@
 """
-Data models for the article evaluation system.
+Data models for the Agentic Insight Engine.
 """
 
 from .issue import Issue

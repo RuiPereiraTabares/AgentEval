@@ -1,5 +1,5 @@
 """
-Configuration settings for the article evaluation system.
+Configuration settings for the Agentic Insight Engine.
 """
 
 import os

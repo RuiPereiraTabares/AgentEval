@@ -1,5 +1,5 @@
 """
-Agent prompt templates for the article evaluation system.
+Agent prompt templates for the Agentic Insight Engine.
 """
 
 
