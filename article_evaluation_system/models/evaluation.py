@@ -1026,3 +1026,45 @@ class EvaluationResult:
             synthesis_pm_actions=data.get("synthesis_pm_actions", []),
             synthesis_root_cause_category=data.get("synthesis_root_cause_category", ""),
         )
+
+
+@dataclass
+class TrendCluster:
+    """A cluster of related cases with a unified PM action."""
+
+    cluster_name: str = ""
+    case_count: int = 0
+    case_numbers: list[str] = field(default_factory=list)
+    root_cause_pattern: str = ""
+    products_affected: list[str] = field(default_factory=list)
+    unified_pm_action: str = ""
+    estimated_impact: str = ""
+    priority: str = ""
+    supporting_evidence: list[str] = field(default_factory=list)
+
+    def to_dict(self) -> dict:
+        return {
+            "cluster_name": self.cluster_name,
+            "case_count": self.case_count,
+            "case_numbers": self.case_numbers,
+            "root_cause_pattern": self.root_cause_pattern,
+            "products_affected": self.products_affected,
+            "unified_pm_action": self.unified_pm_action,
+            "estimated_impact": self.estimated_impact,
+            "priority": self.priority,
+            "supporting_evidence": self.supporting_evidence,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "TrendCluster":
+        return cls(
+            cluster_name=data.get("cluster_name", ""),
+            case_count=data.get("case_count", 0),
+            case_numbers=data.get("case_numbers", []),
+            root_cause_pattern=data.get("root_cause_pattern", ""),
+            products_affected=data.get("products_affected", []),
+            unified_pm_action=data.get("unified_pm_action", ""),
+            estimated_impact=data.get("estimated_impact", ""),
+            priority=data.get("priority", ""),
+            supporting_evidence=data.get("supporting_evidence", []),
+        )
