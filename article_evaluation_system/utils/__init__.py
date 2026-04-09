@@ -1,5 +1,5 @@
 """
-Utility modules for the article evaluation system.
+Utility modules for the Agentic Insight Engine.
 """
 
 from .article_fetcher import ArticleFetcher

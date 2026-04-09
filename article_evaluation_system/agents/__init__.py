@@ -1,5 +1,5 @@
 """
-Agent modules for the article evaluation system.
+Agent modules for the Agentic Insight Engine.
 """
 
 from abc import ABC, abstractmethod

@@ -1,4 +1,4 @@
-# AgentsArticleReviewer
+# Agentic Insight Engine
 
 A multi-agent AI system that evaluates whether Microsoft support articles adequately address customer issues. Built for automated quality assurance of support case article citations.
 
@@ -19,7 +19,7 @@ The system reads support cases from a CSV file, parses each customer issue, fetc
 
 ```bash
 git clone <repository-url>
-cd AgentsArticleReviewer
+cd AgenticInsightEngine
 ```
 
 ### 2. Create a Virtual Environment
@@ -145,7 +145,7 @@ All standard columns listed above are also supported and used when present.
 ## Project Structure
 
 ```
-AgentsArticleReviewer/
+AgenticInsightEngine/
   run_evaluation.py              # Main CLI runner
   requirements.txt               # Python dependencies
   .env                           # MWAI token (create this yourself)

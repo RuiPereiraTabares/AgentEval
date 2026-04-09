@@ -1,4 +1,4 @@
-# AgentsArticleReviewer
+# Agentic Insight Engine
 
 A multi-agent AI system that evaluates whether Microsoft support articles adequately address customer issues. Built for automated quality assurance of support case article citations.
 

@@ -1,5 +1,5 @@
 """
-Scoring utilities for the article evaluation system.
+Scoring utilities for the Agentic Insight Engine.
 """
 
 from ..config.settings import THRESHOLDS, SCORE_WEIGHTS

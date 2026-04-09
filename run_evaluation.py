@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 """
-Simple runner script for the Article Evaluation System.
+Simple runner script for the Agentic Insight Engine.
 
 Usage:
     python run_evaluation.py                    # Process first 50 cases
@@ -37,7 +37,7 @@ from article_evaluation_system.main import (
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Run Article Evaluation System')
+    parser = argparse.ArgumentParser(description='Run Agentic Insight Engine')
     parser.add_argument('--input', '-i', default='merged_output.csv', help='Input CSV file')
     parser.add_argument('--output', '-o', help='Output file (auto-generated if not specified)')
     parser.add_argument('--limit', '-n', type=int, default=50, help='Number of cases to process (default: 50)')

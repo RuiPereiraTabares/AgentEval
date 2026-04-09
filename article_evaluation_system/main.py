@@ -1,5 +1,5 @@
 """
-Main entry point for the Article Evaluation System.
+Main entry point for the Agentic Insight Engine.
 
 Processes customer support cases from CSV files and evaluates
 whether cited Microsoft articles adequately address the issues.
