@@ -33,6 +33,7 @@ from article_evaluation_system import ArticleEvaluator
 from article_evaluation_system.main import (
     read_csv_cases, read_mweaeval_csv_cases,
     write_results_json, write_results_csv, write_results_csv_summary,
+    write_trend_report_csv,
 )
 
 
@@ -56,6 +57,10 @@ def main():
     parser.add_argument('--model', default='gpt-4o', help='Model to use (default: gpt-4o)')
     parser.add_argument('--token', help='MWAI bearer token. If not provided, will use cached token or prompt interactively.')
     parser.add_argument('--new-token', action='store_true', help='Force re-prompt for a new MWAI token (ignore cache)')
+
+    # Trend report
+    parser.add_argument('--trend-report', action='store_true',
+                        help='Generate a trend report that clusters cases by pattern and produces 3-7 unified PM actions')
 
     # Batch mode
     parser.add_argument('--batch-size', type=int, help='Number of cases per batch (enables batch mode)')
@@ -368,6 +373,41 @@ def main():
         write_results_csv(results, output_file)
     print(f"Writing summary CSV to {output_summary}...")
     write_results_csv_summary(results, output_summary)
+
+    # Trend report (opt-in)
+    if args.trend_report and len(results) >= 2:
+        print("\nGenerating trend report...")
+        from article_evaluation_system.synthesis.trend_synthesis import TrendSynthesizer
+        trend_synthesizer = TrendSynthesizer(
+            client=evaluator.orchestrator.client,
+            model=args.model,
+            provider='mwai',
+        )
+        trend_result = trend_synthesizer.synthesize_trends(results)
+        trend_clusters = trend_result.get("clusters", [])
+        trend_summary = trend_result.get("executive_summary", "")
+
+        trend_output = f'trend_report_{timestamp}.csv'
+        write_trend_report_csv(trend_clusters, trend_output)
+        print(f"Trend report written to {trend_output}")
+
+        # Print trend summary to console
+        if trend_clusters:
+            print(f"\n{'=' * 50}")
+            print("TREND REPORT")
+            print(f"{'=' * 50}")
+            print(f"Clusters found: {len(trend_clusters)}")
+            if trend_summary:
+                print(f"Executive summary: {trend_summary}")
+            print()
+            for i, cluster in enumerate(trend_clusters, 1):
+                print(f"  {i}. [{cluster.get('priority', '?').upper()}] "
+                      f"{cluster.get('cluster_name', 'N/A')} "
+                      f"({cluster.get('case_count', 0)} cases)")
+                print(f"     Action: {cluster.get('unified_pm_action', 'N/A')}")
+                print(f"     Impact: {cluster.get('estimated_impact', 'N/A')}")
+    elif args.trend_report and len(results) < 2:
+        print("\nSkipping trend report — need at least 2 cases for clustering.")
 
     # Save batch state
     if batch_mode:

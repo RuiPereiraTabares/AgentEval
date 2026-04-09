@@ -379,6 +379,42 @@ def write_results_csv_summary(results: list[dict], output_path: str):
     logger.info(f"Summary results written to {output_path}")
 
 
+def write_trend_report_csv(clusters: list[dict], output_path: str):
+    """Write trend clusters to a CSV file.
+
+    Args:
+        clusters: List of TrendCluster dicts.
+        output_path: Path to output CSV file.
+    """
+    if not clusters:
+        logger.warning("No trend clusters to write")
+        return
+
+    fieldnames = [
+        "cluster_name", "priority", "case_count", "case_numbers",
+        "root_cause_pattern", "products_affected", "unified_pm_action",
+        "estimated_impact", "supporting_evidence",
+    ]
+
+    with open(output_path, 'w', newline='', encoding='utf-8') as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        for cluster in clusters:
+            writer.writerow({
+                "cluster_name": cluster.get("cluster_name", ""),
+                "priority": cluster.get("priority", ""),
+                "case_count": cluster.get("case_count", 0),
+                "case_numbers": "; ".join(cluster.get("case_numbers", [])),
+                "root_cause_pattern": cluster.get("root_cause_pattern", ""),
+                "products_affected": "; ".join(cluster.get("products_affected", [])),
+                "unified_pm_action": cluster.get("unified_pm_action", ""),
+                "estimated_impact": cluster.get("estimated_impact", ""),
+                "supporting_evidence": "; ".join(cluster.get("supporting_evidence", [])),
+            })
+
+    logger.info(f"Trend report written to {output_path}")
+
+
 def write_results_json(results: list[dict], output_path: str):
     """Write evaluation results to JSON file."""
     with open(output_path, 'w', encoding='utf-8') as f:

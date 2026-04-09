@@ -636,6 +636,8 @@ class Orchestrator(BaseAgent):
                 "severity": issue.severity,
                 "keywords": issue.keywords[:5] if issue.keywords else [],
                 "symptoms": issue.symptoms[:3] if issue.symptoms else [],
+                "raw_description": (issue.raw_description or "")[:500],
+                "error_codes": issue.error_codes if issue.error_codes else [],
             },
             "overall_score": overall_score,
             "verdict": verdict,
@@ -649,6 +651,7 @@ class Orchestrator(BaseAgent):
             val = best_evaluation.get("validity", {})
             context["article_evaluation"] = {
                 "url": best_evaluation.get("url", ""),
+                "title": best_evaluation.get("title", ""),
                 "relevance_score": rel.get("relevance_score", 0),
                 "relevance_verdict": rel.get("relevance_verdict", ""),
                 "unmatched_aspects": rel.get("unmatched_aspects", [])[:3],
@@ -709,7 +712,10 @@ class Orchestrator(BaseAgent):
         if gap_result:
             ga = gap_result.to_dict() if hasattr(gap_result, "to_dict") else gap_result
             context["gap_analysis"] = {
-                "documentation_gaps": ga.get("documentation_gaps", [])[:3],
+                "documentation_gaps": ga.get("documentation_gaps", []),
+                "suggested_content_outline": ga.get("suggested_content_outline", []),
+                "required_expertise": ga.get("required_expertise", []),
+                "estimated_effort": ga.get("estimated_effort", ""),
                 "priority": ga.get("priority", ""),
                 "recommendation": ga.get("recommendation", ""),
             }
@@ -722,7 +728,12 @@ class Orchestrator(BaseAgent):
                     "better_alternative_found": sr.better_alternative_found,
                     "search_terms": sr.search_terms_used[:2] if sr.search_terms_used else [],
                     "recommended_articles": [
-                        {"title": a.title, "url": a.url}
+                        {
+                            "title": a.title,
+                            "url": a.url,
+                            "relevance_reason": a.relevance_reason,
+                            "estimated_match_score": a.estimated_match_score,
+                        }
                         for a in sr.recommended_articles[:3]
                     ],
                 }
