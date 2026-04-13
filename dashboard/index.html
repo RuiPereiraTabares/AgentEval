@@ -531,7 +531,11 @@ function renderFilterChips() {
 // ══════════════════════════════════════════════════════════
 // CHART HELPERS (cross-filter aware)
 // ══════════════════════════════════════════════════════════
-function destroyChart(id) { if (charts[id]) { charts[id].destroy(); delete charts[id]; } }
+function destroyChart(id) {
+  if (charts[id]) { charts[id].destroy(); delete charts[id]; }
+  const el = document.getElementById(id);
+  if (el) { const existing = Chart.getChart(el); if (existing) existing.destroy(); }
+}
 
 // Donut — predefined values list
 function makeDonut(id, labels, values, keyFn, colors, dim) {
@@ -1265,9 +1269,25 @@ function renderTrends() {
   const rcMap = {};
   data.forEach(r => { const k = r.root_cause_pattern||'Unknown'; rcMap[k] = (rcMap[k]||0)+num(r.case_count); });
   const rcSorted = Object.entries(rcMap).sort((a,b) => b[1]-a[1]);
-  makeHBar('chart-trc', rcSorted.map(([k]) => k), rcSorted.map(([,v]) => v), '#3b82f6');
-  makeDonut('chart-tpri', ['🔴 Red','🟡 Yellow','🟢 Green'],
-    ['red','yellow','green'].map(p => countVal(data,'priority',p)), ['#dc2626','#d97706','#16a34a']);
+  destroyChart('chart-trc');
+  const trcCtx = document.getElementById('chart-trc');
+  if (trcCtx) charts['chart-trc'] = new Chart(trcCtx.getContext('2d'), {
+    type: 'bar',
+    data: { labels: rcSorted.map(([k])=>k), datasets: [{ data: rcSorted.map(([,v])=>v), backgroundColor: '#3b82f6', borderRadius: 3, barThickness: 18 }] },
+    options: { indexAxis:'y', responsive:true, maintainAspectRatio:false, plugins:{ legend:{display:false}, tooltip:{callbacks:{label:c=>` ${c.raw} cases`}} }, scales:{ x:{beginAtZero:true,grid:{color:'#f1f5f9'},ticks:{font:{size:10}}}, y:{grid:{display:false},ticks:{font:{size:10}}} } }
+  });
+  destroyChart('chart-tpri');
+  const tpriCtx = document.getElementById('chart-tpri');
+  if (tpriCtx) {
+    const priLabels = ['🔴 Red','🟡 Yellow','🟢 Green'], priColors = ['#dc2626','#d97706','#16a34a'];
+    const priCounts = ['red','yellow','green'].map(p => countVal(data,'priority',p));
+    const priTotal = priCounts.reduce((a,b)=>a+b,0);
+    charts['chart-tpri'] = new Chart(tpriCtx.getContext('2d'), {
+      type: 'doughnut',
+      data: { labels: priLabels, datasets: [{ data: priCounts, backgroundColor: priColors, borderWidth:2, borderColor:'#fff', hoverOffset:3 }] },
+      options: { responsive:true, maintainAspectRatio:false, cutout:'60%', plugins:{ legend:{ position:'right', labels:{ font:{size:10}, boxWidth:10, padding:5, generateLabels: () => priLabels.map((lbl,i) => ({ text:lbl, fillStyle:priColors[i], strokeStyle:'#fff', lineWidth:1, fontColor:'#374151', datasetIndex:0, index:i, hidden:false })) }}, tooltip:{ callbacks:{ label: c => ` ${c.label}: ${c.raw} (${priTotal ? ((c.raw/priTotal)*100).toFixed(1):0}%)` }} } }
+    });
+  }
 
   document.getElementById('cluster-grid').innerHTML = filtered.map(r => {
     const products = (r.products_affected||'').split(';').map(s => s.trim()).filter(Boolean);
