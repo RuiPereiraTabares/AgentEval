@@ -1,0 +1,1212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Agentic Insight Engine — Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f1f5f9; color: #0f172a; min-height: 100vh; }
+
+/* HEADER */
+.header { background: #1e293b; color: #f8fafc; padding: 14px 24px; display: flex; align-items: center; gap: 12px; border-bottom: 3px solid #3b82f6; }
+.header-logo { width: 34px; height: 34px; background: #3b82f6; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 17px; flex-shrink: 0; }
+.header-title { font-size: 17px; font-weight: 700; }
+.header-sub { font-size: 11px; color: #94a3b8; margin-top: 1px; }
+
+/* UPLOAD */
+.upload-section { padding: 20px 24px 4px; display: grid; grid-template-columns: 1fr 1fr; gap: 14px; max-width: 860px; margin: 0 auto; }
+.upload-card { background: #fff; border: 2px dashed #cbd5e1; border-radius: 10px; padding: 18px 20px; text-align: center; cursor: pointer; transition: all 0.2s; position: relative; }
+.upload-card:hover, .upload-card.drag-over { border-color: #3b82f6; background: #eff6ff; }
+.upload-card.loaded { border-color: #16a34a; border-style: solid; background: #f0fdf4; }
+.upload-icon { font-size: 26px; margin-bottom: 6px; }
+.upload-title { font-weight: 600; font-size: 13px; color: #374151; }
+.upload-hint { font-size: 11px; color: #6b7280; margin-top: 2px; }
+.upload-filename { font-size: 11px; color: #16a34a; font-weight: 600; margin-top: 4px; }
+.upload-input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+.upload-clear { position: absolute; top: 6px; right: 8px; background: none; border: none; cursor: pointer; font-size: 15px; color: #9ca3af; display: none; }
+.upload-card.loaded .upload-clear { display: block; }
+
+/* TABS */
+.tabs { display: none; background: #fff; border-bottom: 1px solid #e2e8f0; padding: 0 20px; position: sticky; top: 0; z-index: 100; box-shadow: 0 1px 4px rgba(0,0,0,0.06); }
+.tabs.visible { display: flex; gap: 2px; }
+.tab-btn { padding: 11px 18px; border: none; background: none; cursor: pointer; font-size: 13px; font-weight: 500; color: #64748b; border-bottom: 3px solid transparent; margin-bottom: -1px; transition: all 0.15s; display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+.tab-btn:hover:not(.disabled) { color: #1e293b; }
+.tab-btn.active { color: #3b82f6; border-bottom-color: #3b82f6; }
+.tab-btn.disabled { opacity: 0.35; cursor: not-allowed; }
+.tab-dot { width: 7px; height: 7px; border-radius: 50%; background: #cbd5e1; flex-shrink: 0; }
+.tab-btn.active .tab-dot { background: #3b82f6; }
+.tab-btn.has-data .tab-dot { background: #16a34a; }
+
+/* CONTENT */
+.tab-content { display: none; padding: 20px 24px 40px; max-width: 1400px; margin: 0 auto; }
+.tab-content.active { display: block; }
+
+/* EMPTY STATE */
+.empty-state { text-align: center; padding: 56px 24px; color: #64748b; }
+.empty-state h2 { font-size: 19px; margin-bottom: 8px; color: #374151; }
+.empty-state p { font-size: 13px; line-height: 1.6; }
+
+/* ALERT BANNER */
+.alert-banner { border-radius: 10px; padding: 14px 18px; margin-bottom: 18px; display: flex; align-items: center; gap: 12px; font-size: 13px; font-weight: 500; }
+.alert-red { background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; }
+.alert-yellow { background: #fffbeb; border: 1px solid #fde68a; color: #92400e; }
+.alert-green { background: #f0fdf4; border: 1px solid #bbf7d0; color: #14532d; }
+
+/* SECTION */
+.section { margin-bottom: 28px; }
+.section-header { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; padding-bottom: 8px; border-bottom: 2px solid #e2e8f0; cursor: default; }
+.section-title { font-size: 15px; font-weight: 700; color: #1e293b; }
+.section-badge { font-size: 11px; background: #f1f5f9; color: #64748b; padding: 2px 8px; border-radius: 20px; }
+.section-badge.mwea { background: #eff6ff; color: #3b82f6; }
+
+/* KPI CARDS */
+.kpi-grid { display: grid; gap: 12px; }
+.g2 { grid-template-columns: repeat(2, 1fr); }
+.g3 { grid-template-columns: repeat(3, 1fr); }
+.g4 { grid-template-columns: repeat(4, 1fr); }
+.g5 { grid-template-columns: repeat(5, 1fr); }
+.kpi-card { background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 14px 16px; }
+.kpi-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: #64748b; margin-bottom: 5px; }
+.kpi-value { font-size: 26px; font-weight: 800; line-height: 1; }
+.kpi-sub { font-size: 11px; color: #64748b; margin-top: 4px; }
+.kpi-bar { height: 3px; background: #e2e8f0; border-radius: 2px; margin-top: 8px; overflow: hidden; }
+.kpi-bar-fill { height: 100%; border-radius: 2px; }
+
+/* CHART CARDS */
+.chart-grid { display: grid; gap: 14px; }
+.cg2 { grid-template-columns: 1fr 1fr; }
+.cg3 { grid-template-columns: 1fr 1fr 1fr; }
+.chart-card { background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 14px 16px; }
+.chart-title { font-size: 12px; font-weight: 600; color: #374151; margin-bottom: 10px; }
+.chart-wrap { position: relative; }
+.h180 { height: 180px; }
+.h220 { height: 220px; }
+.h260 { height: 260px; }
+
+/* COLORS */
+.c-red { color: #dc2626; } .c-yellow { color: #d97706; } .c-green { color: #16a34a; } .c-blue { color: #3b82f6; } .c-gray { color: #64748b; }
+.badge { display: inline-flex; align-items: center; padding: 2px 7px; border-radius: 10px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; white-space: nowrap; }
+.b-red { background: #fef2f2; color: #dc2626; }
+.b-yellow { background: #fffbeb; color: #d97706; }
+.b-green { background: #f0fdf4; color: #16a34a; }
+.b-gray { background: #f8fafc; color: #64748b; }
+.b-blue { background: #eff6ff; color: #3b82f6; }
+.b-purple { background: #faf5ff; color: #7c3aed; }
+.score-chip { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 700; color: #fff; }
+
+/* SPM ACTION TABLE */
+.action-table-wrap { background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; overflow: hidden; }
+.action-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.action-table th { padding: 9px 12px; background: #f8fafc; text-align: left; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #64748b; border-bottom: 1px solid #e2e8f0; white-space: nowrap; }
+.action-table td { padding: 9px 12px; border-bottom: 1px solid #f1f5f9; vertical-align: top; }
+.action-table tr.data-row { cursor: pointer; transition: background 0.1s; }
+.action-table tr.data-row:hover td { background: #f8fafc; }
+.action-table tr.data-row.expanded td { background: #eff6ff; }
+.action-table tr:last-child td { border-bottom: none; }
+.expand-btn { background: none; border: 1px solid #e2e8f0; border-radius: 4px; cursor: pointer; width: 22px; height: 22px; display: flex; align-items: center; justify-content: center; font-size: 10px; color: #64748b; transition: all 0.15s; flex-shrink: 0; }
+.expand-btn.open { background: #3b82f6; border-color: #3b82f6; color: #fff; transform: rotate(90deg); }
+.pm-preview { color: #374151; max-width: 320px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pm-empty { color: #94a3b8; font-style: italic; }
+
+/* CASE DETAIL PANEL */
+.detail-row td { padding: 0 !important; border-bottom: 1px solid #dbeafe !important; }
+.detail-panel { background: #f8fafc; border-top: 2px solid #3b82f6; padding: 16px 20px; display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.detail-panel.single-col { grid-template-columns: 1fr; }
+.detail-block { }
+.detail-label { font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.07em; color: #3b82f6; margin-bottom: 5px; }
+.detail-text { font-size: 12px; color: #374151; line-height: 1.55; }
+.detail-text em { color: #94a3b8; font-style: italic; }
+.detail-bullets { font-size: 12px; color: #374151; line-height: 1.55; padding-left: 16px; }
+.detail-bullets li { margin-bottom: 3px; }
+.detail-link { font-size: 12px; color: #3b82f6; text-decoration: none; word-break: break-all; }
+.detail-link:hover { text-decoration: underline; }
+.detail-full-row { grid-column: 1 / -1; }
+.detail-warning { background: #fef3c7; border: 1px solid #fde68a; border-radius: 6px; padding: 7px 10px; font-size: 11px; color: #92400e; margin-bottom: 8px; }
+
+/* SCORE BARS */
+.score-bar-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.score-bar-label { font-size: 11px; color: #374151; min-width: 90px; text-align: right; flex-shrink: 0; }
+.score-bar-track { flex: 1; height: 7px; background: #e2e8f0; border-radius: 4px; overflow: hidden; }
+.score-bar-fill { height: 100%; border-radius: 4px; }
+.score-bar-val { font-size: 11px; font-weight: 700; min-width: 34px; }
+
+/* CHECKLIST */
+.checklist { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.checklist-item { display: flex; align-items: center; gap: 8px; background: #f8fafc; border-radius: 6px; padding: 7px 10px; }
+.checklist-label { font-size: 11px; color: #374151; flex: 1; }
+.checklist-pct { font-size: 11px; font-weight: 700; }
+
+/* TABLE (MWEA case table) */
+.table-controls { display: flex; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
+.table-search { flex: 1; min-width: 180px; padding: 7px 11px; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 12px; }
+.table-filter { padding: 7px 10px; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 12px; background: #fff; cursor: pointer; }
+.table-wrap { border: 1px solid #e2e8f0; border-radius: 10px; background: #fff; overflow: hidden; }
+.data-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.data-table th { padding: 9px 12px; background: #f8fafc; text-align: left; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #64748b; border-bottom: 1px solid #e2e8f0; cursor: pointer; white-space: nowrap; }
+.data-table th:hover { background: #f1f5f9; }
+.data-table td { padding: 8px 12px; border-bottom: 1px solid #f1f5f9; color: #374151; vertical-align: middle; }
+.data-table tr.data-row { cursor: pointer; } .data-table tr.data-row:hover td { background: #f8fafc; }
+.data-table tr.data-row.expanded td { background: #eff6ff; }
+.data-table tr:last-child td { border-bottom: none; }
+.table-pagination { display: flex; align-items: center; justify-content: space-between; padding: 9px 14px; background: #f8fafc; border-top: 1px solid #e2e8f0; font-size: 11px; color: #64748b; }
+.pagination-btns { display: flex; gap: 3px; }
+.pagination-btns button { padding: 3px 8px; border: 1px solid #e2e8f0; border-radius: 4px; background: #fff; cursor: pointer; font-size: 11px; }
+.pagination-btns button.active { background: #3b82f6; color: #fff; border-color: #3b82f6; }
+
+/* CLUSTER CARDS */
+.cluster-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 14px; }
+.cluster-card { background: #fff; border: 1px solid #e2e8f0; border-left: 4px solid; border-radius: 10px; padding: 14px 16px; }
+.cluster-card.red { border-left-color: #dc2626; }
+.cluster-card.yellow { border-left-color: #d97706; }
+.cluster-card.green { border-left-color: #16a34a; }
+.cluster-name { font-size: 13px; font-weight: 700; color: #1e293b; margin: 6px 0 10px; }
+.cluster-meta { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 8px; }
+.cluster-fl { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #94a3b8; margin-bottom: 2px; }
+.cluster-fv { font-size: 12px; color: #374151; line-height: 1.4; }
+.cluster-action { background: #eff6ff; border-radius: 6px; padding: 8px 10px; margin-top: 8px; font-size: 12px; color: #1d4ed8; }
+.cluster-evidence { background: #f8fafc; border-radius: 6px; padding: 7px 10px; margin-top: 6px; font-size: 11px; color: #64748b; line-height: 1.5; }
+
+canvas { cursor: pointer; }
+
+@media (max-width: 768px) {
+  .upload-section { grid-template-columns: 1fr; }
+  .g4, .g5 { grid-template-columns: 1fr 1fr; }
+  .g3 { grid-template-columns: 1fr; }
+  .cg2, .cg3 { grid-template-columns: 1fr; }
+  .detail-panel { grid-template-columns: 1fr; }
+  .checklist { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-logo">📊</div>
+  <div>
+    <div class="header-title">Agentic Insight Engine</div>
+    <div class="header-sub">Local Evaluation Dashboard</div>
+  </div>
+</div>
+
+<div class="upload-section">
+  <label class="upload-card" id="eval-card" ondragover="onDragOver(event,'eval-card')" ondragleave="onDragLeave('eval-card')" ondrop="onDrop(event,'eval')">
+    <input type="file" accept=".csv" class="upload-input" id="eval-input" onchange="handleFile(event,'eval')">
+    <div class="upload-icon" id="eval-icon">📋</div>
+    <div class="upload-title">Evaluation Results CSV</div>
+    <div class="upload-hint" id="eval-hint">evaluation_results_*.csv</div>
+    <div class="upload-filename" id="eval-fname"></div>
+    <button class="upload-clear" onclick="clearFile(event,'eval')">✕</button>
+  </label>
+  <label class="upload-card" id="trend-card" ondragover="onDragOver(event,'trend-card')" ondragleave="onDragLeave('trend-card')" ondrop="onDrop(event,'trend')">
+    <input type="file" accept=".csv" class="upload-input" id="trend-input" onchange="handleFile(event,'trend')">
+    <div class="upload-icon" id="trend-icon">📈</div>
+    <div class="upload-title">Trend Report CSV</div>
+    <div class="upload-hint" id="trend-hint">trend_report_*.csv</div>
+    <div class="upload-filename" id="trend-fname"></div>
+    <button class="upload-clear" onclick="clearFile(event,'trend')">✕</button>
+  </label>
+</div>
+
+<div class="empty-state" id="empty-state">
+  <div style="font-size:44px;margin-bottom:14px">📂</div>
+  <h2>Upload a CSV to get started</h2>
+  <p>Drop <strong>evaluation_results_*.csv</strong> for MWEA results &amp; SPM action plan,<br>or <strong>trend_report_*.csv</strong> for trend clusters.</p>
+</div>
+
+<nav class="tabs" id="tabs">
+  <button class="tab-btn" id="tab-spm" onclick="showTab('spm')"><span class="tab-dot"></span> SPM Actions</button>
+  <button class="tab-btn" id="tab-eval" onclick="showTab('eval')"><span class="tab-dot"></span> Evaluation Report</button>
+  <button class="tab-btn" id="tab-trends" onclick="showTab('trends')"><span class="tab-dot"></span> Trend Report</button>
+</nav>
+
+<!-- ═══════════════════════════════ SPM ACTIONS ═══════════════════════════════ -->
+<div class="tab-content" id="content-spm">
+  <div id="spm-alert"></div>
+  <div class="kpi-grid g3" id="spm-kpis" style="margin-bottom:18px"></div>
+
+  <div class="section">
+    <div class="section-header">
+      <div class="section-title">Prioritized Action List</div>
+      <div class="section-badge" id="spm-table-badge"></div>
+    </div>
+    <p style="font-size:12px;color:#64748b;margin-bottom:10px">Click any row to expand the full PM action details, quality analysis, and recommendations.</p>
+    <div class="action-table-wrap">
+      <table class="action-table">
+        <thead>
+          <tr>
+            <th style="width:28px"></th>
+            <th>Priority</th>
+            <th>Case #</th>
+            <th>Product</th>
+            <th>Score</th>
+            <th>Action Required</th>
+            <th>PM Actions (preview)</th>
+          </tr>
+        </thead>
+        <tbody id="spm-table-body"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════ EVAL REPORT ═══════════════════════════════ -->
+<div class="tab-content" id="content-eval">
+
+  <div id="filter-chips" style="display:none;flex-wrap:wrap;gap:6px;padding:4px 0 16px;align-items:center"></div>
+
+  <div class="section">
+    <div class="section-header"><div class="section-title">Executive Summary</div><div class="section-badge" id="eval-badge"></div></div>
+    <div class="kpi-grid g4" id="exec-kpis"></div>
+    <div class="kpi-grid g3" id="exec-kpis2" style="margin-top:10px"></div>
+    <div style="margin-top:14px" class="chart-grid cg2">
+      <div class="chart-card"><div class="chart-title">Article Verdict Distribution</div><div class="chart-wrap h180"><canvas id="chart-verdict"></canvas></div></div>
+      <div class="chart-card"><div class="chart-title">Priority Breakdown</div><div class="chart-wrap h180"><canvas id="chart-priority"></canvas></div></div>
+    </div>
+    <div style="margin-top:14px" class="chart-grid cg2">
+      <div class="chart-card"><div class="chart-title">Action Required</div><div class="chart-wrap h220"><canvas id="chart-action"></canvas></div></div>
+      <div class="chart-card"><div class="chart-title">Score Band Distribution</div><div class="chart-wrap h220"><canvas id="chart-scorebands"></canvas></div></div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-header"><div class="section-title">Article Quality</div><div class="section-badge">Relevance · Completeness · Validity</div></div>
+    <div class="kpi-grid g3" id="article-kpis"></div>
+    <div style="margin-top:14px" class="chart-grid cg3">
+      <div class="chart-card"><div class="chart-title">Relevance Verdicts</div><div class="chart-wrap h180"><canvas id="chart-rel"></canvas></div></div>
+      <div class="chart-card"><div class="chart-title">Completeness Verdicts</div><div class="chart-wrap h180"><canvas id="chart-comp"></canvas></div></div>
+      <div class="chart-card"><div class="chart-title">Validity Verdicts</div><div class="chart-wrap h180"><canvas id="chart-val"></canvas></div></div>
+    </div>
+    <div style="margin-top:14px" class="chart-card">
+      <div class="chart-title">Article Content Checklist (% of cases)</div>
+      <div id="checklist"></div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-header"><div class="section-title">Description Quality (Kepner-Tregoe)</div></div>
+    <div class="kpi-grid g4" id="kt-kpis"></div>
+    <div style="margin-top:14px" class="chart-grid cg2">
+      <div class="chart-card"><div class="chart-title">KT Dimension Averages</div><div id="kt-bars" style="padding:6px 0"></div></div>
+      <div class="chart-card"><div class="chart-title">KT Quality Verdicts</div><div class="chart-wrap h180"><canvas id="chart-kt"></canvas></div></div>
+    </div>
+  </div>
+
+  <div class="section" id="sec-citation" style="display:none">
+    <div class="section-header"><div class="section-title">Citation &amp; AI Response Quality</div><div class="section-badge mwea">mweaeval mode</div></div>
+    <div class="kpi-grid g4" id="citation-kpis"></div>
+    <div style="margin-top:14px" class="chart-grid cg2">
+      <div class="chart-card"><div class="chart-title">Grounding Verdicts</div><div class="chart-wrap h180"><canvas id="chart-ground"></canvas></div></div>
+      <div class="chart-card"><div class="chart-title">Response Quality Verdicts</div><div class="chart-wrap h180"><canvas id="chart-rq"></canvas></div></div>
+    </div>
+    <div style="margin-top:14px" class="chart-card">
+      <div class="chart-title">Response Quality Components (average)</div>
+      <div id="rq-bars" style="padding:6px 0"></div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-header"><div class="section-title">Synthesis &amp; Root Cause</div></div>
+    <div class="kpi-grid g3" id="synth-kpis"></div>
+    <div style="margin-top:14px" class="chart-grid cg2">
+      <div class="chart-card"><div class="chart-title">Root Cause Categories</div><div class="chart-wrap h260"><canvas id="chart-rc"></canvas></div></div>
+      <div class="chart-card"><div class="chart-title">Avg Score by Product (top 12)</div><div class="chart-wrap h260"><canvas id="chart-product"></canvas></div></div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-header"><div class="section-title">Case Details</div><div class="section-badge" id="table-badge"></div></div>
+    <div class="table-controls">
+      <input type="text" class="table-search" id="table-search" placeholder="Search case #, product, verdict…" oninput="filterTable()">
+      <select class="table-filter" id="f-priority" onchange="filterTable()">
+        <option value="">All Priorities</option>
+        <option value="red">🔴 Red</option><option value="yellow">🟡 Yellow</option><option value="green">🟢 Green</option>
+      </select>
+      <select class="table-filter" id="f-verdict" onchange="filterTable()">
+        <option value="">All Verdicts</option>
+        <option value="adequate">Adequate</option><option value="needs_supplementation">Needs Supplement</option>
+        <option value="inadequate">Inadequate</option><option value="no_citation_provided">No Citation</option>
+      </select>
+      <select class="table-filter" id="f-action" onchange="filterTable()">
+        <option value="">All Actions</option>
+        <option value="none">None</option><option value="add_context">Add Context</option>
+        <option value="find_better_article">Find Better</option><option value="create_content">Create Content</option>
+      </select>
+    </div>
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead><tr>
+          <th style="width:24px"></th>
+          <th onclick="sortTable('case_number')">Case # ↕</th>
+          <th onclick="sortTable('issue_product')">Product ↕</th>
+          <th onclick="sortTable('primary_article_score')">Score ↕</th>
+          <th onclick="sortTable('primary_article_verdict')">Verdict ↕</th>
+          <th onclick="sortTable('primary_article_action_required')">Action ↕</th>
+          <th onclick="sortTable('synthesis_priority')">Priority ↕</th>
+          <th onclick="sortTable('kt_description_quality_score')">KT ↕</th>
+        </tr></thead>
+        <tbody id="case-tbody"></tbody>
+      </table>
+      <div class="table-pagination" id="table-pagination"></div>
+    </div>
+  </div>
+
+</div><!-- end eval -->
+
+<!-- ═══════════════════════════════ TRENDS ═══════════════════════════════ -->
+<div class="tab-content" id="content-trends">
+  <div class="section">
+    <div class="section-header"><div class="section-title">Trend Overview</div><div class="section-badge" id="trend-badge"></div></div>
+    <div class="kpi-grid g5" id="trend-kpis"></div>
+  </div>
+  <div class="section">
+    <div class="section-header"><div class="section-title">Root Cause &amp; Priority Distribution</div></div>
+    <div class="chart-grid cg2">
+      <div class="chart-card"><div class="chart-title">Cases by Root Cause Pattern</div><div class="chart-wrap h220"><canvas id="chart-trc"></canvas></div></div>
+      <div class="chart-card"><div class="chart-title">Cluster Priority Mix</div><div class="chart-wrap h220"><canvas id="chart-tpri"></canvas></div></div>
+    </div>
+  </div>
+  <div class="section">
+    <div class="section-header"><div class="section-title">Trend Clusters</div><div class="section-badge">sorted by priority · case count</div></div>
+    <div class="cluster-grid" id="cluster-grid"></div>
+  </div>
+</div>
+
+<script>
+// ══════════════════════════════════════════════════════════
+// STATE & UTILS
+// ══════════════════════════════════════════════════════════
+const state = { evalData: null, trendData: null, activeTab: null };
+const charts = {};
+let tbl = { filtered: [], page: 0, pageSize: 30, sortKey: '_priorityOrder', sortDir: 1 };
+
+const num = v => parseFloat(v) || 0;
+const pct = (n, t) => t ? ((n / t) * 100).toFixed(1) + '%' : '0%';
+const avg = arr => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
+const countVal = (arr, k, v) => arr.filter(r => String(r[k] ?? '').trim() === String(v).trim()).length;
+const isTrue = v => v === true || v === 'TRUE' || v === 'true' || v === 'True' || v === 1 || v === '1';
+const trunc = (s, n) => s && s.length > n ? s.slice(0, n) + '…' : (s || '');
+
+function scoreColor(s) {
+  if (s >= 90) return '#16a34a'; if (s >= 70) return '#65a30d';
+  if (s >= 50) return '#d97706'; return '#dc2626';
+}
+function priColor(p) {
+  return { red: '#dc2626', yellow: '#d97706', green: '#16a34a' }[p] || '#94a3b8';
+}
+function priBadge(p) {
+  const cls = { red: 'b-red', yellow: 'b-yellow', green: 'b-green' }[p] || 'b-gray';
+  const lbl = { red: '🔴 Red', yellow: '🟡 Yellow', green: '🟢 Green' }[p] || (p || '–');
+  return `<span class="badge ${cls}">${lbl}</span>`;
+}
+function verdictBadge(v) {
+  const cls = { adequate: 'b-green', needs_supplementation: 'b-yellow', inadequate: 'b-red', no_citation_provided: 'b-purple' }[v] || 'b-gray';
+  return `<span class="badge ${cls}">${(v || '–').replace(/_/g, ' ')}</span>`;
+}
+function actionBadge(v) {
+  const cls = { none: 'b-green', add_context: 'b-yellow', find_better_article: 'b-yellow', create_content: 'b-red' }[v] || 'b-gray';
+  return `<span class="badge ${cls}">${(v || '–').replace(/_/g, ' ')}</span>`;
+}
+function scoreChip(s) {
+  const sc = num(s); return `<span class="score-chip" style="background:${scoreColor(sc)}">${sc.toFixed(0)}</span>`;
+}
+function kpiCard(label, value, sub, barPct, barColor) {
+  const bar = barPct != null ? `<div class="kpi-bar"><div class="kpi-bar-fill" style="width:${Math.min(barPct,100)}%;background:${barColor}"></div></div>` : '';
+  return `<div class="kpi-card">
+    <div class="kpi-label">${label}</div>
+    <div class="kpi-value"${barColor && barPct != null ? ` style="color:${barColor}"` : ''}>${value}</div>
+    ${sub ? `<div class="kpi-sub">${sub}</div>` : ''}${bar}</div>`;
+}
+function scoreBandBar(label, val, maxVal) {
+  const v = parseFloat(val) || 0; const m = maxVal || 100; const color = scoreColor(v);
+  return `<div class="score-bar-row">
+    <div class="score-bar-label">${label}</div>
+    <div class="score-bar-track"><div class="score-bar-fill" style="width:${(v/m)*100}%;background:${color}"></div></div>
+    <div class="score-bar-val" style="color:${color}">${v.toFixed(1)}</div></div>`;
+}
+
+// Bullet list from semicolon-separated text
+function bulletList(text) {
+  if (!text || !text.trim()) return '<em>Not provided</em>';
+  const items = text.split(';').map(s => s.trim()).filter(Boolean);
+  if (items.length === 1) return `<span>${items[0]}</span>`;
+  return `<ul class="detail-bullets">${items.map(i => `<li>${i}</li>`).join('')}</ul>`;
+}
+function textOrEmpty(text) {
+  return (text && text.trim()) ? text.trim() : '<em>Not provided</em>';
+}
+
+// ══════════════════════════════════════════════════════════
+// CROSS-FILTER STATE
+// ══════════════════════════════════════════════════════════
+const filterState = {};
+const MATCHERS = {
+  priority:     (r, v) => r.synthesis_priority === v,
+  verdict:      (r, v) => r.primary_article_verdict === v,
+  action:       (r, v) => r.primary_article_action_required === v,
+  scoreBand:    (r, v) => r._scoreBand === v,
+  relVerdict:   (r, v) => r.article_relevance_verdict === v,
+  compVerdict:  (r, v) => r.article_completeness_verdict === v,
+  valVerdict:   (r, v) => r.article_validity_verdict === v,
+  ktVerdict:    (r, v) => r.kt_description_quality_verdict === v,
+  groundVerdict:(r, v) => r.citation_grounding_verdict === v,
+  rqVerdict:    (r, v) => r.rq_ai_response_quality_verdict === v,
+  rootCause:    (r, v) => (r.synthesis_root_cause_category || 'Unknown') === v,
+  product:      (r, v) => r._product === v,
+};
+const DIM_LABELS = {
+  priority:'Priority', verdict:'Verdict', action:'Action Required',
+  scoreBand:'Score Band', relVerdict:'Relevance', compVerdict:'Completeness',
+  valVerdict:'Validity', ktVerdict:'KT Quality', groundVerdict:'Grounding',
+  rqVerdict:'Response Quality', rootCause:'Root Cause', product:'Product',
+};
+
+// Returns data filtered by all active filters EXCEPT excludeDim (so each chart sees others' filters but not its own)
+function getFiltered(excludeDim) {
+  if (!state.evalData) return [];
+  return state.evalData.filter(row =>
+    Object.entries(filterState).every(([d, v]) => d === excludeDim || MATCHERS[d](row, v))
+  );
+}
+// Returns data filtered by ALL active filters (for KPIs and table)
+function getFilteredAll() { return getFiltered('__none__'); }
+
+function hexAlpha(hex, a) {
+  const rr = parseInt(hex.slice(1,3),16), gg = parseInt(hex.slice(3,5),16), bb = parseInt(hex.slice(5,7),16);
+  return `rgba(${rr},${gg},${bb},${a})`;
+}
+function dimColors(colors, activeVal, values) {
+  if (activeVal == null) return colors;
+  return colors.map((c, i) => values[i] === activeVal ? c : hexAlpha(c, 0.2));
+}
+
+function toggleFilter(dim, val) {
+  if (filterState[dim] === val) delete filterState[dim]; else filterState[dim] = val;
+  updateEvalView();
+}
+function clearFilter(dim) { delete filterState[dim]; updateEvalView(); }
+function clearAllFilters() { Object.keys(filterState).forEach(k => delete filterState[k]); updateEvalView(); }
+
+function renderFilterChips() {
+  const el = document.getElementById('filter-chips'); if (!el) return;
+  const entries = Object.entries(filterState);
+  if (!entries.length) { el.style.display = 'none'; return; }
+  el.style.display = 'flex';
+  el.innerHTML = entries.map(([dim, val]) =>
+    `<span style="background:#eff6ff;border:1px solid #bfdbfe;color:#1d4ed8;padding:3px 6px 3px 10px;border-radius:12px;font-size:11px;font-weight:600;display:inline-flex;align-items:center;gap:4px">
+      ${DIM_LABELS[dim]}: <strong>${val.replace(/_/g,' ')}</strong>
+      <button onclick="clearFilter('${dim}')" style="background:none;border:none;cursor:pointer;color:#3b82f6;font-size:15px;line-height:1;padding:0 1px">×</button>
+    </span>`
+  ).join('') + `<button onclick="clearAllFilters()" style="background:#e2e8f0;border:none;cursor:pointer;padding:3px 10px;border-radius:12px;font-size:11px;color:#374151;font-weight:600">Clear all</button>`;
+}
+
+// ══════════════════════════════════════════════════════════
+// CHART HELPERS (cross-filter aware)
+// ══════════════════════════════════════════════════════════
+function destroyChart(id) { if (charts[id]) { charts[id].destroy(); delete charts[id]; } }
+
+// Donut — predefined values list
+function makeDonut(id, labels, values, keyFn, colors, dim) {
+  destroyChart(id);
+  const ctx = document.getElementById(id); if (!ctx) return;
+  const data = getFiltered(dim);
+  const activeVal = filterState[dim] ?? null;
+  const counts = values.map(v => data.filter(r => keyFn(r) === v).length);
+  const bgColors = dimColors(colors, activeVal, values);
+  const total = counts.reduce((a,b) => a+b, 0);
+  charts[id] = new Chart(ctx.getContext('2d'), {
+    type: 'doughnut',
+    data: { labels, datasets: [{ data: counts, backgroundColor: bgColors, borderWidth: 2, borderColor: '#fff', hoverOffset: 3 }] },
+    options: {
+      responsive: true, maintainAspectRatio: false, cutout: '60%',
+      plugins: {
+        legend: { position: 'right', labels: { font: { size: 10 }, boxWidth: 10, padding: 5,
+          generateLabels: chart => labels.map((lbl, i) => ({
+            text: lbl, fillStyle: bgColors[i], strokeStyle: '#fff', lineWidth: 1,
+            fontColor: activeVal !== null && values[i] !== activeVal ? '#b0b8c4' : '#374151',
+            datasetIndex: 0, index: i, hidden: false
+          }))
+        }},
+        tooltip: { callbacks: { label: c => ` ${c.label}: ${c.raw} (${total ? ((c.raw/total)*100).toFixed(1) : 0}%)` } }
+      },
+      onClick: (evt, els) => { if (els.length) toggleFilter(dim, values[els[0].index]); else if (activeVal !== null) clearFilter(dim); }
+    }
+  });
+}
+
+// Horizontal bar — predefined values list
+function makeHBar(id, labels, values, keyFn, colors, dim) {
+  destroyChart(id);
+  const ctx = document.getElementById(id); if (!ctx) return;
+  const data = getFiltered(dim);
+  const activeVal = filterState[dim] ?? null;
+  const counts = values.map(v => data.filter(r => keyFn(r) === v).length);
+  const bgColors = dimColors(Array.isArray(colors) ? colors : values.map(() => colors), activeVal, values);
+  charts[id] = new Chart(ctx.getContext('2d'), {
+    type: 'bar',
+    data: { labels, datasets: [{ data: counts, backgroundColor: bgColors, borderRadius: 3, barThickness: 18 }] },
+    options: {
+      indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => ` ${c.raw} cases` } } },
+      scales: { x: { beginAtZero: true, grid: { color: '#f1f5f9' }, ticks: { font: { size: 10 } } }, y: { grid: { display: false }, ticks: { font: { size: 10 } } } },
+      onClick: (evt, els) => { if (els.length) toggleFilter(dim, values[els[0].index]); else if (activeVal !== null) clearFilter(dim); }
+    }
+  });
+}
+
+// Horizontal bar — dynamic values from data (root cause, etc.)
+function makeDynHBar(id, keyFn, colorFn, dim) {
+  destroyChart(id);
+  const ctx = document.getElementById(id); if (!ctx) return;
+  const data = getFiltered(dim);
+  const activeVal = filterState[dim] ?? null;
+  const map = {}; data.forEach(r => { const v = keyFn(r)||'Unknown'; map[v]=(map[v]||0)+1; });
+  const sorted = Object.entries(map).sort((a,b)=>b[1]-a[1]);
+  const labels = sorted.map(([k])=>k), values = labels, counts = sorted.map(([,v])=>v);
+  const bgColors = sorted.map(([k]) => { const c=colorFn(k); return activeVal!==null&&k!==activeVal?hexAlpha(c,0.2):c; });
+  charts[id] = new Chart(ctx.getContext('2d'), {
+    type: 'bar',
+    data: { labels, datasets: [{ data: counts, backgroundColor: bgColors, borderRadius: 3, barThickness: 18 }] },
+    options: {
+      indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => ` ${c.raw} cases` } } },
+      scales: { x: { beginAtZero: true, grid: { color: '#f1f5f9' }, ticks: { font: { size: 10 } } }, y: { grid: { display: false }, ticks: { font: { size: 10 } } } },
+      onClick: (evt, els) => { if (els.length) toggleFilter(dim, values[els[0].index]); else if (activeVal !== null) clearFilter(dim); }
+    }
+  });
+}
+
+// Vertical bar — score bands (predefined)
+function makeVBar(id, labels, values, keyFn, colors, dim) {
+  destroyChart(id);
+  const ctx = document.getElementById(id); if (!ctx) return;
+  const data = getFiltered(dim);
+  const activeVal = filterState[dim] ?? null;
+  const counts = values.map(v => data.filter(r => keyFn(r) === v).length);
+  const bgColors = dimColors(colors, activeVal, values);
+  charts[id] = new Chart(ctx.getContext('2d'), {
+    type: 'bar',
+    data: { labels, datasets: [{ data: counts, backgroundColor: bgColors, borderRadius: 3, barThickness: 28 }] },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => ` ${c.raw} cases` } } },
+      scales: { x: { grid: { color: '#f1f5f9' }, ticks: { font: { size: 10 }, maxRotation: 20 } }, y: { beginAtZero: true, grid: { color: '#f1f5f9' }, ticks: { font: { size: 10 } } } },
+      onClick: (evt, els) => { if (els.length) toggleFilter(dim, values[els[0].index]); else if (activeVal !== null) clearFilter(dim); }
+    }
+  });
+}
+
+// Vertical bar — avg score by product (dynamic, filterable by product)
+function makeProdBar(id, dim) {
+  destroyChart(id);
+  const ctx = document.getElementById(id); if (!ctx) return;
+  const data = getFiltered(dim);
+  const activeVal = filterState[dim] ?? null;
+  const map = {}; data.forEach(r => { const k=r._product||'Unknown'; if(!map[k]) map[k]=[]; map[k].push(num(r.primary_article_score)); });
+  const sorted = Object.entries(map).map(([k,v])=>[k,avg(v),v.length]).sort((a,b)=>b[2]-a[2]).slice(0,12);
+  const labels = sorted.map(([k])=>k), values = labels;
+  const scores = sorted.map(([,s])=>parseFloat(s.toFixed(1)));
+  const bgColors = sorted.map(([k,s])=>{ const c=scoreColor(s); return activeVal!==null&&k!==activeVal?hexAlpha(c,0.2):c; });
+  charts[id] = new Chart(ctx.getContext('2d'), {
+    type: 'bar',
+    data: { labels, datasets: [{ data: scores, backgroundColor: bgColors, borderRadius: 3 }] },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => ` Avg score: ${c.raw}` } } },
+      scales: { x: { grid: { color: '#f1f5f9' }, ticks: { font: { size: 10 }, maxRotation: 30 } }, y: { beginAtZero: true, max: 100, grid: { color: '#f1f5f9' }, ticks: { font: { size: 10 } } } },
+      onClick: (evt, els) => { if (els.length) toggleFilter(dim, values[els[0].index]); else if (activeVal !== null) clearFilter(dim); }
+    }
+  });
+}
+
+// ══════════════════════════════════════════════════════════
+// CSV PARSING
+// ══════════════════════════════════════════════════════════
+function parseEval(text) {
+  const r = Papa.parse(text, { header: true, skipEmptyLines: true, dynamicTyping: true });
+  return r.data.map(row => {
+    const s = num(row.primary_article_score);
+    row._scoreBand = s >= 90 ? '90-100' : s >= 70 ? '70-89' : s >= 50 ? '50-69' : '0-49';
+    row._priorityOrder = row.synthesis_priority === 'red' ? 1 : row.synthesis_priority === 'yellow' ? 2 : row.synthesis_priority === 'green' ? 3 : 4;
+    row._hasError = !!(row.error && String(row.error).trim());
+    row._product = row.issue_product || (row.sap_path ? String(row.sap_path).split('/')[0].trim() : 'Unknown');
+    return row;
+  });
+}
+function parseTrend(text) {
+  const r = Papa.parse(text, { header: true, skipEmptyLines: true, dynamicTyping: true });
+  return r.data.map(row => {
+    row._priorityOrder = row.priority === 'red' ? 1 : row.priority === 'yellow' ? 2 : row.priority === 'green' ? 3 : 4;
+    const m = String(row.estimated_impact || '').match(/~(\d+)/);
+    row._impact = m ? parseInt(m[1]) : num(row.case_count);
+    return row;
+  }).sort((a, b) => a._priorityOrder - b._priorityOrder || b.case_count - a.case_count);
+}
+function isMwea(data) {
+  return data.some(r => r.citation_grounding_score !== null && r.citation_grounding_score !== undefined && String(r.citation_grounding_score).trim() !== '');
+}
+
+// ══════════════════════════════════════════════════════════
+// UPLOAD
+// ══════════════════════════════════════════════════════════
+function onDragOver(e, id) { e.preventDefault(); document.getElementById(id).classList.add('drag-over'); }
+function onDragLeave(id) { document.getElementById(id).classList.remove('drag-over'); }
+function onDrop(e, type) {
+  e.preventDefault();
+  document.getElementById(type === 'eval' ? 'eval-card' : 'trend-card').classList.remove('drag-over');
+  const f = e.dataTransfer.files[0]; if (f) readFile(f, type);
+}
+function handleFile(e, type) { if (e.target.files[0]) readFile(e.target.files[0], type); }
+function readFile(file, type) {
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      if (type === 'eval') {
+        state.evalData = parseEval(e.target.result);
+        setLoaded('eval', file.name, state.evalData.length + ' cases');
+        renderSPM(); renderEval();
+      } else {
+        state.trendData = parseTrend(e.target.result);
+        setLoaded('trend', file.name, state.trendData.length + ' clusters');
+        renderTrends();
+      }
+      updateTabs();
+    } catch (err) { alert('Error parsing CSV: ' + err.message); console.error(err); }
+  };
+  reader.readAsText(file, 'UTF-8');
+}
+function setLoaded(type, fname, sub) {
+  const card = document.getElementById(type === 'eval' ? 'eval-card' : 'trend-card');
+  card.classList.add('loaded');
+  document.getElementById(type === 'eval' ? 'eval-icon' : 'trend-icon').textContent = '✅';
+  document.getElementById(type === 'eval' ? 'eval-fname' : 'trend-fname').textContent = fname;
+  document.getElementById(type === 'eval' ? 'eval-hint' : 'trend-hint').textContent = sub;
+}
+function clearFile(e, type) {
+  e.preventDefault(); e.stopPropagation();
+  const isEval = type === 'eval';
+  document.getElementById(isEval ? 'eval-card' : 'trend-card').classList.remove('loaded');
+  document.getElementById(isEval ? 'eval-icon' : 'trend-icon').textContent = isEval ? '📋' : '📈';
+  document.getElementById(isEval ? 'eval-fname' : 'trend-fname').textContent = '';
+  document.getElementById(isEval ? 'eval-hint' : 'trend-hint').textContent = isEval ? 'evaluation_results_*.csv' : 'trend_report_*.csv';
+  document.getElementById(isEval ? 'eval-input' : 'trend-input').value = '';
+  if (isEval) { state.evalData = null; } else { state.trendData = null; }
+  updateTabs();
+}
+function updateTabs() {
+  const hasEval = !!state.evalData, hasTrend = !!state.trendData, hasSome = hasEval || hasTrend;
+  document.getElementById('empty-state').style.display = hasSome ? 'none' : 'block';
+  document.getElementById('tabs').classList.toggle('visible', hasSome);
+  ['spm', 'eval'].forEach(t => {
+    const btn = document.getElementById('tab-' + (t === 'spm' ? 'spm' : 'eval'));
+    btn.classList.toggle('disabled', !hasEval);
+    btn.classList.toggle('has-data', hasEval);
+  });
+  const tBtn = document.getElementById('tab-trends');
+  tBtn.classList.toggle('disabled', !hasTrend);
+  tBtn.classList.toggle('has-data', hasTrend);
+
+  if (state.activeTab === 'spm' && !hasEval) state.activeTab = null;
+  if (state.activeTab === 'eval' && !hasEval) state.activeTab = null;
+  if (state.activeTab === 'trends' && !hasTrend) state.activeTab = null;
+  if (!state.activeTab && hasSome) state.activeTab = hasEval ? 'spm' : 'trends';
+  if (state.activeTab) showTab(state.activeTab);
+}
+function showTab(tab) {
+  if ((tab === 'spm' || tab === 'eval') && !state.evalData) return;
+  if (tab === 'trends' && !state.trendData) return;
+  state.activeTab = tab;
+  ['spm', 'eval', 'trends'].forEach(t => {
+    document.getElementById('content-' + t).classList.toggle('active', t === tab);
+    document.getElementById('tab-' + t).classList.toggle('active', t === tab);
+  });
+}
+
+// ══════════════════════════════════════════════════════════
+// CASE DETAIL PANEL
+// ══════════════════════════════════════════════════════════
+function buildDetailPanel(row, mweaMode) {
+  const pmActions = row.synthesis_pm_actions || '';
+  const priReason = row.synthesis_priority_reason || '';
+  const finalRec = row.final_recommendation || '';
+  const rqAnalysis = row.rq_response_quality_analysis || '';
+  const gndAnalysis = row.rq_groundedness_analysis || '';
+  const resAnalysis = row.rq_issue_resolution_analysis || '';
+  const weaknesses = row.rq_quality_weaknesses || '';
+  const improvements = row.rq_improvement_suggestions || '';
+  const ktMissing = row.kt_missing_elements || '';
+  const ktSuggestions = row.kt_improvement_suggestions || '';
+  const artMissing = row.article_completeness_missing_elements || '';
+  const artIssues = row.article_validity_potential_issues || '';
+  const url = row.primary_article_url || '';
+  const warn = isTrue(row.kt_evaluation_reliability_warning);
+
+  let html = `<div class="detail-panel">`;
+  if (warn) html += `<div class="detail-block detail-full-row"><div class="detail-warning">⚠️ Low KT confidence — description quality below 40. Evaluation reliability may be reduced.</div></div>`;
+
+  // PM Actions — full width, most important
+  html += `<div class="detail-block detail-full-row">
+    <div class="detail-label">💡 PM Actions</div>
+    <div class="detail-text">${bulletList(pmActions)}</div>
+  </div>`;
+
+  // Priority Reason
+  html += `<div class="detail-block">
+    <div class="detail-label">🎯 Priority Reason</div>
+    <div class="detail-text">${textOrEmpty(priReason)}</div>
+  </div>`;
+
+  // Final Recommendation
+  html += `<div class="detail-block">
+    <div class="detail-label">📋 Final Recommendation</div>
+    <div class="detail-text">${textOrEmpty(finalRec)}</div>
+  </div>`;
+
+  if (mweaMode) {
+    // Response Quality Analysis
+    if (rqAnalysis.trim()) {
+      html += `<div class="detail-block">
+        <div class="detail-label">📝 Response Quality Analysis</div>
+        <div class="detail-text">${rqAnalysis}</div>
+      </div>`;
+    }
+    // Groundedness Analysis
+    if (gndAnalysis.trim()) {
+      html += `<div class="detail-block">
+        <div class="detail-label">🔗 Groundedness Analysis</div>
+        <div class="detail-text">${gndAnalysis}</div>
+      </div>`;
+    }
+    // Issue Resolution Analysis
+    if (resAnalysis.trim()) {
+      html += `<div class="detail-block">
+        <div class="detail-label">✅ Issue Resolution Analysis</div>
+        <div class="detail-text">${resAnalysis}</div>
+      </div>`;
+    }
+    // Weaknesses
+    if (weaknesses.trim()) {
+      html += `<div class="detail-block">
+        <div class="detail-label">⚠️ Quality Weaknesses</div>
+        <div class="detail-text">${bulletList(weaknesses)}</div>
+      </div>`;
+    }
+    // Improvement Suggestions
+    if (improvements.trim()) {
+      html += `<div class="detail-block">
+        <div class="detail-label">🔧 Response Improvement Suggestions</div>
+        <div class="detail-text">${bulletList(improvements)}</div>
+      </div>`;
+    }
+  }
+
+  // KT Missing Elements
+  if (ktMissing.trim()) {
+    html += `<div class="detail-block">
+      <div class="detail-label">❓ KT Missing Elements</div>
+      <div class="detail-text">${bulletList(ktMissing)}</div>
+    </div>`;
+  }
+  if (ktSuggestions.trim()) {
+    html += `<div class="detail-block">
+      <div class="detail-label">📌 KT Improvement Suggestions</div>
+      <div class="detail-text">${bulletList(ktSuggestions)}</div>
+    </div>`;
+  }
+
+  // Article gaps
+  if (artMissing.trim()) {
+    html += `<div class="detail-block">
+      <div class="detail-label">📄 Article Missing Elements</div>
+      <div class="detail-text">${bulletList(artMissing)}</div>
+    </div>`;
+  }
+  if (artIssues.trim()) {
+    html += `<div class="detail-block">
+      <div class="detail-label">🚨 Article Potential Issues</div>
+      <div class="detail-text">${bulletList(artIssues)}</div>
+    </div>`;
+  }
+
+  // Article URL
+  if (url.trim()) {
+    html += `<div class="detail-block detail-full-row">
+      <div class="detail-label">🔗 Cited Article</div>
+      <a href="${url}" target="_blank" class="detail-link">${url}</a>
+    </div>`;
+  }
+
+  html += `</div>`;
+  return html;
+}
+
+function toggleDetail(btn, caseIdx, tableBodyId, mweaMode) {
+  const tbody = document.getElementById(tableBodyId);
+  const dataRow = tbody.querySelector(`tr[data-idx="${caseIdx}"]`);
+  const existing = tbody.querySelector(`tr.detail-row[data-idx="${caseIdx}"]`);
+  if (existing) {
+    existing.remove();
+    dataRow.classList.remove('expanded');
+    btn.classList.remove('open');
+    btn.textContent = '▶';
+  } else {
+    // Close any other open detail
+    tbody.querySelectorAll('tr.detail-row').forEach(r => r.remove());
+    tbody.querySelectorAll('tr.data-row.expanded').forEach(r => r.classList.remove('expanded'));
+    tbody.querySelectorAll('.expand-btn.open').forEach(b => { b.classList.remove('open'); b.textContent = '▶'; });
+
+    const row = state.evalData[caseIdx];
+    const detailTr = document.createElement('tr');
+    detailTr.className = 'detail-row';
+    detailTr.dataset.idx = caseIdx;
+    const cols = tableBodyId === 'spm-table-body' ? 7 : 8;
+    detailTr.innerHTML = `<td colspan="${cols}">${buildDetailPanel(row, mweaMode)}</td>`;
+    dataRow.after(detailTr);
+    dataRow.classList.add('expanded');
+    btn.classList.add('open');
+    btn.textContent = '▶';
+  }
+}
+
+// ══════════════════════════════════════════════════════════
+// RENDER SPM ACTIONS
+// ══════════════════════════════════════════════════════════
+function renderSPM() {
+  const data = state.evalData; if (!data) return;
+  const n = data.length; // always full count for alert
+  const mwea = isMwea(data);
+  const redN = countVal(data, 'synthesis_priority', 'red');
+  const yelN = countVal(data, 'synthesis_priority', 'yellow');
+  const grnN = countVal(data, 'synthesis_priority', 'green');
+  const actionN = n - countVal(data, 'primary_article_action_required', 'none');
+
+  // Alert
+  const alertEl = document.getElementById('spm-alert');
+  if (redN > 0) {
+    alertEl.innerHTML = `<div class="alert-banner alert-red">🚨 <strong>${redN} red-priority case${redN > 1 ? 's' : ''}</strong> require immediate PM action — articles need replacement or new content must be created.</div>`;
+  } else if (yelN > 0) {
+    alertEl.innerHTML = `<div class="alert-banner alert-yellow">⚠️ <strong>${yelN} yellow-priority case${yelN > 1 ? 's' : ''}</strong> need PM review.</div>`;
+  } else {
+    alertEl.innerHTML = `<div class="alert-banner alert-green">✅ No red-priority cases. All ${n} cases are green or yellow.</div>`;
+  }
+
+  // KPIs
+  document.getElementById('spm-kpis').innerHTML = [
+    `<div class="kpi-card"><div class="kpi-label">🔴 Immediate Action</div><div class="kpi-value c-red">${redN}</div><div class="kpi-sub">${pct(redN,n)} — critical article gaps</div></div>`,
+    `<div class="kpi-card"><div class="kpi-label">🟡 Needs Review</div><div class="kpi-value c-yellow">${yelN}</div><div class="kpi-sub">${pct(yelN,n)} — supplementation needed</div></div>`,
+    `<div class="kpi-card"><div class="kpi-label">📋 Total Actions Required</div><div class="kpi-value c-blue">${actionN}</div><div class="kpi-sub">${pct(actionN,n)} of cases — any action needed</div></div>`,
+  ].join('');
+
+  // Sort: red first, then yellow, then green; within priority sort by score asc
+  const sorted = [...data].sort((a, b) => {
+    if (a._priorityOrder !== b._priorityOrder) return a._priorityOrder - b._priorityOrder;
+    return num(a.primary_article_score) - num(b.primary_article_score);
+  });
+
+  document.getElementById('spm-table-badge').textContent = n + ' cases';
+  const rows = sorted.map(row => {
+    const idx = data.indexOf(row);
+    const pm = row.synthesis_pm_actions || '';
+    const preview = pm.trim() ? trunc(pm.replace(/;/g, ' ·'), 80) : null;
+    return `<tr class="data-row" data-idx="${idx}">
+      <td><button class="expand-btn" onclick="toggleDetail(this,${idx},'spm-table-body',${mwea})" title="Show detail">▶</button></td>
+      <td>${priBadge(row.synthesis_priority)}</td>
+      <td style="font-family:monospace;font-size:11px">${row.case_number || '–'}</td>
+      <td>${trunc(row._product || '–', 22)}</td>
+      <td>${scoreChip(row.primary_article_score)}</td>
+      <td>${actionBadge(row.primary_article_action_required)}</td>
+      <td class="${preview ? 'pm-preview' : 'pm-empty'}">${preview || 'No PM actions recorded'}</td>
+    </tr>`;
+  }).join('');
+  document.getElementById('spm-table-body').innerHTML = rows || '<tr><td colspan="7" style="text-align:center;color:#94a3b8;padding:20px">No cases</td></tr>';
+}
+
+// ══════════════════════════════════════════════════════════
+// RENDER EVAL REPORT
+// ══════════════════════════════════════════════════════════
+function renderEval() {
+  if (!state.evalData) return;
+  // Reset text/select filters on first load only
+  document.getElementById('table-search').value = '';
+  document.getElementById('f-priority').value = '';
+  document.getElementById('f-verdict').value = '';
+  document.getElementById('f-action').value = '';
+  // Setup citation section visibility once
+  document.getElementById('sec-citation').style.display = isMwea(state.evalData) ? '' : 'none';
+  updateEvalView();
+}
+
+// Called on every filter change — re-renders everything using current filterState
+function updateEvalView() {
+  const allData = state.evalData; if (!allData) return;
+  const data = getFilteredAll(); // KPIs & static elements use all-filtered data
+  const n = data.length;
+  const mwea = isMwea(allData);
+
+  document.getElementById('eval-badge').textContent = n + ' of ' + allData.length + ' cases';
+  renderFilterChips();
+
+  // KPI cards (respond to filters)
+  const adequate = countVal(data, 'primary_article_verdict', 'adequate');
+  const actionNone = countVal(data, 'primary_article_action_required', 'none');
+  const avgScore = n ? avg(data.map(r => num(r.primary_article_score))) : 0;
+  const redN = countVal(data, 'synthesis_priority', 'red');
+  document.getElementById('exec-kpis').innerHTML = [
+    kpiCard('Cases (filtered)', n, 'of ' + allData.length + ' total', null, null),
+    kpiCard('Avg Overall Score', avgScore.toFixed(1), 'out of 100', avgScore, scoreColor(avgScore)),
+    kpiCard('Adequacy Rate', pct(adequate, n), adequate + ' adequate', (adequate/n)*100, '#16a34a'),
+    kpiCard('Action Required Rate', pct(n-actionNone, n), (n-actionNone) + ' cases need action', ((n-actionNone)/n)*100, '#d97706'),
+  ].join('');
+  document.getElementById('exec-kpis2').innerHTML = [
+    `<div class="kpi-card"><div class="kpi-label">🔴 Red Priority</div><div class="kpi-value c-red">${redN}</div><div class="kpi-sub">${pct(redN,n)} — immediate action</div></div>`,
+    kpiCard('Low KT Confidence', data.filter(r => isTrue(r.kt_evaluation_reliability_warning)).length, 'reliability warnings', null, null),
+    kpiCard('Avg Processing', n ? (avg(data.map(r => num(r.processing_time_ms)))/1000).toFixed(1) + 's' : '–', 'per case', null, null),
+  ].join('');
+
+  // Charts — each uses getFiltered(dim) internally
+  makeDonut('chart-verdict',
+    ['Adequate','Needs Supplement','Inadequate','No Citation'],
+    ['adequate','needs_supplementation','inadequate','no_citation_provided'],
+    r => r.primary_article_verdict,
+    ['#16a34a','#d97706','#dc2626','#7c3aed'], 'verdict');
+
+  makeDonut('chart-priority',
+    ['🔴 Red','🟡 Yellow','🟢 Green'],
+    ['red','yellow','green'],
+    r => r.synthesis_priority,
+    ['#dc2626','#d97706','#16a34a'], 'priority');
+
+  makeHBar('chart-action',
+    ['None','Add Context','Find Better Article','Create Content'],
+    ['none','add_context','find_better_article','create_content'],
+    r => r.primary_article_action_required,
+    ['#16a34a','#d97706','#f59e0b','#dc2626'], 'action');
+
+  makeVBar('chart-scorebands',
+    ['90-100 Excellent','70-89 Good','50-69 Needs Work','0-49 Critical'],
+    ['90-100','70-89','50-69','0-49'],
+    r => r._scoreBand,
+    ['#16a34a','#65a30d','#d97706','#dc2626'], 'scoreBand');
+
+  // Article quality KPIs
+  const avgR = n ? avg(data.map(r => num(r.article_relevance_score))) : 0;
+  const avgC = n ? avg(data.map(r => num(r.article_completeness_score))) : 0;
+  const avgV = n ? avg(data.map(r => num(r.article_validity_score))) : 0;
+  document.getElementById('article-kpis').innerHTML = [
+    kpiCard('Avg Relevance', avgR.toFixed(1), '40% weight', avgR, scoreColor(avgR)),
+    kpiCard('Avg Completeness', avgC.toFixed(1), '30% weight', avgC, scoreColor(avgC)),
+    kpiCard('Avg Validity', avgV.toFixed(1), '30% weight', avgV, scoreColor(avgV)),
+  ].join('');
+
+  makeDonut('chart-rel',
+    ['Excellent','Good','Partial','Poor','Irrelevant'],
+    ['excellent','good','partial','poor','irrelevant'],
+    r => r.article_relevance_verdict,
+    ['#16a34a','#65a30d','#d97706','#f97316','#dc2626'], 'relVerdict');
+
+  makeDonut('chart-comp',
+    ['Complete','Mostly Complete','Incomplete','Severely Lacking'],
+    ['complete','mostly_complete','incomplete','severely_lacking'],
+    r => r.article_completeness_verdict,
+    ['#16a34a','#65a30d','#d97706','#dc2626'], 'compVerdict');
+
+  makeDonut('chart-val',
+    ['Valid','Likely Valid','Uncertain','Likely Invalid','Invalid'],
+    ['valid','likely_valid','uncertain','likely_invalid','invalid'],
+    r => r.article_validity_verdict,
+    ['#16a34a','#65a30d','#d97706','#f97316','#dc2626'], 'valVerdict');
+
+  // Content checklist (uses all-filtered data)
+  const checks = [
+    { key: 'article_completeness_has_prerequisites', label: 'Has Prerequisites' },
+    { key: 'article_completeness_has_step_by_step', label: 'Has Step-by-Step' },
+    { key: 'article_completeness_has_examples', label: 'Has Examples' },
+    { key: 'article_completeness_has_troubleshooting', label: 'Has Troubleshooting' },
+    { key: 'article_completeness_has_success_criteria', label: 'Has Success Criteria' },
+    { key: 'article_validity_addresses_root_cause', label: 'Addresses Root Cause' },
+    { key: 'article_validity_is_current_solution', label: 'Is Current Solution' },
+    { key: 'article_validity_environment_compatible', label: 'Env. Compatible' },
+  ];
+  document.getElementById('checklist').innerHTML = '<div class="checklist">' + checks.map(c => {
+    const cnt = data.filter(r => isTrue(r[c.key])).length;
+    const p = n ? Math.round(cnt/n*100) : 0;
+    const color = p >= 70 ? '#16a34a' : p >= 40 ? '#d97706' : '#dc2626';
+    return `<div class="checklist-item"><span>${p>=70?'✅':p>=40?'⚠️':'❌'}</span><span class="checklist-label">${c.label}</span><span class="checklist-pct" style="color:${color}">${p}%</span></div>`;
+  }).join('') + '</div>';
+
+  // KT KPIs
+  const avgKT = n ? avg(data.map(r => num(r.kt_description_quality_score))) : 0;
+  document.getElementById('kt-kpis').innerHTML = [
+    kpiCard('Avg KT Quality', avgKT.toFixed(1), 'Identity 35% + Location 25% + Timing 20% + Magnitude 20%', avgKT, scoreColor(avgKT)),
+    kpiCard('Well Defined', pct(countVal(data,'kt_description_quality_verdict','well_defined'), n), 'well-described cases', null, null),
+    kpiCard('Poorly Defined', pct(countVal(data,'kt_description_quality_verdict','poorly_defined'), n), 'under-described cases', null, '#dc2626'),
+    kpiCard('KT Warnings', data.filter(r => isTrue(r.kt_evaluation_reliability_warning)).length, 'KT score < 40', null, null),
+  ].join('');
+  document.getElementById('kt-bars').innerHTML = [
+    { label: 'Identity (WHAT)', val: n ? avg(data.map(r=>num(r.kt_identity_score))) : 0 },
+    { label: 'Location (WHERE)', val: n ? avg(data.map(r=>num(r.kt_location_score))) : 0 },
+    { label: 'Timing (WHEN)', val: n ? avg(data.map(r=>num(r.kt_timing_score))) : 0 },
+    { label: 'Magnitude (EXTENT)', val: n ? avg(data.map(r=>num(r.kt_magnitude_score))) : 0 },
+  ].map(d => scoreBandBar(d.label, d.val)).join('');
+
+  makeDonut('chart-kt',
+    ['Well Defined','Mostly Defined','Partially Defined','Poorly Defined'],
+    ['well_defined','mostly_defined','partially_defined','poorly_defined'],
+    r => r.kt_description_quality_verdict,
+    ['#16a34a','#65a30d','#d97706','#dc2626'], 'ktVerdict');
+
+  // Citation & Response (mweaeval only)
+  if (mwea) {
+    const mweaData = data.filter(r => String(r.citation_grounding_score ?? '').trim() !== '');
+    const avgGround = mweaData.length ? avg(mweaData.map(r => num(r.citation_grounding_score))) : 0;
+    const avgRQ = mweaData.length ? avg(mweaData.map(r => num(r.rq_ai_response_quality_score))) : 0;
+    const totalCit = data.reduce((a,r) => a+num(r.citations_total), 0);
+    const goodCit = data.reduce((a,r) => a+num(r.citations_good), 0);
+    document.getElementById('citation-kpis').innerHTML = [
+      kpiCard('Avg Grounding Score', avgGround.toFixed(1), 'citation grounding quality', avgGround, scoreColor(avgGround)),
+      kpiCard('Avg Response Quality', avgRQ.toFixed(1), 'composite AI response score', avgRQ, scoreColor(avgRQ)),
+      kpiCard('Good Citation Rate', pct(goodCit, totalCit), goodCit + ' of ' + totalCit + ' citations', null, null),
+      kpiCard('Zero Citation Cases', data.filter(r => num(r.citations_total) === 0).length, 'no citations evaluated', null, null),
+    ].join('');
+    makeDonut('chart-ground',
+      ['Well Grounded','Partially','Poorly','Ungrounded'],
+      ['well_grounded','partially_grounded','poorly_grounded','ungrounded'],
+      r => r.citation_grounding_verdict,
+      ['#16a34a','#65a30d','#d97706','#dc2626'], 'groundVerdict');
+    makeDonut('chart-rq',
+      ['Excellent','Good','Fair','Poor'],
+      ['excellent','good','fair','poor'],
+      r => r.rq_ai_response_quality_verdict,
+      ['#16a34a','#65a30d','#d97706','#dc2626'], 'rqVerdict');
+    document.getElementById('rq-bars').innerHTML = [
+      { label: 'Response Quality', val: mweaData.length ? avg(mweaData.map(r=>num(r.rq_response_quality_score))) : 0 },
+      { label: 'Groundedness', val: mweaData.length ? avg(mweaData.map(r=>num(r.rq_groundedness_score))) : 0 },
+      { label: 'Issue Resolution', val: mweaData.length ? avg(mweaData.map(r=>num(r.rq_issue_resolution_score))) : 0 },
+    ].map(c => scoreBandBar(c.label, c.val)).join('');
+  }
+
+  // Synthesis KPIs
+  const sRed = countVal(data,'synthesis_priority','red'), sYel = countVal(data,'synthesis_priority','yellow'), sGrn = countVal(data,'synthesis_priority','green');
+  document.getElementById('synth-kpis').innerHTML = [
+    `<div class="kpi-card"><div class="kpi-label">🔴 Red</div><div class="kpi-value c-red">${sRed}</div><div class="kpi-sub">${pct(sRed,n)}</div></div>`,
+    `<div class="kpi-card"><div class="kpi-label">🟡 Yellow</div><div class="kpi-value c-yellow">${sYel}</div><div class="kpi-sub">${pct(sYel,n)}</div></div>`,
+    `<div class="kpi-card"><div class="kpi-label">🟢 Green</div><div class="kpi-value c-green">${sGrn}</div><div class="kpi-sub">${pct(sGrn,n)}</div></div>`,
+  ].join('');
+
+  // Dynamic charts
+  makeDynHBar('chart-rc', r => r.synthesis_root_cause_category || 'Unknown',
+    k => { const ex = getFiltered('rootCause').find(r => (r.synthesis_root_cause_category||'Unknown')===k); return priColor(ex?.synthesis_priority); },
+    'rootCause');
+  makeProdBar('chart-product', 'product');
+
+  // Case table
+  filterTable();
+}
+
+// ══════════════════════════════════════════════════════════
+// CASE TABLE
+// ══════════════════════════════════════════════════════════
+function filterTable() {
+  const q = (document.getElementById('table-search').value||'').toLowerCase();
+  const fp = document.getElementById('f-priority').value;
+  const fv = document.getElementById('f-verdict').value;
+  const fa = document.getElementById('f-action').value;
+  // Start from chart-filtered data, then apply text/dropdown filters on top
+  tbl.filtered = getFilteredAll().filter(r => {
+    if (fp && r.synthesis_priority !== fp) return false;
+    if (fv && r.primary_article_verdict !== fv) return false;
+    if (fa && r.primary_article_action_required !== fa) return false;
+    if (q) {
+      const hay = [r.case_number, r._product, r.primary_article_verdict, r.synthesis_priority, r.synthesis_root_cause_category, r.primary_article_action_required].join(' ').toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    return true;
+  });
+  tbl.page = 0;
+  document.getElementById('table-badge').textContent = tbl.filtered.length + ' / ' + state.evalData.length;
+  renderTablePage();
+}
+function sortTable(key) {
+  if (tbl.sortKey === key) tbl.sortDir = -tbl.sortDir;
+  else { tbl.sortKey = key; tbl.sortDir = 1; }
+  tbl.page = 0; renderTablePage();
+}
+function renderTablePage() {
+  const { filtered, page, pageSize, sortKey, sortDir } = tbl;
+  const mwea = isMwea(state.evalData);
+  const sorted = [...filtered].sort((a, b) => {
+    const av = a[sortKey], bv = b[sortKey];
+    if (typeof av === 'number') return (av - bv) * sortDir;
+    return String(av||'').localeCompare(String(bv||'')) * sortDir;
+  });
+  const start = page * pageSize;
+  const rows = sorted.slice(start, start + pageSize);
+  document.getElementById('case-tbody').innerHTML = rows.map(row => {
+    const idx = state.evalData.indexOf(row);
+    return `<tr class="data-row" data-idx="${idx}">
+      <td><button class="expand-btn" onclick="toggleDetail(this,${idx},'case-tbody',${mwea})" title="Show detail">▶</button></td>
+      <td style="font-family:monospace;font-size:11px">${row.case_number||'–'}</td>
+      <td>${trunc(row._product||'–', 22)}</td>
+      <td>${scoreChip(row.primary_article_score)}</td>
+      <td>${verdictBadge(row.primary_article_verdict)}</td>
+      <td>${actionBadge(row.primary_article_action_required)}</td>
+      <td>${priBadge(row.synthesis_priority)}</td>
+      <td>${scoreChip(row.kt_description_quality_score)}</td>
+    </tr>`;
+  }).join('') || '<tr><td colspan="8" style="text-align:center;color:#94a3b8;padding:20px">No cases match</td></tr>';
+
+  const totalPages = Math.ceil(filtered.length / pageSize);
+  const btns = Array.from({ length: Math.min(totalPages, 10) }, (_, i) =>
+    `<button class="${i === page ? 'active' : ''}" onclick="goPage(${i})">${i + 1}</button>`).join('');
+  document.getElementById('table-pagination').innerHTML =
+    `<span>Showing ${start+1}–${Math.min(start+pageSize, filtered.length)} of ${filtered.length}</span><div class="pagination-btns">${btns}</div>`;
+}
+function goPage(p) { tbl.page = p; renderTablePage(); }
+
+// ══════════════════════════════════════════════════════════
+// RENDER TRENDS
+// ══════════════════════════════════════════════════════════
+function renderTrends() {
+  const data = state.trendData; if (!data) return;
+  const n = data.length;
+  const totalCases = data.reduce((a, r) => a + num(r.case_count), 0);
+  const redN = countVal(data,'priority','red'), yelN = countVal(data,'priority','yellow'), grnN = countVal(data,'priority','green');
+  const redCases = data.filter(r => r.priority==='red').reduce((a,r) => a+num(r.case_count), 0);
+
+  document.getElementById('trend-badge').textContent = n + ' clusters · ' + totalCases + ' cases';
+  document.getElementById('trend-kpis').innerHTML = [
+    kpiCard('Total Clusters', n, 'trend pattern groups', null, null),
+    kpiCard('Cases Covered', totalCases, 'across all clusters', null, null),
+    `<div class="kpi-card"><div class="kpi-label">🔴 Red Clusters</div><div class="kpi-value c-red">${redN}</div><div class="kpi-sub">${redCases} cases — urgent</div></div>`,
+    `<div class="kpi-card"><div class="kpi-label">🟡 Yellow Clusters</div><div class="kpi-value c-yellow">${yelN}</div><div class="kpi-sub">${pct(yelN,n)}</div></div>`,
+    `<div class="kpi-card"><div class="kpi-label">🟢 Green Clusters</div><div class="kpi-value c-green">${grnN}</div><div class="kpi-sub">${pct(grnN,n)}</div></div>`,
+  ].join('');
+
+  const rcMap = {};
+  data.forEach(r => { const k = r.root_cause_pattern||'Unknown'; rcMap[k] = (rcMap[k]||0)+num(r.case_count); });
+  const rcSorted = Object.entries(rcMap).sort((a,b) => b[1]-a[1]);
+  makeHBar('chart-trc', rcSorted.map(([k]) => k), rcSorted.map(([,v]) => v), '#3b82f6');
+  makeDonut('chart-tpri', ['🔴 Red','🟡 Yellow','🟢 Green'],
+    ['red','yellow','green'].map(p => countVal(data,'priority',p)), ['#dc2626','#d97706','#16a34a']);
+
+  document.getElementById('cluster-grid').innerHTML = data.map(r => {
+    const products = (r.products_affected||'').split(';').map(s => s.trim()).filter(Boolean);
+    const evidenceParts = (r.supporting_evidence||'').split(';').map(s => s.trim()).filter(Boolean);
+    return `<div class="cluster-card ${r.priority||'gray'}">
+      <div class="cluster-meta">${priBadge(r.priority)}<span class="badge b-blue">${r.case_count} cases</span>${r.root_cause_pattern ? `<span class="badge b-gray">${r.root_cause_pattern}</span>` : ''}</div>
+      <div class="cluster-name">${r.cluster_name||'Unnamed Cluster'}</div>
+      ${products.length ? `<div style="margin-bottom:6px"><div class="cluster-fl">Products</div><div class="cluster-fv">${products.slice(0,5).join(', ')}${products.length>5?' +'+( products.length-5)+' more':''}</div></div>` : ''}
+      ${r.estimated_impact ? `<div style="margin-bottom:6px"><div class="cluster-fl">Estimated Impact</div><div class="cluster-fv">${r.estimated_impact}</div></div>` : ''}
+      ${r.unified_pm_action ? `<div class="cluster-action">💡 ${r.unified_pm_action}</div>` : ''}
+      ${evidenceParts.slice(0,2).map(e => `<div class="cluster-evidence">📌 ${trunc(e,200)}</div>`).join('')}
+    </div>`;
+  }).join('');
+}
+
+// Init
+document.getElementById('empty-state').style.display = 'block';
+</script>
+</body>
+</html>
