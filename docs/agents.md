@@ -1,6 +1,6 @@
 # Agent Reference
 
-The system contains 12 agent classes: 1 base class, 1 orchestrator, and 10 specialized evaluation agents. All inherit from `BaseAgent` and follow the same evaluate/fallback pattern.
+The system contains 13 agent classes: 1 base class, 1 orchestrator, and 11 specialized evaluation agents. All inherit from `BaseAgent` and follow the same evaluate/fallback pattern. `TrendSynthesizer` is an additional non-pipeline class that clusters batch results.
 
 ## BaseAgent
 
@@ -39,6 +39,32 @@ See [Architecture > BaseAgent](architecture.md#baseagent-class) for details on `
 **Extracted fields:** product, version, error_codes, symptoms, issue_type, keywords (5-10 search terms), environment, severity
 
 **Fallback:** On LLM failure, uses `_extract_fallback_keywords()` for keyword extraction and `_guess_product()` for product detection via regex matching.
+
+---
+
+## AreaClassificationAgent
+
+**File:** `agents/area_classification_agent.py`
+**Role:** Classify a parsed issue into a product-specific area path (e.g., "Teams Meetings", "Teams Calling (PSTN)"). Runs immediately after `IssueParserAgent`, before `DescriptionQualityAgent`.
+**LLM Prompt:** Dynamic — built at runtime from the product's area taxonomy in `config/area_definitions.py`.
+
+**Input:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `issue` | `Issue` | Parsed issue object — must have `product` and `raw_description` set |
+
+**Output:** `dict` with `area_path`, `area_confidence`, `area_reasoning` — or `None` if no area definitions are configured for the detected product.
+
+**Area taxonomy:** Defined in `config/area_definitions.py` under `PRODUCT_AREA_DEFINITIONS`. Each product family maps to a list of named areas with descriptions. Product matching uses case-insensitive substring matching via `_PRODUCT_ALIASES`.
+
+**Teams areas (17):** Teams Admin · Teams and Channels · Teams and Copilot · Teams Apps and Connectors · Teams Calling (PSTN) · Teams Chat (Messaging) · Teams Clients · Teams Devices · Teams EDU · Teams External and Guest Access · Teams Files · Teams Hybrid and Migration · Teams Identity and Authentication · Teams Meetings · Teams Media · Teams People & Presence · Teams Security and Compliance
+
+**Extending to new products:** Add a new key to `PRODUCT_AREA_DEFINITIONS` and a matching alias in `_PRODUCT_ALIASES` in `area_definitions.py`. No agent code changes required.
+
+**Fallback:** Returns `None` on LLM failure or unknown area name. The issue proceeds without an area path — no pipeline step is blocked.
+
+**Result stored on:** `issue.area_path` (str | None) and `issue.area_path_confidence` (int 0-100).
 
 ---
 
@@ -307,9 +333,10 @@ See [KT Framework](kt-framework.md) for the full scoring guide.
 
 **Coordination logic:**
 
-1. Initializes all 10 agents with the same client/model/provider
+1. Initializes all 11 agents with the same client/model/provider
 2. Parses issue via IssueParserAgent
-3. Runs DescriptionQualityAgent, checks reliability threshold
+3. Classifies into area path via AreaClassificationAgent (result stored on `issue.area_path`)
+4. Runs DescriptionQualityAgent, checks reliability threshold
 4. For multi-URL cases, evaluates each article and keeps the **best score**
 5. Conditionally triggers SearchAgent and GapAnalysisAgent
 6. Runs TransferReasonAgent last (needs all upstream scores)
@@ -320,3 +347,39 @@ See [KT Framework](kt-framework.md) for the full scoring guide.
 **No-citation path:** When no URLs are provided, the orchestrator calls `_handle_no_citation()` which runs SearchAgent and GapAnalysisAgent immediately, then TransferReasonAgent with `contains_citations=False`.
 
 See [Pipeline](pipeline.md) for the complete step-by-step flowchart.
+
+---
+
+## TrendSynthesizer
+
+**File:** `synthesis/trend_synthesis.py`
+**Role:** Post-processing batch analysis. Clusters evaluated cases by semantic pattern and produces 3-7 unified PM actions. Also detects citation overlaps across cases.
+
+**Usage:** Called from `run_evaluation.py` when `--trend-report` is passed. Not part of the per-case evaluation pipeline.
+
+```python
+synthesizer = TrendSynthesizer(client=..., model=..., provider=...)
+result = synthesizer.synthesize_trends(results)
+# result = { "clusters": [...], "executive_summary": "...", "citation_overlaps": [...] }
+```
+
+**Key methods:**
+
+| Method | Description |
+|--------|-------------|
+| `synthesize_trends(results)` | Main entry point. Calls LLM for clustering, then runs overlap detection. |
+| `_build_case_summaries(results)` | Compacts each result to ~200 tokens including `issue_description` (first 300 chars) |
+| `_build_citation_overlaps(results, summaries)` | Finds URLs cited by ≥2 cases; computes pairwise Jaccard similarity to classify as `duplicate_issues` or `cross_coverage` |
+| `_jaccard(text_a, text_b)` | Token-set Jaccard similarity (tokens > 2 chars only) |
+| `_extract_urls(result)` | Extracts all article URLs from a case result (primary + per-citation) |
+| `_deterministic_fallback(summaries)` | Groups by area+root_cause when LLM fails; applies Jaccard ≥ 0.15 guard to avoid lumping dissimilar cases |
+| `_synthesize_chunk(summaries)` | Single LLM call for ≤100 cases |
+| `_merge_clusters(clusters)` | Second LLM pass to reduce >7 clusters from chunked processing |
+
+**Prompt:** `AgentPrompts.TREND_SYNTHESIS` — includes rule 8 requiring semantic similarity within an area group before merging cases.
+
+**Output:** Adds `"citation_overlaps"` key to the returned dict alongside `"clusters"` and `"executive_summary"`. Overlap list is sorted: `cross_coverage` first, then by `case_count` descending.
+
+**Fallback:** `_deterministic_fallback()` — groups by area_path + root_cause_category with Jaccard ≥ 0.15 centroid check. Returns `citation_overlaps: []` (overlap detection requires raw results which the fallback receives).
+
+> **Note:** `TrendSynthesizer` inherits `BaseAgent` for LLM access but does not implement `evaluate()` — call `synthesize_trends()` directly.

@@ -2,7 +2,7 @@
 MWAI API Client - Wraps the ChatCompletionWithoutData endpoint.
 
 Provides token management (caching, expiration) and a simple chat completion interface
-compatible with the article evaluation system's BaseAgent.
+compatible with the Agentic Insight Engine's BaseAgent.
 """
 
 import base64
@@ -136,7 +136,7 @@ class MwaiClient:
     Lightweight client for the MWAI ChatCompletionWithoutData API.
 
     Designed as a drop-in replacement for OpenAI/Anthropic clients
-    within the article evaluation system's agent framework.
+    within the Agentic Insight Engine's agent framework.
     """
 
     def __init__(self, token: str, timeout: int = 120):
@@ -167,7 +167,7 @@ class MwaiClient:
         headers = {
             "Authorization": f"Bearer {self.token}",
             "Content-Type": "application/json",
-            "User-Agent": "ArticleEvaluationSystem/1.0",
+            "User-Agent": "AgenticInsightEngine/1.0",
         }
         payload = {
             "messages": [

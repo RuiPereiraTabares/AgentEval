@@ -1,5 +1,5 @@
 """
-Agent modules for the article evaluation system.
+Agent modules for the Agentic Insight Engine.
 """
 
 from abc import ABC, abstractmethod
@@ -136,9 +136,9 @@ from .validity_agent import ValidityAgent
 from .search_agent import SearchAgent
 from .gap_agent import GapAnalysisAgent
 from .description_quality_agent import DescriptionQualityAgent
-from .transfer_reason_agent import TransferReasonAgent
 from .citation_quality_agent import CitationQualityAgent
 from .response_quality_agent import ResponseQualityAgent
+from .area_classification_agent import AreaClassificationAgent
 from .orchestrator import Orchestrator
 
 __all__ = [
@@ -150,8 +150,8 @@ __all__ = [
     'SearchAgent',
     'GapAnalysisAgent',
     'DescriptionQualityAgent',
-    'TransferReasonAgent',
     'CitationQualityAgent',
     'ResponseQualityAgent',
+    'AreaClassificationAgent',
     'Orchestrator'
 ]

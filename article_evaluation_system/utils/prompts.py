@@ -1,5 +1,5 @@
 """
-Agent prompt templates for the article evaluation system.
+Agent prompt templates for the Agentic Insight Engine.
 """
 
 
@@ -227,31 +227,6 @@ IMPORTANT — REDACTED CONTENT: Issue descriptions may contain placeholders like
 
 Be STRICT in your scoring. Most support tickets are poorly structured — do not give high scores unless the information is genuinely specific and actionable."""
 
-    TRANSFER_REASON_ESCALATION_DETECTION = """You are an expert at detecting customer escalation signals in support case descriptions.
-
-Analyze the following text and determine whether the customer explicitly requested escalation, transfer to a specialist, or involvement of a higher-level support team.
-
-Escalation signals include (but are not limited to):
-- Explicit requests: "please escalate", "transfer to", "need a specialist", "speak to a manager"
-- Frustration-driven: "this is unacceptable", "been waiting too long", "nth time contacting"
-- Authority references: "my manager requires", "executive sponsor", "VP is asking"
-- Deadline pressure: "critical deadline", "business is stopped", "SLA breach"
-- Prior contact references: "already contacted support", "previous case", "been going back and forth"
-
-Do NOT flag normal urgency ("please help", "urgent") as escalation unless accompanied by an explicit transfer/escalation request.
-
-CRITICAL: You MUST use these EXACT field names. Do NOT rename, nest, or wrap them.
-
-Output format - return ONLY this JSON structure with no wrapper objects:
-{
-    "escalation_detected": <true or false>,
-    "escalation_signals": ["signal1", "signal2"],
-    "escalation_confidence": "<one of: high, medium, low>"
-}
-
-Example output:
-{"escalation_detected": true, "escalation_signals": ["Explicit request: 'please escalate this to a specialist'", "Prior contact: 'this is my 3rd time calling about this'"], "escalation_confidence": "high"}"""
-
     CITATION_QUALITY_AGENT = """You are an expert at evaluating whether a cited article actually supports the claims made in an AI-generated response.
 
 You will receive:
@@ -344,14 +319,114 @@ IMPORTANT — REDACTED CONTENT: The customer issue and AI response may contain p
 
 Be STRICT. Most AI responses are generic — do not give high scores unless the response is genuinely specific, actionable, and tailored to the customer's issue."""
 
-    ORCHESTRATOR_SUMMARY = """You are summarizing an article evaluation for a support case.
+    ORCHESTRATOR_SUMMARY = """You are a senior support program manager synthesizing multi-agent evaluation results for a customer support case into a structured, actionable recommendation.
 
-Given the evaluation results from multiple agents, provide a clear, actionable final recommendation.
+You will receive a JSON object containing all agent outputs: issue summary (including the customer's raw description and error codes), article evaluation scores (relevance/completeness/validity), description quality (KT framework), citation quality, response quality, gap analysis (with full gap details), and search results (with relevance reasons and match scores).
 
-Your summary should:
-1. State whether the article adequately addresses the customer's issue
-2. Highlight key strengths and weaknesses
-3. Provide specific actionable recommendations
-4. Be concise (2-4 sentences)
+Produce a JSON response with EXACTLY these fields:
 
-Focus on what the support agent should DO next to help the customer."""
+{
+    "priority": "<one of: red, yellow, green>",
+    "priority_reason": "1-2 sentence explanation of why this priority level was assigned",
+    "narrative_recommendation": "2-4 sentence narrative paragraph for the PM explaining the situation and what to do",
+    "pm_actions": ["specific action 1", "specific action 2"],
+    "root_cause_category": "<one of: content_gap, wrong_citation, poor_description, article_outdated, citation_quality_low, response_quality_low, adequate, no_content>"
+}
+
+REASONING STEPS — follow this chain-of-thought before producing your JSON:
+1. ROOT CAUSE: Look at overall_score, relevance_verdict, product_match, is_outdated, and citation/response quality. Determine WHY the score is what it is.
+2. CONTENT CHECK: If an article was evaluated, check its title, URL, and what it covers vs. what the customer's raw_description and error_codes say. If gap_analysis is present, review documentation_gaps and suggested_content_outline.
+3. ACTION GROUNDING: For each pm_action, ensure it references SPECIFIC data from the input: article title, URL, gap names, error codes, or search result titles. Never generate generic actions.
+
+PRIORITY RULES:
+- RED: overall_score < 40, OR any critical failure (article completely irrelevant, no article provided with no alternatives, response poorly grounded)
+- YELLOW: overall_score 40-69, OR article needs supplementation, OR citation quality is partial, OR description quality is low (evaluation confidence reduced)
+- GREEN: overall_score >= 70 AND article/response is adequate
+
+ROOT CAUSE CATEGORIES:
+- content_gap: Article exists but misses key aspects of the customer's issue
+- wrong_citation: Article is about a different product/feature/error than the customer's issue (product_match=false OR relevance_score < 30)
+- poor_description: Customer issue description is too vague to evaluate properly (KT score < 40)
+- article_outdated: Article content is outdated or refers to deprecated features (is_outdated=true)
+- citation_quality_low: AI response citations don't support the claims made
+- response_quality_low: AI response is generic, inaccurate, or unhelpful regardless of citations
+- adequate: Article/response adequately addresses the issue
+- no_content: No article or citation was provided
+
+PM ACTION TEMPLATES — compose actions from context fields based on root cause:
+- content_gap: "Update article '[title]' ([url]) to add [specific missing elements from documentation_gaps]"
+- content_gap (create): "Create new article covering [suggested_content_outline items] for [product] [error_codes]"
+- wrong_citation: "Replace citation with a more relevant article. Search suggestion: '[search term from search_results]'. Candidate: '[recommended article title]' ([url], match score: [score])"
+- poor_description: "Gather more information from customer: [missing_kt_elements]. Current description lacks [specific KT dimensions]."
+- article_outdated: "Review and update article '[title]' ([url]) — content references deprecated features: [potential_issues]"
+- citation_quality_low: "Review AI response grounding — [citations_bad] of [citations_total] citations are unsupported. Key unsupported claims: [from per_citation reasoning]"
+- response_quality_low: "Improve AI response quality (score: [response_quality_score]/100). Weaknesses: [quality_weaknesses]"
+
+GROUNDING CONSTRAINT: Only reference articles, URLs, error codes, gaps, and search results that appear in the input data. Do NOT hallucinate article titles, URLs, or specific technical details not present in the input.
+
+FEW-SHOT EXAMPLES:
+
+Example 1 — content_gap:
+Input (abbreviated): {"issue_summary": {"product": "Exchange Online", "error_codes": ["NDR 550 5.7.708"]}, "article_evaluation": {"url": "https://learn.microsoft.com/exchange/...", "title": "Configure mail flow rules", "relevance_score": 55, "completeness_score": 40, "missing_elements": ["No NDR troubleshooting", "No error code reference"]}, "gap_analysis": {"documentation_gaps": ["No coverage of 550 5.7.708 NDR resolution"], "suggested_content_outline": ["NDR error code lookup", "Step-by-step resolution for 5.7.708"]}}
+Output: {"priority": "yellow", "priority_reason": "Article partially relevant (55/100) but missing NDR troubleshooting for error 550 5.7.708.", "narrative_recommendation": "The cited article 'Configure mail flow rules' covers mail flow but does not address the customer's specific NDR error 550 5.7.708. The article needs a troubleshooting section for this error code, or a separate NDR resolution article should be created.", "pm_actions": ["Update article 'Configure mail flow rules' (https://learn.microsoft.com/exchange/...) to add troubleshooting section for NDR error 550 5.7.708", "Create new article covering: NDR error code lookup, step-by-step resolution for 5.7.708 in Exchange Online"], "root_cause_category": "content_gap"}
+
+Example 2 — wrong_citation:
+Input (abbreviated): {"issue_summary": {"product": "Teams", "error_codes": ["CAA20003"]}, "article_evaluation": {"url": "https://learn.microsoft.com/sharepoint/...", "title": "SharePoint site permissions", "relevance_score": 15, "product_match": false}, "search_results": {"recommended_articles": [{"title": "Fix Teams sign-in error CAA20003", "url": "https://support.microsoft.com/teams/...", "estimated_match_score": 85}]}}
+Output: {"priority": "red", "priority_reason": "Cited article is about SharePoint permissions, not Teams sign-in error CAA20003. Complete product mismatch.", "narrative_recommendation": "The AI response cited a SharePoint permissions article for a Teams sign-in issue (error CAA20003). This is a wrong product citation. A highly relevant alternative was found: 'Fix Teams sign-in error CAA20003'.", "pm_actions": ["Replace citation with 'Fix Teams sign-in error CAA20003' (https://support.microsoft.com/teams/..., match score: 85)", "Investigate why the AI cited a SharePoint article for a Teams issue — possible product classification error"], "root_cause_category": "wrong_citation"}
+
+Example 3 — poor_description:
+Input (abbreviated): {"issue_summary": {"product": "Unknown", "error_codes": [], "raw_description": "Something is broken please help"}, "description_quality": {"score": 15, "verdict": "poorly_defined", "missing_elements": ["Specific product", "Error messages", "Environment details", "When it started"]}, "evaluation_reliability_warning": true}
+Output: {"priority": "yellow", "priority_reason": "Customer description is too vague (KT score: 15/100) to evaluate meaningfully. Low confidence in all results.", "narrative_recommendation": "The customer's issue description 'Something is broken please help' lacks all key details: no product specified, no error codes, no environment info, no timing. Before evaluating article quality, we need more information from the customer.", "pm_actions": ["Gather more information from customer: specific product name, error messages or codes, environment details (OS, browser), and when the issue started", "Re-evaluate once customer provides sufficient detail"], "root_cause_category": "poor_description"}
+
+If the evaluation has a reliability warning (low description quality), mention this in the narrative and adjust your confidence accordingly.
+
+Respond ONLY with valid JSON. No markdown, no explanation outside the JSON."""
+
+    TREND_SYNTHESIS = """You are a senior support program manager analyzing patterns across a batch of evaluated customer support cases.
+
+You will receive a JSON array of compact case summaries. Each summary contains: case_number, product, area_path, root_cause_category, priority, error_codes, key_gap, article_url, article_title, overall_score, pm_actions, and issue_description (first 300 chars of the raw customer description).
+
+area_path is the classified support area (e.g. "Teams Meetings", "Teams Calling (PSTN)"). Use it as the PRIMARY grouping dimension when present.
+
+Your task: cluster these cases by pattern and produce 3-7 high-impact unified actions that a PM can execute across the batch, instead of reviewing 100+ individual actions.
+
+CLUSTERING RULES:
+1. Use area_path as the PRIMARY grouping dimension (e.g. all "Teams Meetings" cases with similar root causes form one cluster)
+2. Within each area_path group, further distinguish by root_cause_category + gap type + error pattern
+3. Cases without an area_path: group by product + root_cause_category
+4. Each cluster must contain at least 2 cases
+5. Produce 3-7 clusters total (merge small clusters if needed)
+6. Prioritize clusters by: case_count * severity (red=3, yellow=2, green=1)
+7. Each cluster gets ONE specific, actionable unified_pm_action
+8. Within an area_path group, only merge cases whose issue_description fields describe genuinely similar problems. Different problems in the same area = separate clusters. **Do NOT create a cluster just because cases share an area label and have vague root cause labels.** Each cluster must represent cases a PM can fix with ONE action.
+
+OUTPUT FORMAT — return ONLY this JSON structure:
+{
+    "clusters": [
+        {
+            "cluster_name": "Short descriptive name for this pattern",
+            "area_path": "The area_path that defines this cluster (empty string if not applicable)",
+            "case_count": <number of cases in cluster>,
+            "case_numbers": ["case1", "case2", ...],
+            "root_cause_pattern": "The common root cause across these cases",
+            "products_affected": ["Product1", "Product2"],
+            "unified_pm_action": "ONE specific, actionable recommendation that addresses all cases in this cluster",
+            "estimated_impact": "Description of impact if this action is taken (e.g., 'Would resolve ~15 cases in Teams Meetings')",
+            "priority": "<one of: red, yellow, green>",
+            "supporting_evidence": ["Key finding 1 from the cases", "Key finding 2"]
+        }
+    ],
+    "executive_summary": "2-3 sentence summary of the top area patterns and recommended focus areas"
+}
+
+UNIFIED ACTION GUIDELINES:
+- Be specific and actionable: reference the area_path, specific products, error patterns, or article gaps
+- An action should address the PATTERN across all cases in the cluster, not repeat individual case actions
+- Examples of good unified actions:
+  - "Create a comprehensive NDR troubleshooting guide for Exchange Online covering errors 550 5.7.x — would resolve 12 cases"
+  - "Update Teams Calling (PSTN) documentation on resource account call forwarding — 8 cases cite outdated articles"
+  - "Improve AI response grounding for Teams Identity and Authentication topics — 15 cases have poorly grounded citations"
+
+GROUNDING CONSTRAINT: Only reference area paths, products, errors, articles, and patterns that appear in the input case summaries. Do NOT hallucinate details.
+
+Respond ONLY with valid JSON. No markdown, no explanation outside the JSON."""

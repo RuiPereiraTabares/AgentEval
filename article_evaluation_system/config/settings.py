@@ -1,5 +1,5 @@
 """
-Configuration settings for the article evaluation system.
+Configuration settings for the Agentic Insight Engine.
 """
 
 import os
@@ -31,13 +31,6 @@ THRESHOLDS = {
         "partially_defined": 40
     },
     "description_quality_reliability": 40  # Below this, evaluation is low-confidence
-}
-
-# Thresholds for transfer reason classification (decision tree)
-TRANSFER_CLASSIFICATION_THRESHOLDS = {
-    "poor_description_ceiling": 40,         # Below this → description is the root cause
-    "bad_citation_relevance_ceiling": 50,    # Below this → citation match is poor
-    "inadequate_article_overall_ceiling": 60, # Below this → article doesn't solve it
 }
 
 # Kepner-Tregoe dimension weights for description quality scoring

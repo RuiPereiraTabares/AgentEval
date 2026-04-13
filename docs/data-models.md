@@ -52,6 +52,8 @@ GapRecommendation = Literal["augment_existing", "create_new", "combine_multiple"
 | `transferred` | `bool \| None` | — | Whether the case was transferred (from CSV) |
 | `sr_status` | `str` | — | Service request status (from CSV) |
 | `reopened` | `bool \| None` | — | Whether the case was reopened (from CSV) |
+| `area_path` | `str \| None` | `None` | Classified area path (e.g. "Teams Meetings") — set by AreaClassificationAgent |
+| `area_path_confidence` | `int` | `0` | Confidence score 0-100 for the area classification |
 
 **Methods:** `to_dict()`, `from_dict(dict)`, `get_search_query() -> str`
 
@@ -257,6 +259,58 @@ The final output model returned by the Orchestrator.
 | `evaluation_reliability_warning` | `bool` | `False` | Low confidence flag |
 | `transfer_analysis` | `dict` | `{}` | From TransferReasonAgent |
 | `response_quality` | `dict` | `{}` | From ResponseQualityAgent (mweaeval mode only) |
+
+## TrendCluster
+
+**File:** `models/evaluation.py`
+
+Output model from `TrendSynthesizer.synthesize_trends()`. Represents one cluster of semantically-similar cases that can be addressed by a single PM action.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `cluster_name` | `str` | `""` | Short descriptive name for this trend pattern |
+| `case_count` | `int` | `0` | Number of cases in this cluster |
+| `case_numbers` | `list[str]` | `[]` | Case identifiers included |
+| `root_cause_pattern` | `str` | `""` | Common root cause across these cases |
+| `products_affected` | `list[str]` | `[]` | Distinct products in this cluster |
+| `unified_pm_action` | `str` | `""` | ONE specific, actionable recommendation |
+| `estimated_impact` | `str` | `""` | Human-readable impact estimate |
+| `priority` | `str` | `""` | `"red"`, `"yellow"`, or `"green"` |
+| `supporting_evidence` | `list[str]` | `[]` | Key findings from individual cases |
+| `area_path` | `str` | `""` | Primary area path that defines this cluster |
+
+**Methods:** `to_dict()`, `from_dict(dict)`
+
+---
+
+## CitationOverlap
+
+**File:** `models/evaluation.py`
+
+Output model from `TrendSynthesizer._build_citation_overlaps()`. Identifies article URLs cited by multiple cases, flagging hidden cross-coverage risks and potential duplicate cases.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `url` | `str` | `""` | The shared article URL |
+| `overlap_type` | `str` | `""` | `"duplicate_issues"` (Jaccard ≥ 0.35) or `"cross_coverage"` (< 0.35) |
+| `case_count` | `int` | `0` | Number of cases citing this URL |
+| `case_numbers` | `list[str]` | `[]` | Case identifiers that cite this URL |
+| `similarity_score` | `float` | `0.0` | Average pairwise Jaccard similarity between issue descriptions |
+| `issue_snippets` | `list[str]` | `[]` | First 150 chars of each case's issue description |
+| `flag_reason` | `str` | `""` | Why this overlap was flagged |
+| `recommendation` | `str` | `""` | Suggested action for the PM |
+
+**Similarity thresholds:**
+
+| Score | `overlap_type` | Meaning |
+|-------|----------------|---------|
+| ≥ 0.35 | `duplicate_issues` | Same problem described repeatedly — consolidation candidate |
+| < 0.35 | `cross_coverage` | Different problems share one article — changes have hidden impact |
+| < 0.15 | *(not grouped)* | Too dissimilar for deterministic fallback clustering |
+
+**Methods:** `to_dict()`, `from_dict(dict)`
+
+---
 
 ## Label Normalization Maps
 

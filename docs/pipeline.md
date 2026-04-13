@@ -7,12 +7,12 @@ The evaluation pipeline is orchestrated by `Orchestrator.evaluate()` in `agents/
 ```
                     START: Orchestrator.evaluate()
                               |
-                    +---------+---------+
-                    |                   |
-              [Step 1]            [Step 1b]
-         IssueParserAgent    DescriptionQualityAgent
-         (parse issue)        (KT framework)
-                    |                   |
+                    +---------+----------+-----------+
+                    |                    |           |
+              [Step 1]            [Step 1a]    [Step 1b]
+         IssueParserAgent   AreaClassification  DescriptionQualityAgent
+         (parse issue)      Agent (area path)   (KT framework)
+                    |                    |           |
                     +----->  dq_score < 40?
                               |        |
                              YES       NO
@@ -90,6 +90,15 @@ The evaluation pipeline is orchestrated by `Orchestrator.evaluate()` in `agents/
 **LLM calls:** 1
 
 Transfer metadata (`transferred`, `sr_status`, `reopened`) is injected from CSV into the Issue object after parsing.
+
+### Step 1a: Classify Area Path
+
+**Agent:** AreaClassificationAgent
+**Input:** Parsed `Issue` (uses `product` and `raw_description`)
+**Output:** Sets `issue.area_path` and `issue.area_path_confidence`
+**LLM calls:** 1 (0 if product has no area definitions configured)
+
+The agent looks up area definitions for the detected product from `config/area_definitions.py`. For Teams issues, it selects from 17 defined areas. For unknown products, it returns `None` (non-blocking). The `area_path` flows into all downstream outputs: `issue_summary`, `EvaluationResult`, trend clusters, and CSV columns.
 
 ### Step 1b: Evaluate Description Quality
 
@@ -187,6 +196,9 @@ When running with `--mweaeval`, the orchestrator uses `evaluate_with_citations()
                     [Step 1] IssueParserAgent
                          (1 LLM call)
                               |
+                    [Step 1a] AreaClassificationAgent
+                         (1 LLM call — 0 if product not configured)
+                              |
                     [Step 2] DescriptionQualityAgent
                          (1 LLM call)
                               |
@@ -214,15 +226,49 @@ When running with `--mweaeval`, the orchestrator uses `evaluate_with_citations()
                              END
 ```
 
+## Batch Trend Analysis (opt-in: `--trend-report`)
+
+After all cases are evaluated, `TrendSynthesizer.synthesize_trends()` runs as a post-processing step:
+
+```
+list[EvaluationResult dicts]
+    |
+    +-- _build_case_summaries()
+    |     Compact each result; include issue_description (first 300 chars)
+    |
+    +-- _build_citation_overlaps()
+    |     For each URL cited by ≥2 cases:
+    |       compute pairwise Jaccard similarity between descriptions
+    |       avg_similarity ≥ 0.35 → duplicate_issues
+    |       avg_similarity  < 0.35 → cross_coverage
+    |
+    +-- LLM clustering (or _deterministic_fallback)
+    |     Groups by area_path (primary) + root_cause_category + issue_description similarity
+    |     Jaccard ≥ 0.15 guard in fallback prevents dissimilar cases from being merged
+    |
+    v
+{ clusters: list[TrendCluster],
+  executive_summary: str,
+  citation_overlaps: list[CitationOverlap] }
+    |
+    v
+trend_report_{ts}.csv         (one row per cluster)
+citation_overlaps_{ts}.csv    (one row per overlapping URL, if any)
+```
+
+See [Agents > TrendSynthesizer](agents.md#trendsynthesizer) for full method reference.
+
 ## Per-Case LLM Call Count
 
 | Scenario | LLM Calls | Agents Used |
 |----------|-----------|-------------|
-| No citation | 3-4 | Parser, DQ, Search, Gap + optional escalation |
-| Single URL, score >= 70 | 5 | Parser, DQ, Relevance, Completeness, Validity |
-| Single URL, 60 <= score < 70 | 6 | Above + Search |
-| Single URL, score < 60 | 7 | Above + Search + Gap |
-| Multi-URL (N URLs) | 2 + 3N + 0-2 | Parser, DQ, (R+C+V)*N, +Search, +Gap |
-| mweaeval, N citations | 5 + N + 0-1 | Parser, DQ, CitationQuality*N, R+C+V (best), ResponseQuality + optional escalation |
+| No citation | 4-5 | Parser, Area, DQ, Search, Gap + optional escalation |
+| Single URL, score >= 70 | 6 | Parser, Area, DQ, Relevance, Completeness, Validity |
+| Single URL, 60 <= score < 70 | 7 | Above + Search |
+| Single URL, score < 60 | 8 | Above + Search + Gap |
+| Multi-URL (N URLs) | 3 + 3N + 0-2 | Parser, Area, DQ, (R+C+V)*N, +Search, +Gap |
+| mweaeval, N citations | 6 + N + 0-1 | Parser, Area, DQ, CitationQuality*N, R+C+V (best), ResponseQuality + optional escalation |
+
+Area = AreaClassificationAgent (1 LLM call, 0 if product not configured). All counts include the TransferReasonAgent (0-1 calls).
 
 The TransferReasonAgent adds 0-1 LLM calls (only for escalation detection on longer texts).

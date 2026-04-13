@@ -23,11 +23,9 @@ class Issue:
     environment: dict = field(default_factory=dict)
     severity: Severity = "medium"
     raw_description: str = ""
-
-    # Transfer metadata (populated from CSV; None = column absent)
-    transferred: bool | None = None
-    sr_status: str = ""
-    reopened: bool | None = None
+    # Area path classification (populated by AreaClassificationAgent)
+    area_path: str | None = None
+    area_path_confidence: int = 0
 
     def to_dict(self) -> dict:
         """Convert to dictionary representation."""
@@ -41,9 +39,8 @@ class Issue:
             "environment": self.environment,
             "severity": self.severity,
             "raw_description": self.raw_description,
-            "transferred": self.transferred,
-            "sr_status": self.sr_status,
-            "reopened": self.reopened,
+            "area_path": self.area_path,
+            "area_path_confidence": self.area_path_confidence,
         }
 
     @classmethod
@@ -59,9 +56,8 @@ class Issue:
             environment=data.get("environment", {}),
             severity=data.get("severity", "medium"),
             raw_description=data.get("raw_description", ""),
-            transferred=data.get("transferred"),
-            sr_status=data.get("sr_status", ""),
-            reopened=data.get("reopened"),
+            area_path=data.get("area_path"),
+            area_path_confidence=data.get("area_path_confidence", 0),
         )
 
     def get_search_query(self) -> str:

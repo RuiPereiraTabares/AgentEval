@@ -1,5 +1,5 @@
 """
-Data models for the article evaluation system.
+Data models for the Agentic Insight Engine.
 """
 
 from .issue import Issue
@@ -11,7 +11,6 @@ from .evaluation import (
     ValidityResult,
     SearchResult,
     GapAnalysisResult,
-    TransferReasonResult,
     CitationQualityResult,
     ResponseQualityResult,
     EvaluationResult
@@ -26,7 +25,6 @@ __all__ = [
     'ValidityResult',
     'SearchResult',
     'GapAnalysisResult',
-    'TransferReasonResult',
     'CitationQualityResult',
     'ResponseQualityResult',
     'EvaluationResult'

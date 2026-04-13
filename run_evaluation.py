@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 """
-Simple runner script for the Article Evaluation System.
+Simple runner script for the Agentic Insight Engine.
 
 Usage:
     python run_evaluation.py                    # Process first 50 cases
@@ -33,11 +33,12 @@ from article_evaluation_system import ArticleEvaluator
 from article_evaluation_system.main import (
     read_csv_cases, read_mweaeval_csv_cases,
     write_results_json, write_results_csv, write_results_csv_summary,
+    write_trend_report_csv, write_citation_overlaps_csv,
 )
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Run Article Evaluation System')
+    parser = argparse.ArgumentParser(description='Run Agentic Insight Engine')
     parser.add_argument('--input', '-i', default='merged_output.csv', help='Input CSV file')
     parser.add_argument('--output', '-o', help='Output file (auto-generated if not specified)')
     parser.add_argument('--limit', '-n', type=int, default=50, help='Number of cases to process (default: 50)')
@@ -56,6 +57,10 @@ def main():
     parser.add_argument('--model', default='gpt-4o', help='Model to use (default: gpt-4o)')
     parser.add_argument('--token', help='MWAI bearer token. If not provided, will use cached token or prompt interactively.')
     parser.add_argument('--new-token', action='store_true', help='Force re-prompt for a new MWAI token (ignore cache)')
+
+    # Trend report
+    parser.add_argument('--trend-report', action='store_true',
+                        help='Generate a trend report that clusters cases by pattern and produces 3-7 unified PM actions')
 
     # Batch mode
     parser.add_argument('--batch-size', type=int, help='Number of cases per batch (enables batch mode)')
@@ -183,12 +188,6 @@ def main():
                     'sap_name': case.get('sap_name', ''),
                 }
 
-            transfer_metadata = {
-                'transferred': case.get('transferred'),
-                'sr_status': case.get('sr_status', ''),
-                'reopened': case.get('reopened'),
-            }
-
             if args.mweaeval:
                 # Citation quality evaluation mode
                 ai_response = case.get('ai_response', '')
@@ -200,7 +199,6 @@ def main():
                     ai_response=ai_response,
                     citation_urls=citation_urls,
                     product_info=product_info,
-                    transfer_metadata=transfer_metadata,
                 )
             else:
                 # Standard evaluation mode
@@ -214,7 +212,6 @@ def main():
                     customer_issue=full_issue,
                     recommended_article=urls[0] if urls else None,
                     product_info=product_info,
-                    transfer_metadata=transfer_metadata,
                 )
 
             elapsed = (datetime.now() - start).total_seconds()
@@ -342,6 +339,19 @@ def main():
                     if rq.get('improvement_suggestions'):
                         print(f"    Suggestions: {'; '.join(rq['improvement_suggestions'][:3])}")
 
+                # Show LLM-synthesized recommendation
+                synth_priority = evaluation.get('synthesis_priority', '')
+                if synth_priority:
+                    print(f"  --- LLM Synthesis ---")
+                    print(f"  Priority: {synth_priority.upper()}  "
+                          f"({evaluation.get('synthesis_priority_reason', '')})")
+                    print(f"  Root cause: {evaluation.get('synthesis_root_cause_category', '')}")
+                    pm_actions = evaluation.get('synthesis_pm_actions', [])
+                    if pm_actions:
+                        print(f"  PM Actions:")
+                        for action in pm_actions:
+                            print(f"    - {action}")
+
         except Exception as e:
             print(f"  ERROR: {e}")
             result = {
@@ -363,6 +373,50 @@ def main():
         write_results_csv(results, output_file)
     print(f"Writing summary CSV to {output_summary}...")
     write_results_csv_summary(results, output_summary)
+
+    # Trend report (opt-in)
+    if args.trend_report and len(results) >= 2:
+        print("\nGenerating trend report...")
+        from article_evaluation_system.synthesis.trend_synthesis import TrendSynthesizer
+        trend_synthesizer = TrendSynthesizer(
+            client=evaluator.orchestrator.client,
+            model=args.model,
+            provider='mwai',
+        )
+        trend_result = trend_synthesizer.synthesize_trends(results)
+        trend_clusters = trend_result.get("clusters", [])
+        trend_summary = trend_result.get("executive_summary", "")
+
+        trend_output = f'trend_report_{timestamp}.csv'
+        write_trend_report_csv(trend_clusters, trend_output)
+        print(f"Trend report written to {trend_output}")
+
+        citation_overlaps = trend_result.get("citation_overlaps", [])
+        if citation_overlaps:
+            overlaps_output = f'citation_overlaps_{timestamp}.csv'
+            write_citation_overlaps_csv(citation_overlaps, overlaps_output)
+            print(f"Citation overlaps written to {overlaps_output}")
+            cross = sum(1 for o in citation_overlaps if o.get("overlap_type") == "cross_coverage")
+            dupes = len(citation_overlaps) - cross
+            print(f"  {cross} cross-coverage overlaps, {dupes} potential duplicates")
+
+        # Print trend summary to console
+        if trend_clusters:
+            print(f"\n{'=' * 50}")
+            print("TREND REPORT")
+            print(f"{'=' * 50}")
+            print(f"Clusters found: {len(trend_clusters)}")
+            if trend_summary:
+                print(f"Executive summary: {trend_summary}")
+            print()
+            for i, cluster in enumerate(trend_clusters, 1):
+                print(f"  {i}. [{cluster.get('priority', '?').upper()}] "
+                      f"{cluster.get('cluster_name', 'N/A')} "
+                      f"({cluster.get('case_count', 0)} cases)")
+                print(f"     Action: {cluster.get('unified_pm_action', 'N/A')}")
+                print(f"     Impact: {cluster.get('estimated_impact', 'N/A')}")
+    elif args.trend_report and len(results) < 2:
+        print("\nSkipping trend report — need at least 2 cases for clustering.")
 
     # Save batch state
     if batch_mode:
@@ -401,12 +455,29 @@ def main():
     ]
     avg_dq = round(sum(dq_scores) / len(dq_scores)) if dq_scores else 0
 
+    # Synthesis priority distribution
+    priority_red = sum(
+        1 for r in results
+        if r.get('evaluation', {}).get('synthesis_priority', '').lower() == 'red'
+    )
+    priority_yellow = sum(
+        1 for r in results
+        if r.get('evaluation', {}).get('synthesis_priority', '').lower() == 'yellow'
+    )
+    priority_green = sum(
+        1 for r in results
+        if r.get('evaluation', {}).get('synthesis_priority', '').lower() == 'green'
+    )
+
     print(f"Total cases processed: {len(results)}")
     print(f"Successful evaluations: {successful}")
     print(f"  - Adequate: {adequate}")
     print(f"  - Needs supplementation: {needs_supp}")
     print(f"  - Inadequate: {inadequate}")
     print(f"  - No citation provided: {no_citation}")
+    if priority_red or priority_yellow or priority_green:
+        print(f"Synthesis priority distribution:")
+        print(f"  - RED: {priority_red}  YELLOW: {priority_yellow}  GREEN: {priority_green}")
     print(f"Description quality:")
     print(f"  - Average KT score: {avg_dq}/100")
     print(f"  - Low confidence evaluations: {low_confidence}")

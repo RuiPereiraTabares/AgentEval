@@ -1,4 +1,4 @@
-# AgentsArticleReviewer
+# Agentic Insight Engine
 
 A multi-agent AI system that evaluates whether Microsoft support articles adequately address customer issues. Built for automated quality assurance of support case article citations.
 
@@ -102,13 +102,16 @@ python run_evaluation.py --case 2508270010003948 -v
 | **Transfer Analysis** | Root-cause classification for why a support case was transferred (8 categories) |
 | **Action Required** | Recommended next step: `none`, `add_context`, `find_better_article`, or `create_content` |
 | **Reliability Warning** | Flag set when description quality score < 40, indicating low confidence in the evaluation |
+| **Area Path** | Classified support area for the issue (e.g., "Teams Meetings"). Set by AreaClassificationAgent; used as primary grouping dimension for trend clusters. |
+| **Trend Cluster** | Group of semantically similar cases that can be fixed with ONE PM action. Produced by `TrendSynthesizer` (opt-in: `--trend-report`). |
+| **Citation Overlap** | Article URL cited by ≥2 cases. `cross_coverage` = different problems sharing one article (hidden change risk); `duplicate_issues` = same problem repeated (consolidation candidate). |
 
 ## Documentation Map
 
 | Document | Description |
 |----------|-------------|
 | [Architecture](architecture.md) | System design, agent interaction patterns, module structure |
-| [Agents](agents.md) | Complete reference for all 10 specialized agents (role, inputs, outputs, fallbacks) |
+| [Agents](agents.md) | Complete reference for all 11 specialized agents + TrendSynthesizer (role, inputs, outputs, fallbacks) |
 | [Pipeline](pipeline.md) | Step-by-step evaluation workflow with flowchart |
 | [Data Models](data-models.md) | All dataclasses, type aliases, and label normalization maps |
 | [Scoring](scoring.md) | Score formula, verdict logic, threshold tables |

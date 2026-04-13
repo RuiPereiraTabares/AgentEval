@@ -235,16 +235,6 @@ GapPriority = Literal["high", "medium", "low"]
 GapEffort = Literal["small", "medium", "large"]
 GapRecommendation = Literal["augment_existing", "create_new", "combine_multiple"]
 DescriptionQualityVerdict = Literal["well_defined", "mostly_defined", "partially_defined", "poorly_defined"]
-TransferReason = Literal[
-    "poor_description",
-    "poor_description_bad_citation",
-    "no_citation_found",
-    "bad_citation_match",
-    "inadequate_article",
-    "customer_escalation",
-    "not_transferred",
-    "unknown",
-]
 CitationSupportVerdict = Literal["good", "partial", "bad"]
 CitationGroundingVerdict = Literal["well_grounded", "partially_grounded", "poorly_grounded", "ungrounded"]
 ResponseQualityVerdict = Literal["excellent", "good", "fair", "poor"]
@@ -729,60 +719,6 @@ class GapAnalysisResult:
         )
 
 
-@dataclass
-class TransferReasonResult:
-    """Result from the TransferReasonAgent — classifies WHY a case was transferred."""
-
-    transfer_reason: TransferReason = "unknown"
-    confidence: ConfidenceLevel = "medium"
-    transferred: bool | None = None
-    sr_status: str = ""
-    reopened: bool | None = None
-    contributing_factors: list[str] = field(default_factory=list)
-
-    # Snapshot of upstream scores used for classification
-    description_quality_score: int = 0
-    overall_article_score: int = 0
-    relevance_score: int = 0
-    contains_citations: bool = False
-
-    escalation_signals_detected: list[str] = field(default_factory=list)
-    narrative: str = ""
-
-    def to_dict(self) -> dict:
-        return {
-            "transfer_reason": self.transfer_reason,
-            "confidence": self.confidence,
-            "transferred": self.transferred,
-            "sr_status": self.sr_status,
-            "reopened": self.reopened,
-            "contributing_factors": self.contributing_factors,
-            "description_quality_score": self.description_quality_score,
-            "overall_article_score": self.overall_article_score,
-            "relevance_score": self.relevance_score,
-            "contains_citations": self.contains_citations,
-            "escalation_signals_detected": self.escalation_signals_detected,
-            "narrative": self.narrative,
-        }
-
-    @classmethod
-    def from_dict(cls, data: dict) -> "TransferReasonResult":
-        return cls(
-            transfer_reason=data.get("transfer_reason", "unknown"),
-            confidence=data.get("confidence", "medium"),
-            transferred=data.get("transferred"),
-            sr_status=data.get("sr_status", ""),
-            reopened=data.get("reopened"),
-            contributing_factors=data.get("contributing_factors", []),
-            description_quality_score=data.get("description_quality_score", 0),
-            overall_article_score=data.get("overall_article_score", 0),
-            relevance_score=data.get("relevance_score", 0),
-            contains_citations=data.get("contains_citations", False),
-            escalation_signals_detected=data.get("escalation_signals_detected", []),
-            narrative=data.get("narrative", ""),
-        )
-
-
 _CITATION_SUPPORT_LABEL_MAP = {
     "excellent": 95, "perfect": 95, "strong": 90, "well supported": 90,
     "supported": 85, "good": 80, "high": 85,
@@ -1042,9 +978,13 @@ class EvaluationResult:
     final_recommendation: str = ""
     description_quality: dict = field(default_factory=dict)
     evaluation_reliability_warning: bool = False
-    transfer_analysis: dict = field(default_factory=dict)
     citation_quality: dict = field(default_factory=dict)
     response_quality: dict = field(default_factory=dict)
+    # LLM-synthesized recommendation fields
+    synthesis_priority: str = ""
+    synthesis_priority_reason: str = ""
+    synthesis_pm_actions: list[str] = field(default_factory=list)
+    synthesis_root_cause_category: str = ""
 
     def to_dict(self) -> dict:
         return {
@@ -1058,9 +998,12 @@ class EvaluationResult:
             "final_recommendation": self.final_recommendation,
             "description_quality": self.description_quality,
             "evaluation_reliability_warning": self.evaluation_reliability_warning,
-            "transfer_analysis": self.transfer_analysis,
             "citation_quality": self.citation_quality,
             "response_quality": self.response_quality,
+            "synthesis_priority": self.synthesis_priority,
+            "synthesis_priority_reason": self.synthesis_priority_reason,
+            "synthesis_pm_actions": self.synthesis_pm_actions,
+            "synthesis_root_cause_category": self.synthesis_root_cause_category,
         }
 
     @classmethod
@@ -1076,7 +1019,90 @@ class EvaluationResult:
             final_recommendation=data.get("final_recommendation", ""),
             description_quality=data.get("description_quality", {}),
             evaluation_reliability_warning=data.get("evaluation_reliability_warning", False),
-            transfer_analysis=data.get("transfer_analysis", {}),
             citation_quality=data.get("citation_quality", {}),
             response_quality=data.get("response_quality", {}),
+            synthesis_priority=data.get("synthesis_priority", ""),
+            synthesis_priority_reason=data.get("synthesis_priority_reason", ""),
+            synthesis_pm_actions=data.get("synthesis_pm_actions", []),
+            synthesis_root_cause_category=data.get("synthesis_root_cause_category", ""),
+        )
+
+
+@dataclass
+class TrendCluster:
+    """A cluster of related cases with a unified PM action."""
+
+    cluster_name: str = ""
+    case_count: int = 0
+    case_numbers: list[str] = field(default_factory=list)
+    root_cause_pattern: str = ""
+    products_affected: list[str] = field(default_factory=list)
+    unified_pm_action: str = ""
+    estimated_impact: str = ""
+    priority: str = ""
+    supporting_evidence: list[str] = field(default_factory=list)
+    area_path: str = ""
+
+    def to_dict(self) -> dict:
+        return {
+            "cluster_name": self.cluster_name,
+            "case_count": self.case_count,
+            "case_numbers": self.case_numbers,
+            "root_cause_pattern": self.root_cause_pattern,
+            "products_affected": self.products_affected,
+            "unified_pm_action": self.unified_pm_action,
+            "estimated_impact": self.estimated_impact,
+            "priority": self.priority,
+            "supporting_evidence": self.supporting_evidence,
+            "area_path": self.area_path,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "TrendCluster":
+        return cls(
+            cluster_name=data.get("cluster_name", ""),
+            case_count=data.get("case_count", 0),
+            case_numbers=data.get("case_numbers", []),
+            root_cause_pattern=data.get("root_cause_pattern", ""),
+            products_affected=data.get("products_affected", []),
+            unified_pm_action=data.get("unified_pm_action", ""),
+            estimated_impact=data.get("estimated_impact", ""),
+            priority=data.get("priority", ""),
+            supporting_evidence=data.get("supporting_evidence", []),
+            area_path=data.get("area_path", ""),
+        )
+
+
+@dataclass
+class CitationOverlap:
+    """Cases that share the same cited article URL."""
+    url: str = ""
+    overlap_type: str = ""   # "duplicate_issues" | "cross_coverage"
+    case_count: int = 0
+    case_numbers: list = field(default_factory=list)
+    similarity_score: float = 0.0   # avg Jaccard between issue descriptions
+    issue_snippets: list = field(default_factory=list)  # first 150 chars per case
+    flag_reason: str = ""
+    recommendation: str = ""
+
+    def to_dict(self) -> dict:
+        return {
+            "url": self.url, "overlap_type": self.overlap_type,
+            "case_count": self.case_count, "case_numbers": self.case_numbers,
+            "similarity_score": round(self.similarity_score, 3),
+            "issue_snippets": self.issue_snippets,
+            "flag_reason": self.flag_reason, "recommendation": self.recommendation,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "CitationOverlap":
+        return cls(
+            url=data.get("url", ""),
+            overlap_type=data.get("overlap_type", ""),
+            case_count=data.get("case_count", 0),
+            case_numbers=data.get("case_numbers", []),
+            similarity_score=data.get("similarity_score", 0.0),
+            issue_snippets=data.get("issue_snippets", []),
+            flag_reason=data.get("flag_reason", ""),
+            recommendation=data.get("recommendation", ""),
         )

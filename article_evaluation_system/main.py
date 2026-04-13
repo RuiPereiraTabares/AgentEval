@@ -1,5 +1,5 @@
 """
-Main entry point for the Article Evaluation System.
+Main entry point for the Agentic Insight Engine.
 
 Processes customer support cases from CSV files and evaluates
 whether cited Microsoft articles adequately address the issues.
@@ -63,17 +63,6 @@ def read_csv_cases(
             if limit and count >= limit:
                 break
 
-            # Parse transfer metadata (None if column absent from CSV)
-            transferred_raw = row.get('Transferred')
-            transferred = None
-            if transferred_raw is not None and transferred_raw.strip():
-                transferred = transferred_raw.strip().upper() == 'TRUE'
-
-            reopened_raw = row.get('Reopened')
-            reopened = None
-            if reopened_raw is not None and reopened_raw.strip():
-                reopened = reopened_raw.strip().upper() == 'TRUE'
-
             yield {
                 'case_number': row.get('Case Number', '') or row.get('CaseNumber', ''),
                 'title': row.get('Title_mwai', '') or row.get('Title', ''),
@@ -89,9 +78,6 @@ def read_csv_cases(
                 'sap_product_family': row.get('SapProductFamily', ''),
                 'sap_path': row.get('SapPath_mwai', '') or row.get('SapPath', '') or row.get('SapPath1', ''),
                 'sap_name': row.get('SapName', ''),
-                'transferred': transferred,
-                'sr_status': row.get('SRStatus', '') or row.get('SR Status', ''),
-                'reopened': reopened,
             }
             count += 1
 
@@ -141,17 +127,6 @@ def read_mweaeval_csv_cases(
             except (json.JSONDecodeError, TypeError):
                 citation_urls = []
 
-            # Parse transfer metadata
-            transferred_raw = row.get('Transferred')
-            transferred = None
-            if transferred_raw is not None and transferred_raw.strip():
-                transferred = transferred_raw.strip().upper() == 'TRUE'
-
-            reopened_raw = row.get('Reopened')
-            reopened = None
-            if reopened_raw is not None and reopened_raw.strip():
-                reopened = reopened_raw.strip().upper() == 'TRUE'
-
             yield {
                 'case_number': row.get('Case Number', '') or row.get('CaseNumber', ''),
                 'title': row.get('Title_mwai', '') or row.get('Title', ''),
@@ -163,9 +138,6 @@ def read_mweaeval_csv_cases(
                 'sap_product_family': row.get('SapProductFamily', ''),
                 'sap_path': row.get('SapPath_mwai', '') or row.get('SapPath', '') or row.get('SapPath1', ''),
                 'sap_name': row.get('SapName', ''),
-                'transferred': transferred,
-                'sr_status': row.get('SRStatus', '') or row.get('SR Status', ''),
-                'reopened': reopened,
             }
             count += 1
 
@@ -230,39 +202,41 @@ def write_results_csv(results: list[dict], output_path: str):
             'issue_description': eval_data.get('issue_summary', {}).get('raw_description', ''),
             'issue_product': r.get('sap_path', '').split('/')[0].strip() if r.get('sap_path') else '',
             'sap_path': r.get('sap_path', ''),
+            'area_path': eval_data.get('issue_summary', {}).get('area_path', ''),
+            'area_path_confidence': eval_data.get('issue_summary', {}).get('area_path_confidence', ''),
             'issue_type': eval_data.get('issue_summary', {}).get('issue_type', ''),
-            'article_url': article_eval.get('url', ''),
-            'overall_score': eval_data.get('overall_score', 0),
-            'verdict': eval_data.get('verdict', ''),
-            'action_required': eval_data.get('action_required', ''),
-            # Relevance details
-            'relevance_score': rel.get('relevance_score', 0),
-            'relevance_verdict': rel.get('relevance_verdict', ''),
-            'relevance_matched_aspects': '; '.join(rel.get('matched_aspects', [])),
-            'relevance_unmatched_aspects': '; '.join(rel.get('unmatched_aspects', [])),
-            'relevance_product_match': rel.get('product_match', ''),
-            'relevance_version_match': rel.get('version_match', ''),
-            'relevance_is_outdated': rel.get('is_outdated', ''),
-            # Completeness details
-            'completeness_score': comp.get('completeness_score', 0),
-            'completeness_verdict': comp.get('completeness_verdict', ''),
-            'completeness_missing_elements': '; '.join(comp.get('missing_elements', [])),
-            'completeness_has_prerequisites': comp.get('has_prerequisites', ''),
-            'completeness_has_step_by_step': comp.get('has_step_by_step', ''),
-            'completeness_has_examples': comp.get('has_examples', ''),
-            'completeness_has_troubleshooting': comp.get('has_troubleshooting', ''),
-            'completeness_has_success_criteria': comp.get('has_success_criteria', ''),
-            # Validity details
-            'validity_score': val.get('validity_score', 0),
-            'validity_verdict': val.get('validity_verdict', ''),
-            'validity_potential_issues': '; '.join(val.get('potential_issues', [])),
-            'validity_addresses_root_cause': val.get('addresses_root_cause', ''),
-            'validity_is_current_solution': val.get('is_current_solution', ''),
-            'validity_environment_compatible': val.get('environment_compatible', ''),
-            'validity_confidence_level': val.get('confidence_level', ''),
+            'primary_article_url': article_eval.get('url', ''),
+            'primary_article_score': eval_data.get('overall_score', 0),
+            'primary_article_verdict': eval_data.get('verdict', ''),
+            'primary_article_action_required': eval_data.get('action_required', ''),
+            # Relevance details (primary article)
+            'article_relevance_score': rel.get('relevance_score', 0),
+            'article_relevance_verdict': rel.get('relevance_verdict', ''),
+            'article_relevance_matched_aspects': '; '.join(rel.get('matched_aspects', [])),
+            'article_relevance_unmatched_aspects': '; '.join(rel.get('unmatched_aspects', [])),
+            'article_relevance_product_match': rel.get('product_match', ''),
+            'article_relevance_version_match': rel.get('version_match', ''),
+            'article_relevance_is_outdated': rel.get('is_outdated', ''),
+            # Completeness details (primary article)
+            'article_completeness_score': comp.get('completeness_score', 0),
+            'article_completeness_verdict': comp.get('completeness_verdict', ''),
+            'article_completeness_missing_elements': '; '.join(comp.get('missing_elements', [])),
+            'article_completeness_has_prerequisites': comp.get('has_prerequisites', ''),
+            'article_completeness_has_step_by_step': comp.get('has_step_by_step', ''),
+            'article_completeness_has_examples': comp.get('has_examples', ''),
+            'article_completeness_has_troubleshooting': comp.get('has_troubleshooting', ''),
+            'article_completeness_has_success_criteria': comp.get('has_success_criteria', ''),
+            # Validity details (primary article)
+            'article_validity_score': val.get('validity_score', 0),
+            'article_validity_verdict': val.get('validity_verdict', ''),
+            'article_validity_potential_issues': '; '.join(val.get('potential_issues', [])),
+            'article_validity_addresses_root_cause': val.get('addresses_root_cause', ''),
+            'article_validity_is_current_solution': val.get('is_current_solution', ''),
+            'article_validity_environment_compatible': val.get('environment_compatible', ''),
+            'article_validity_confidence_level': val.get('confidence_level', ''),
             # Description quality (KT framework)
-            'description_quality_score': dq.get('description_quality_score', 0),
-            'description_quality_verdict': dq.get('description_quality_verdict', ''),
+            'kt_description_quality_score': dq.get('description_quality_score', 0),
+            'kt_description_quality_verdict': dq.get('description_quality_verdict', ''),
             'kt_identity_score': dq.get('identity_score', 0),
             'kt_location_score': dq.get('location_score', 0),
             'kt_timing_score': dq.get('timing_score', 0),
@@ -273,7 +247,7 @@ def write_results_csv(results: list[dict], output_path: str):
             'kt_magnitude_analysis': dq.get('magnitude_analysis', ''),
             'kt_missing_elements': '; '.join(dq.get('missing_kt_elements', [])),
             'kt_improvement_suggestions': '; '.join(dq.get('improvement_suggestions', [])),
-            'evaluation_reliability_warning': eval_data.get('evaluation_reliability_warning', False),
+            'kt_evaluation_reliability_warning': eval_data.get('evaluation_reliability_warning', False),
             # Citation quality — summary
             'citation_grounding_score': cq.get('overall_grounding_score', ''),
             'citation_grounding_verdict': cq.get('overall_verdict', ''),
@@ -288,8 +262,8 @@ def write_results_csv(results: list[dict], output_path: str):
         flat.update(_flatten_per_citation(cq.get('per_citation_results', []), max_cit))
         flat.update({
             # Response quality (multi-dimensional)
-            'ai_response_quality_score': rq.get('ai_response_quality_score', ''),
-            'ai_response_quality_verdict': rq.get('ai_response_quality_verdict', ''),
+            'rq_ai_response_quality_score': rq.get('ai_response_quality_score', ''),
+            'rq_ai_response_quality_verdict': rq.get('ai_response_quality_verdict', ''),
             'rq_response_quality_score': rq.get('response_quality_score', ''),
             'rq_response_quality_analysis': rq.get('response_quality_analysis', ''),
             'rq_groundedness_score': rq.get('groundedness_score', ''),
@@ -298,6 +272,11 @@ def write_results_csv(results: list[dict], output_path: str):
             'rq_issue_resolution_analysis': rq.get('issue_resolution_analysis', ''),
             'rq_quality_weaknesses': '; '.join(rq.get('quality_weaknesses', [])),
             'rq_improvement_suggestions': '; '.join(rq.get('improvement_suggestions', [])),
+            # LLM-synthesized recommendation
+            'synthesis_priority': eval_data.get('synthesis_priority', ''),
+            'synthesis_priority_reason': eval_data.get('synthesis_priority_reason', ''),
+            'synthesis_pm_actions': '; '.join(eval_data.get('synthesis_pm_actions', [])),
+            'synthesis_root_cause_category': eval_data.get('synthesis_root_cause_category', ''),
             # Summary
             'final_recommendation': eval_data.get('final_recommendation', ''),
             'processing_time_ms': r.get('processing_time_ms', 0),
@@ -339,26 +318,28 @@ def write_results_csv_summary(results: list[dict], output_path: str):
             'issue_description': eval_data.get('issue_summary', {}).get('raw_description', ''),
             'issue_product': r.get('sap_path', '').split('/')[0].strip() if r.get('sap_path') else '',
             'sap_path': r.get('sap_path', ''),
-            'overall_score': eval_data.get('overall_score', 0),
-            'verdict': eval_data.get('verdict', ''),
-            # Relevance — score + reasons
-            'relevance_score': rel.get('relevance_score', 0),
-            'relevance_verdict': rel.get('relevance_verdict', ''),
-            'relevance_matched': '; '.join(rel.get('matched_aspects', [])),
-            'relevance_unmatched': '; '.join(rel.get('unmatched_aspects', [])),
-            # Completeness — score + reasons
-            'completeness_score': comp.get('completeness_score', 0),
-            'completeness_verdict': comp.get('completeness_verdict', ''),
-            'completeness_missing': '; '.join(comp.get('missing_elements', [])),
-            # Validity — score + reasons
-            'validity_score': val.get('validity_score', 0),
-            'validity_verdict': val.get('validity_verdict', ''),
-            'validity_issues': '; '.join(val.get('potential_issues', [])),
-            # Description quality — score + reasons
-            'description_quality_score': dq.get('description_quality_score', 0),
-            'description_quality_verdict': dq.get('description_quality_verdict', ''),
-            'description_missing': '; '.join(dq.get('missing_kt_elements', [])),
-            'description_improvements': '; '.join(dq.get('improvement_suggestions', [])),
+            'area_path': eval_data.get('issue_summary', {}).get('area_path', ''),
+            'area_path_confidence': eval_data.get('issue_summary', {}).get('area_path_confidence', ''),
+            'primary_article_score': eval_data.get('overall_score', 0),
+            'primary_article_verdict': eval_data.get('verdict', ''),
+            # Relevance — score + reasons (primary article)
+            'article_relevance_score': rel.get('relevance_score', 0),
+            'article_relevance_verdict': rel.get('relevance_verdict', ''),
+            'article_relevance_matched': '; '.join(rel.get('matched_aspects', [])),
+            'article_relevance_unmatched': '; '.join(rel.get('unmatched_aspects', [])),
+            # Completeness — score + reasons (primary article)
+            'article_completeness_score': comp.get('completeness_score', 0),
+            'article_completeness_verdict': comp.get('completeness_verdict', ''),
+            'article_completeness_missing': '; '.join(comp.get('missing_elements', [])),
+            # Validity — score + reasons (primary article)
+            'article_validity_score': val.get('validity_score', 0),
+            'article_validity_verdict': val.get('validity_verdict', ''),
+            'article_validity_issues': '; '.join(val.get('potential_issues', [])),
+            # Description quality — score + reasons (KT framework)
+            'kt_description_quality_score': dq.get('description_quality_score', 0),
+            'kt_description_quality_verdict': dq.get('description_quality_verdict', ''),
+            'kt_description_missing': '; '.join(dq.get('missing_kt_elements', [])),
+            'kt_description_improvements': '; '.join(dq.get('improvement_suggestions', [])),
             # Citation quality — summary
             'citation_grounding_score': cq.get('overall_grounding_score', ''),
             'citation_grounding_verdict': cq.get('overall_verdict', ''),
@@ -374,12 +355,17 @@ def write_results_csv_summary(results: list[dict], output_path: str):
         flat.update(_flatten_per_citation(cq.get('per_citation_results', []), max_cit))
         flat.update({
             # Response quality (multi-dimensional)
-            'ai_response_quality_score': rq.get('ai_response_quality_score', ''),
-            'ai_response_quality_verdict': rq.get('ai_response_quality_verdict', ''),
+            'rq_ai_response_quality_score': rq.get('ai_response_quality_score', ''),
+            'rq_ai_response_quality_verdict': rq.get('ai_response_quality_verdict', ''),
             'rq_response_quality_score': rq.get('response_quality_score', ''),
             'rq_groundedness_score': rq.get('groundedness_score', ''),
             'rq_issue_resolution_score': rq.get('issue_resolution_score', ''),
             'rq_quality_weaknesses': '; '.join(rq.get('quality_weaknesses', [])),
+            # LLM-synthesized recommendation
+            'synthesis_priority': eval_data.get('synthesis_priority', ''),
+            'synthesis_priority_reason': eval_data.get('synthesis_priority_reason', ''),
+            'synthesis_pm_actions': '; '.join(eval_data.get('synthesis_pm_actions', [])),
+            'synthesis_root_cause_category': eval_data.get('synthesis_root_cause_category', ''),
             # Final
             'final_recommendation': eval_data.get('final_recommendation', ''),
             'error': r.get('error', ''),
@@ -395,6 +381,75 @@ def write_results_csv_summary(results: list[dict], output_path: str):
         writer.writerows(flat_results)
 
     logger.info(f"Summary results written to {output_path}")
+
+
+def write_citation_overlaps_csv(overlaps: list[dict], output_path: str):
+    """Write citation overlap analysis to a CSV file.
+
+    Args:
+        overlaps: List of CitationOverlap dicts.
+        output_path: Path to output CSV file.
+    """
+    if not overlaps:
+        logger.warning("No citation overlaps to write")
+        return
+
+    fieldnames = [
+        "url", "overlap_type", "case_count", "case_numbers",
+        "similarity_score", "flag_reason", "recommendation", "issue_snippets",
+    ]
+    with open(output_path, 'w', newline='', encoding='utf-8') as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        for o in overlaps:
+            writer.writerow({
+                "url": o.get("url", ""),
+                "overlap_type": o.get("overlap_type", ""),
+                "case_count": o.get("case_count", 0),
+                "case_numbers": "; ".join(o.get("case_numbers", [])),
+                "similarity_score": o.get("similarity_score", 0.0),
+                "flag_reason": o.get("flag_reason", ""),
+                "recommendation": o.get("recommendation", ""),
+                "issue_snippets": " | ".join(o.get("issue_snippets", [])),
+            })
+    logger.info(f"Citation overlaps written to {output_path}")
+
+
+def write_trend_report_csv(clusters: list[dict], output_path: str):
+    """Write trend clusters to a CSV file.
+
+    Args:
+        clusters: List of TrendCluster dicts.
+        output_path: Path to output CSV file.
+    """
+    if not clusters:
+        logger.warning("No trend clusters to write")
+        return
+
+    fieldnames = [
+        "cluster_name", "area_path", "priority", "case_count", "case_numbers",
+        "root_cause_pattern", "products_affected", "unified_pm_action",
+        "estimated_impact", "supporting_evidence",
+    ]
+
+    with open(output_path, 'w', newline='', encoding='utf-8') as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        for cluster in clusters:
+            writer.writerow({
+                "cluster_name": cluster.get("cluster_name", ""),
+                "area_path": cluster.get("area_path", ""),
+                "priority": cluster.get("priority", ""),
+                "case_count": cluster.get("case_count", 0),
+                "case_numbers": "; ".join(cluster.get("case_numbers", [])),
+                "root_cause_pattern": cluster.get("root_cause_pattern", ""),
+                "products_affected": "; ".join(cluster.get("products_affected", [])),
+                "unified_pm_action": cluster.get("unified_pm_action", ""),
+                "estimated_impact": cluster.get("estimated_impact", ""),
+                "supporting_evidence": "; ".join(cluster.get("supporting_evidence", [])),
+            })
+
+    logger.info(f"Trend report written to {output_path}")
 
 
 def write_results_json(results: list[dict], output_path: str):
@@ -439,18 +494,10 @@ def process_cases(
             if not has_citation:
                 logger.info(f"  No citation found for case {case['case_number']} — triggering search agent")
 
-            # Build transfer metadata from CSV columns
-            transfer_metadata = {
-                'transferred': case.get('transferred'),
-                'sr_status': case.get('sr_status', ''),
-                'reopened': case.get('reopened'),
-            }
-
             if urls:
                 evaluation = evaluator.evaluate(
                     customer_issue=full_issue,
                     recommended_article=urls[0] if len(urls) == 1 else None,
-                    transfer_metadata=transfer_metadata,
                 )
                 # Handle multiple URLs if needed
                 if len(urls) > 1:
@@ -459,7 +506,6 @@ def process_cases(
                 evaluation = evaluator.evaluate(
                     customer_issue=full_issue,
                     recommended_article=None,
-                    transfer_metadata=transfer_metadata,
                 )
 
             processing_time = (datetime.now() - start_time).total_seconds() * 1000
