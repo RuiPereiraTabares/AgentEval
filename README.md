@@ -96,6 +96,9 @@ python run_evaluation.py -n 5 --format csv
 # Evaluate AI response + citation quality (mweaeval mode)
 python run_evaluation.py -n 5 --mweaeval
 
+# Generate trend report + citation overlap analysis
+python run_evaluation.py -n 50 --trend-report
+
 # Batch mode: process 50 cases at a time
 python run_evaluation.py --batch-size 50 -i merged_output.csv
 
@@ -105,12 +108,14 @@ python run_evaluation.py --batch-size 50 --continue -i merged_output.csv
 
 ### Output
 
-Each run produces two files:
+Each run produces two files (plus optional trend and overlap CSVs):
 
 | File | Description |
 |------|-------------|
 | `evaluation_results_{timestamp}.csv` | Full evaluation results (default CSV; use `--format json` for JSON) |
 | `evaluation_summary_{timestamp}.csv` | Summary with key scores and reasons only |
+| `trend_report_{timestamp}.csv` | Trend clusters (opt-in: `--trend-report`) |
+| `citation_overlaps_{timestamp}.csv` | Citation overlap analysis (auto-generated alongside trend report when overlaps are detected) |
 
 ## Input CSV Format
 
@@ -152,10 +157,11 @@ AgenticInsightEngine/
   article_evaluation_system/     # Main package
     __init__.py                  #   ArticleEvaluator entry point
     main.py                      #   CSV I/O and alternative CLI
-    agents/                      #   All 11 agents (incl. citation_quality_agent.py, response_quality_agent.py)
-    models/                      #   Data models (Issue, Article, results)
-    config/                      #   Settings, thresholds, weights
+    agents/                      #   All 11 agents (incl. area_classification_agent.py, citation_quality_agent.py, response_quality_agent.py)
+    models/                      #   Data models (Issue, Article, EvaluationResult, TrendCluster, CitationOverlap)
+    config/                      #   Settings, thresholds, weights, area_definitions
     utils/                       #   Article fetcher, scoring, prompts, citation_parser.py, MWAI client
+    synthesis/                   #   TrendSynthesizer (semantic clustering + citation overlap detection)
   docs/                          #   Developer documentation
 ```
 
@@ -165,7 +171,7 @@ AgenticInsightEngine/
 |----------|---------------|
 | [docs/index.md](docs/index.md) | Overview, architecture diagram, quick start, glossary |
 | [docs/architecture.md](docs/architecture.md) | System design, module tree, error handling |
-| [docs/agents.md](docs/agents.md) | All 11 agents — role, inputs, outputs, fallbacks (incl. CitationQuality, ResponseQuality) |
+| [docs/agents.md](docs/agents.md) | All 11 agents + TrendSynthesizer — role, inputs, outputs, fallbacks |
 | [docs/pipeline.md](docs/pipeline.md) | Step-by-step evaluation workflow with flowchart |
 | [docs/data-models.md](docs/data-models.md) | All dataclasses, type aliases, label maps |
 | [docs/scoring.md](docs/scoring.md) | Score formula, verdict logic, threshold tables |

@@ -1072,3 +1072,37 @@ class TrendCluster:
             area_path=data.get("area_path", ""),
         )
 
+
+@dataclass
+class CitationOverlap:
+    """Cases that share the same cited article URL."""
+    url: str = ""
+    overlap_type: str = ""   # "duplicate_issues" | "cross_coverage"
+    case_count: int = 0
+    case_numbers: list = field(default_factory=list)
+    similarity_score: float = 0.0   # avg Jaccard between issue descriptions
+    issue_snippets: list = field(default_factory=list)  # first 150 chars per case
+    flag_reason: str = ""
+    recommendation: str = ""
+
+    def to_dict(self) -> dict:
+        return {
+            "url": self.url, "overlap_type": self.overlap_type,
+            "case_count": self.case_count, "case_numbers": self.case_numbers,
+            "similarity_score": round(self.similarity_score, 3),
+            "issue_snippets": self.issue_snippets,
+            "flag_reason": self.flag_reason, "recommendation": self.recommendation,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "CitationOverlap":
+        return cls(
+            url=data.get("url", ""),
+            overlap_type=data.get("overlap_type", ""),
+            case_count=data.get("case_count", 0),
+            case_numbers=data.get("case_numbers", []),
+            similarity_score=data.get("similarity_score", 0.0),
+            issue_snippets=data.get("issue_snippets", []),
+            flag_reason=data.get("flag_reason", ""),
+            recommendation=data.get("recommendation", ""),
+        )

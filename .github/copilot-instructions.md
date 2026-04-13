@@ -22,7 +22,8 @@ AgentEval/
 ├── merged_output.csv                 # Default input CSV
 ├── evaluation_results_<ts>.csv       # Output: full results
 ├── evaluation_summary_<ts>.csv       # Output: summary
-├── trend_report_<ts>.csv             # Output: trend clusters (opt-in)
+├── trend_report_<ts>.csv             # Output: trend clusters (opt-in: --trend-report)
+├── citation_overlaps_<ts>.csv        # Output: citation overlap analysis (auto with trend report)
 ├── article_evaluation_system/        # Main package
 │   ├── __init__.py                   # ArticleEvaluator (public API)
 │   ├── main.py                       # CSV I/O helpers + alternative CLI
@@ -40,19 +41,20 @@ AgentEval/
 │   │   ├── response_quality_agent.py # ResponseQualityAgent
 │   │   └── transfer_reason_agent.py  # TransferReasonAgent (standalone)
 │   ├── models/
-│   │   ├── issue.py                  # Issue dataclass
+│   │   ├── issue.py                  # Issue dataclass (+ area_path, area_path_confidence)
 │   │   ├── article.py                # Article dataclass
-│   │   └── evaluation.py             # EvaluationResult + all result dataclasses
+│   │   └── evaluation.py             # EvaluationResult + all result dataclasses (incl. TrendCluster, CitationOverlap)
 │   ├── config/
-│   │   └── settings.py               # THRESHOLDS, KT_DIMENSION_WEIGHTS, SCORE_WEIGHTS, Settings
+│   │   ├── settings.py               # THRESHOLDS, KT_DIMENSION_WEIGHTS, SCORE_WEIGHTS, Settings
+│   │   └── area_definitions.py       # PRODUCT_AREA_DEFINITIONS (Teams: 17 areas; extensible)
 │   ├── utils/
 │   │   ├── mwai_client.py            # MwaiClient + resolve_mwai_token()
 │   │   ├── article_fetcher.py        # ArticleFetcher (HTTP fetch + HTML→text)
 │   │   ├── citation_parser.py        # CitationParser (parse [N] markers)
-│   │   ├── prompts.py                # AgentPrompts (all system prompts)
+│   │   ├── prompts.py                # AgentPrompts (all system prompts, incl. TREND_SYNTHESIS)
 │   │   └── scoring.py                # ScoringUtils (score math + verdicts)
 │   └── synthesis/
-│       └── trend_synthesis.py        # TrendSynthesizer (batch trend clustering)
+│       └── trend_synthesis.py        # TrendSynthesizer (semantic clustering + citation overlap detection)
 ├── dashboard/
 │   └── index.html                    # Local evaluation dashboard (vanilla JS)
 └── docs/                             # Developer documentation
@@ -102,6 +104,7 @@ def evaluate(self, *args, **kwargs) -> SomeResultDataclass:
 | Agent | Class | Role |
 |-------|-------|------|
 | `IssueParserAgent` | issue_parser.py | Extracts product, type, severity, keywords, symptoms, error codes from raw issue text |
+| `AreaClassificationAgent` | area_classification_agent.py | Classifies issue into product-specific area path (e.g. "Teams Meetings") |
 | `DescriptionQualityAgent` | description_quality_agent.py | KT framework score: identity/location/timing/magnitude (0-100 each) |
 | `RelevanceAgent` | relevance_agent.py | Is the article relevant to this issue? Score + product_match/version_match/is_outdated flags |
 | `CompletenessAgent` | completeness_agent.py | Does the article fully cover the issue? Checks prereqs, steps, examples, troubleshooting |
@@ -111,7 +114,7 @@ def evaluate(self, *args, **kwargs) -> SomeResultDataclass:
 | `CitationQualityAgent` | citation_quality_agent.py | Checks grounding of AI response against cited articles (per-citation: support_score, verdict) |
 | `ResponseQualityAgent` | response_quality_agent.py | Composite AI response quality (response_quality + groundedness + issue_resolution) |
 | `Orchestrator` | orchestrator.py | Coordinates all agents, calls LLM synthesis, builds `EvaluationResult` |
-| `TrendSynthesizer` | synthesis/trend_synthesis.py | Clusters batch results into 3-7 prioritised PM action groups |
+| `TrendSynthesizer` | synthesis/trend_synthesis.py | Semantic clustering of batch results into 3-7 PM action groups + citation overlap detection |
 
 ### Adding a new agent
 
@@ -191,7 +194,8 @@ Key dataclasses live in `models/evaluation.py`:
 - `CitationQualityResult` — overall_grounding_score, overall_verdict, citations_good/partial/bad/total, uncited_percentage, per_citation_results
 - `ResponseQualityResult` — ai_response_quality_score, ai_response_quality_verdict, response_quality_score, groundedness_score, issue_resolution_score, quality_weaknesses, improvement_suggestions
 - `EvaluationResult` — top-level result; all agent outputs + synthesis fields (synthesis_priority, synthesis_priority_reason, synthesis_pm_actions, synthesis_root_cause_category)
-- `TrendCluster` — cluster_name, priority, case_count, unified_pm_action, estimated_impact, root_cause_category
+- `TrendCluster` — cluster_name, area_path, priority, case_count, unified_pm_action, estimated_impact, root_cause_pattern, supporting_evidence
+- `CitationOverlap` — url, overlap_type (`duplicate_issues` | `cross_coverage`), case_count, similarity_score, case_numbers, issue_snippets, flag_reason, recommendation
 
 All dataclasses implement `.to_dict()`. Never return raw dataclass objects from agent `evaluate()` methods — always call `.to_dict()` before crossing the module boundary.
 
@@ -233,9 +237,10 @@ Optional: `Title_mwai`, `ContainsCitations`, `Urls`, `Transferred`, `SRStatus`, 
 Additional required: `AiResponse`, `Citations` (comma-separated URLs)
 
 ### Standard output
-- `evaluation_results_<ts>.csv` — one row per case, all agent scores flattened
+- `evaluation_results_<ts>.csv` — one row per case, all agent scores flattened (incl. `area_path`, `area_path_confidence`)
 - `evaluation_summary_<ts>.csv` — key columns only (case_number, overall_score, verdict, recommendation)
 - `trend_report_<ts>.csv` — one row per cluster (requires `--trend-report`)
+- `citation_overlaps_<ts>.csv` — one row per overlapping article URL (auto-generated alongside trend report)
 
 ---
 
@@ -258,7 +263,7 @@ python run_evaluation.py -n 5 --mweaeval -i mweaeval_input.csv
 python run_evaluation.py --batch-size 50 -i merged_output.csv
 python run_evaluation.py --batch-size 50 --continue -i merged_output.csv
 
-# Trend report (requires >= 2 cases)
+# Trend report + citation overlap analysis (requires >= 2 cases)
 python run_evaluation.py --all --trend-report
 
 # Token management
@@ -283,7 +288,12 @@ python run_evaluation.py --token eyJ0eX...  # explicit token
 
 ## Dashboard
 
-`dashboard/index.html` is a standalone single-file vanilla JS dashboard. It reads evaluation CSV files via a file picker, parses them in-browser, and renders charts with cross-filtering. No build step. No backend. Open directly in a browser or serve with any static server.
+`dashboard/index.html` is a standalone single-file vanilla JS dashboard. It reads CSV files via a file picker (drag-and-drop supported), parses them in-browser, and renders charts with cross-filtering. No build step. No backend. Open directly in a browser or serve with any static server.
+
+Three upload cards:
+1. **Evaluation Results CSV** (`evaluation_results_*.csv`) → SPM Actions + Evaluation Report tabs
+2. **Trend Report CSV** (`trend_report_*.csv`) → Trend Report tab
+3. **Citation Overlaps CSV** (`citation_overlaps_*.csv`) → Citation Overlaps tab (cross-coverage and duplicate flags with similarity bars)
 
 ---
 

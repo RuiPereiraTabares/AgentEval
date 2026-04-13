@@ -26,7 +26,7 @@ article_evaluation_system/
     __init__.py
     issue.py           # Issue dataclass (+ area_path, area_path_confidence)
     article.py         # Article dataclass
-    evaluation.py      # All result dataclasses + label maps
+    evaluation.py      # All result dataclasses + label maps (incl. TrendCluster, CitationOverlap)
   config/
     __init__.py
     settings.py        # Thresholds, weights, Settings dataclass
@@ -35,9 +35,11 @@ article_evaluation_system/
     __init__.py
     article_fetcher.py # HTTP fetch + HTML parsing + cache
     scoring.py         # ScoringUtils (score formulas, verdict logic)
-    prompts.py         # All LLM system prompts (AgentPrompts)
+    prompts.py         # All LLM system prompts (AgentPrompts, incl. TREND_SYNTHESIS)
     citation_parser.py # Citation URL extraction and parsing
     mwai_client.py     # MWAI API client + token management
+  synthesis/
+    trend_synthesis.py # TrendSynthesizer — semantic clustering + citation overlap detection
 run_evaluation.py      # Primary CLI runner
 ```
 
@@ -169,6 +171,23 @@ EvaluationResult.to_dict()
   |
   v
 write_results_json() / write_results_csv() / write_results_csv_summary()
+
+  --- Batch trend analysis (opt-in: --trend-report) ---
+
+  list[EvaluationResult dicts]
+    |
+    v
+  TrendSynthesizer.synthesize_trends()
+    |
+    +-- _build_case_summaries()        # compact each result + issue_description
+    +-- _build_citation_overlaps()     # detect shared URLs; Jaccard similarity
+    +-- LLM clustering (or _deterministic_fallback with Jaccard ≥ 0.15 guard)
+    |
+    v
+  { clusters: list[TrendCluster], executive_summary, citation_overlaps: list[CitationOverlap] }
+    |
+    v
+  write_trend_report_csv() / write_citation_overlaps_csv()
 ```
 
 ## Error Handling Strategy

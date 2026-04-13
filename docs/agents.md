@@ -1,6 +1,6 @@
 # Agent Reference
 
-The system contains 13 agent classes: 1 base class, 1 orchestrator, and 11 specialized evaluation agents. All inherit from `BaseAgent` and follow the same evaluate/fallback pattern.
+The system contains 13 agent classes: 1 base class, 1 orchestrator, and 11 specialized evaluation agents. All inherit from `BaseAgent` and follow the same evaluate/fallback pattern. `TrendSynthesizer` is an additional non-pipeline class that clusters batch results.
 
 ## BaseAgent
 
@@ -347,3 +347,39 @@ See [KT Framework](kt-framework.md) for the full scoring guide.
 **No-citation path:** When no URLs are provided, the orchestrator calls `_handle_no_citation()` which runs SearchAgent and GapAnalysisAgent immediately, then TransferReasonAgent with `contains_citations=False`.
 
 See [Pipeline](pipeline.md) for the complete step-by-step flowchart.
+
+---
+
+## TrendSynthesizer
+
+**File:** `synthesis/trend_synthesis.py`
+**Role:** Post-processing batch analysis. Clusters evaluated cases by semantic pattern and produces 3-7 unified PM actions. Also detects citation overlaps across cases.
+
+**Usage:** Called from `run_evaluation.py` when `--trend-report` is passed. Not part of the per-case evaluation pipeline.
+
+```python
+synthesizer = TrendSynthesizer(client=..., model=..., provider=...)
+result = synthesizer.synthesize_trends(results)
+# result = { "clusters": [...], "executive_summary": "...", "citation_overlaps": [...] }
+```
+
+**Key methods:**
+
+| Method | Description |
+|--------|-------------|
+| `synthesize_trends(results)` | Main entry point. Calls LLM for clustering, then runs overlap detection. |
+| `_build_case_summaries(results)` | Compacts each result to ~200 tokens including `issue_description` (first 300 chars) |
+| `_build_citation_overlaps(results, summaries)` | Finds URLs cited by ≥2 cases; computes pairwise Jaccard similarity to classify as `duplicate_issues` or `cross_coverage` |
+| `_jaccard(text_a, text_b)` | Token-set Jaccard similarity (tokens > 2 chars only) |
+| `_extract_urls(result)` | Extracts all article URLs from a case result (primary + per-citation) |
+| `_deterministic_fallback(summaries)` | Groups by area+root_cause when LLM fails; applies Jaccard ≥ 0.15 guard to avoid lumping dissimilar cases |
+| `_synthesize_chunk(summaries)` | Single LLM call for ≤100 cases |
+| `_merge_clusters(clusters)` | Second LLM pass to reduce >7 clusters from chunked processing |
+
+**Prompt:** `AgentPrompts.TREND_SYNTHESIS` — includes rule 8 requiring semantic similarity within an area group before merging cases.
+
+**Output:** Adds `"citation_overlaps"` key to the returned dict alongside `"clusters"` and `"executive_summary"`. Overlap list is sorted: `cross_coverage` first, then by `case_count` descending.
+
+**Fallback:** `_deterministic_fallback()` — groups by area_path + root_cause_category with Jaccard ≥ 0.15 centroid check. Returns `citation_overlaps: []` (overlap detection requires raw results which the fallback receives).
+
+> **Note:** `TrendSynthesizer` inherits `BaseAgent` for LLM access but does not implement `evaluate()` — call `synthesize_trends()` directly.
