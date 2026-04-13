@@ -1,6 +1,6 @@
 # Agent Reference
 
-The system contains 12 agent classes: 1 base class, 1 orchestrator, and 10 specialized evaluation agents. All inherit from `BaseAgent` and follow the same evaluate/fallback pattern.
+The system contains 13 agent classes: 1 base class, 1 orchestrator, and 11 specialized evaluation agents. All inherit from `BaseAgent` and follow the same evaluate/fallback pattern.
 
 ## BaseAgent
 
@@ -39,6 +39,32 @@ See [Architecture > BaseAgent](architecture.md#baseagent-class) for details on `
 **Extracted fields:** product, version, error_codes, symptoms, issue_type, keywords (5-10 search terms), environment, severity
 
 **Fallback:** On LLM failure, uses `_extract_fallback_keywords()` for keyword extraction and `_guess_product()` for product detection via regex matching.
+
+---
+
+## AreaClassificationAgent
+
+**File:** `agents/area_classification_agent.py`
+**Role:** Classify a parsed issue into a product-specific area path (e.g., "Teams Meetings", "Teams Calling (PSTN)"). Runs immediately after `IssueParserAgent`, before `DescriptionQualityAgent`.
+**LLM Prompt:** Dynamic — built at runtime from the product's area taxonomy in `config/area_definitions.py`.
+
+**Input:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `issue` | `Issue` | Parsed issue object — must have `product` and `raw_description` set |
+
+**Output:** `dict` with `area_path`, `area_confidence`, `area_reasoning` — or `None` if no area definitions are configured for the detected product.
+
+**Area taxonomy:** Defined in `config/area_definitions.py` under `PRODUCT_AREA_DEFINITIONS`. Each product family maps to a list of named areas with descriptions. Product matching uses case-insensitive substring matching via `_PRODUCT_ALIASES`.
+
+**Teams areas (17):** Teams Admin · Teams and Channels · Teams and Copilot · Teams Apps and Connectors · Teams Calling (PSTN) · Teams Chat (Messaging) · Teams Clients · Teams Devices · Teams EDU · Teams External and Guest Access · Teams Files · Teams Hybrid and Migration · Teams Identity and Authentication · Teams Meetings · Teams Media · Teams People & Presence · Teams Security and Compliance
+
+**Extending to new products:** Add a new key to `PRODUCT_AREA_DEFINITIONS` and a matching alias in `_PRODUCT_ALIASES` in `area_definitions.py`. No agent code changes required.
+
+**Fallback:** Returns `None` on LLM failure or unknown area name. The issue proceeds without an area path — no pipeline step is blocked.
+
+**Result stored on:** `issue.area_path` (str | None) and `issue.area_path_confidence` (int 0-100).
 
 ---
 
@@ -307,9 +333,10 @@ See [KT Framework](kt-framework.md) for the full scoring guide.
 
 **Coordination logic:**
 
-1. Initializes all 10 agents with the same client/model/provider
+1. Initializes all 11 agents with the same client/model/provider
 2. Parses issue via IssueParserAgent
-3. Runs DescriptionQualityAgent, checks reliability threshold
+3. Classifies into area path via AreaClassificationAgent (result stored on `issue.area_path`)
+4. Runs DescriptionQualityAgent, checks reliability threshold
 4. For multi-URL cases, evaluates each article and keeps the **best score**
 5. Conditionally triggers SearchAgent and GapAnalysisAgent
 6. Runs TransferReasonAgent last (needs all upstream scores)

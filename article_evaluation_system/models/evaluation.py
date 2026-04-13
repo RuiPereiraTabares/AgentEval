@@ -1041,6 +1041,7 @@ class TrendCluster:
     estimated_impact: str = ""
     priority: str = ""
     supporting_evidence: list[str] = field(default_factory=list)
+    area_path: str = ""
 
     def to_dict(self) -> dict:
         return {
@@ -1053,6 +1054,7 @@ class TrendCluster:
             "estimated_impact": self.estimated_impact,
             "priority": self.priority,
             "supporting_evidence": self.supporting_evidence,
+            "area_path": self.area_path,
         }
 
     @classmethod
@@ -1067,4 +1069,6 @@ class TrendCluster:
             estimated_impact=data.get("estimated_impact", ""),
             priority=data.get("priority", ""),
             supporting_evidence=data.get("supporting_evidence", []),
+            area_path=data.get("area_path", ""),
         )
+

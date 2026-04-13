@@ -170,6 +170,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 .cluster-evidence { background: #f8fafc; border-radius: 6px; padding: 7px 10px; margin-top: 6px; font-size: 11px; color: #64748b; line-height: 1.5; }
 
 canvas { cursor: pointer; }
+.area-chip { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 10px; font-size: 10px; font-weight: 600; background: #f0f9ff; color: #0369a1; border: 1px solid #bae6fd; white-space: nowrap; max-width: 200px; overflow: hidden; text-overflow: ellipsis; }
 
 @media (max-width: 768px) {
   .upload-section { grid-template-columns: 1fr; }
@@ -233,6 +234,15 @@ canvas { cursor: pointer; }
       <div class="section-badge" id="spm-table-badge"></div>
     </div>
     <p style="font-size:12px;color:#64748b;margin-bottom:10px">Click any row to expand the full PM action details, quality analysis, and recommendations.</p>
+    <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap">
+      <select class="table-filter" id="spm-f-priority" onchange="renderSPM()">
+        <option value="">All Priorities</option>
+        <option value="red">🔴 Red</option><option value="yellow">🟡 Yellow</option><option value="green">🟢 Green</option>
+      </select>
+      <select class="table-filter" id="spm-f-area" onchange="renderSPM()">
+        <option value="">All Area Paths</option>
+      </select>
+    </div>
     <div class="action-table-wrap">
       <table class="action-table">
         <thead>
@@ -241,6 +251,7 @@ canvas { cursor: pointer; }
             <th>Priority</th>
             <th>Case #</th>
             <th>Product</th>
+            <th>Area Path</th>
             <th>Score</th>
             <th>Action Required</th>
             <th>PM Actions (preview)</th>
@@ -314,6 +325,10 @@ canvas { cursor: pointer; }
       <div class="chart-card"><div class="chart-title">Root Cause Categories</div><div class="chart-wrap h260"><canvas id="chart-rc"></canvas></div></div>
       <div class="chart-card"><div class="chart-title">Avg Score by Product (top 12)</div><div class="chart-wrap h260"><canvas id="chart-product"></canvas></div></div>
     </div>
+    <div style="margin-top:14px" class="chart-card">
+      <div class="chart-title">Cases by Area Path</div>
+      <div class="chart-wrap h220"><canvas id="chart-area"></canvas></div>
+    </div>
   </div>
 
   <div class="section">
@@ -334,6 +349,9 @@ canvas { cursor: pointer; }
         <option value="none">None</option><option value="add_context">Add Context</option>
         <option value="find_better_article">Find Better</option><option value="create_content">Create Content</option>
       </select>
+      <select class="table-filter" id="f-area" onchange="filterTable()">
+        <option value="">All Area Paths</option>
+      </select>
     </div>
     <div class="table-wrap">
       <table class="data-table">
@@ -341,6 +359,7 @@ canvas { cursor: pointer; }
           <th style="width:24px"></th>
           <th onclick="sortTable('case_number')">Case # ↕</th>
           <th onclick="sortTable('issue_product')">Product ↕</th>
+          <th onclick="sortTable('area_path')">Area Path ↕</th>
           <th onclick="sortTable('primary_article_score')">Score ↕</th>
           <th onclick="sortTable('primary_article_verdict')">Verdict ↕</th>
           <th onclick="sortTable('primary_article_action_required')">Action ↕</th>
@@ -370,6 +389,11 @@ canvas { cursor: pointer; }
   </div>
   <div class="section">
     <div class="section-header"><div class="section-title">Trend Clusters</div><div class="section-badge">sorted by priority · case count</div></div>
+    <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap">
+      <select class="table-filter" id="trend-f-area" onchange="renderTrends()">
+        <option value="">All Area Paths</option>
+      </select>
+    </div>
     <div class="cluster-grid" id="cluster-grid"></div>
   </div>
 </div>
@@ -455,12 +479,14 @@ const MATCHERS = {
   rqVerdict:    (r, v) => r.rq_ai_response_quality_verdict === v,
   rootCause:    (r, v) => (r.synthesis_root_cause_category || 'Unknown') === v,
   product:      (r, v) => r._product === v,
+  areaPath:     (r, v) => (r._areaPath || '') === v,
 };
 const DIM_LABELS = {
   priority:'Priority', verdict:'Verdict', action:'Action Required',
   scoreBand:'Score Band', relVerdict:'Relevance', compVerdict:'Completeness',
   valVerdict:'Validity', ktVerdict:'KT Quality', groundVerdict:'Grounding',
   rqVerdict:'Response Quality', rootCause:'Root Cause', product:'Product',
+  areaPath:'Area Path',
 };
 
 // Returns data filtered by all active filters EXCEPT excludeDim (so each chart sees others' filters but not its own)
@@ -632,6 +658,7 @@ function parseEval(text) {
     row._priorityOrder = row.synthesis_priority === 'red' ? 1 : row.synthesis_priority === 'yellow' ? 2 : row.synthesis_priority === 'green' ? 3 : 4;
     row._hasError = !!(row.error && String(row.error).trim());
     row._product = row.issue_product || (row.sap_path ? String(row.sap_path).split('/')[0].trim() : 'Unknown');
+    row._areaPath = (row.area_path || '').trim();
     return row;
   });
 }
@@ -752,6 +779,14 @@ function buildDetailPanel(row, mweaMode) {
     <div class="detail-text">${bulletList(pmActions)}</div>
   </div>`;
 
+  // Area Path
+  if (row._areaPath) {
+    html += `<div class="detail-block">
+      <div class="detail-label">📍 Area Path</div>
+      <div class="detail-text"><span class="area-chip">${row._areaPath}</span></div>
+    </div>`;
+  }
+
   // Priority Reason
   html += `<div class="detail-block">
     <div class="detail-label">🎯 Priority Reason</div>
@@ -861,7 +896,7 @@ function toggleDetail(btn, caseIdx, tableBodyId, mweaMode) {
     const detailTr = document.createElement('tr');
     detailTr.className = 'detail-row';
     detailTr.dataset.idx = caseIdx;
-    const cols = tableBodyId === 'spm-table-body' ? 7 : 8;
+    const cols = tableBodyId === 'spm-table-body' ? 8 : 9;
     detailTr.innerHTML = `<td colspan="${cols}">${buildDetailPanel(row, mweaMode)}</td>`;
     dataRow.after(detailTr);
     dataRow.classList.add('expanded');
@@ -875,8 +910,24 @@ function toggleDetail(btn, caseIdx, tableBodyId, mweaMode) {
 // ══════════════════════════════════════════════════════════
 function renderSPM() {
   const data = state.evalData; if (!data) return;
-  const n = data.length; // always full count for alert
+  const n = data.length; // always full count for alert/KPIs
   const mwea = isMwea(data);
+
+  // Populate area filter (once, on first render)
+  const areaSelectEl = document.getElementById('spm-f-area');
+  if (areaSelectEl && areaSelectEl.options.length <= 1) {
+    const areas = [...new Set(data.map(r => r._areaPath).filter(Boolean))].sort();
+    areas.forEach(a => { const o = document.createElement('option'); o.value = a; o.textContent = a; areaSelectEl.appendChild(o); });
+  }
+
+  // Apply local filters
+  const fpVal = (document.getElementById('spm-f-priority') || {}).value || '';
+  const faVal = (areaSelectEl || {}).value || '';
+  const filtered = data.filter(r =>
+    (!fpVal || r.synthesis_priority === fpVal) &&
+    (!faVal || r._areaPath === faVal)
+  );
+
   const redN = countVal(data, 'synthesis_priority', 'red');
   const yelN = countVal(data, 'synthesis_priority', 'yellow');
   const grnN = countVal(data, 'synthesis_priority', 'green');
@@ -899,28 +950,31 @@ function renderSPM() {
     `<div class="kpi-card"><div class="kpi-label">📋 Total Actions Required</div><div class="kpi-value c-blue">${actionN}</div><div class="kpi-sub">${pct(actionN,n)} of cases — any action needed</div></div>`,
   ].join('');
 
-  // Sort: red first, then yellow, then green; within priority sort by score asc
-  const sorted = [...data].sort((a, b) => {
+  // Sort filtered: red first, then yellow, then green; within priority sort by score asc
+  const sorted = [...filtered].sort((a, b) => {
     if (a._priorityOrder !== b._priorityOrder) return a._priorityOrder - b._priorityOrder;
     return num(a.primary_article_score) - num(b.primary_article_score);
   });
 
-  document.getElementById('spm-table-badge').textContent = n + ' cases';
+  const fn = filtered.length;
+  document.getElementById('spm-table-badge').textContent = fn + (fn < n ? ' of ' + n : '') + ' cases';
   const rows = sorted.map(row => {
     const idx = data.indexOf(row);
     const pm = row.synthesis_pm_actions || '';
     const preview = pm.trim() ? trunc(pm.replace(/;/g, ' ·'), 80) : null;
+    const areaHtml = row._areaPath ? `<span class="area-chip">${trunc(row._areaPath, 24)}</span>` : '<span style="color:#94a3b8;font-size:10px">–</span>';
     return `<tr class="data-row" data-idx="${idx}">
       <td><button class="expand-btn" onclick="toggleDetail(this,${idx},'spm-table-body',${mwea})" title="Show detail">▶</button></td>
       <td>${priBadge(row.synthesis_priority)}</td>
       <td style="font-family:monospace;font-size:11px">${row.case_number || '–'}</td>
       <td>${trunc(row._product || '–', 22)}</td>
+      <td>${areaHtml}</td>
       <td>${scoreChip(row.primary_article_score)}</td>
       <td>${actionBadge(row.primary_article_action_required)}</td>
       <td class="${preview ? 'pm-preview' : 'pm-empty'}">${preview || 'No PM actions recorded'}</td>
     </tr>`;
   }).join('');
-  document.getElementById('spm-table-body').innerHTML = rows || '<tr><td colspan="7" style="text-align:center;color:#94a3b8;padding:20px">No cases</td></tr>';
+  document.getElementById('spm-table-body').innerHTML = rows || '<tr><td colspan="8" style="text-align:center;color:#94a3b8;padding:20px">No cases</td></tr>';
 }
 
 // ══════════════════════════════════════════════════════════
@@ -1100,6 +1154,14 @@ function updateEvalView() {
     k => { const ex = getFiltered('rootCause').find(r => (r.synthesis_root_cause_category||'Unknown')===k); return priColor(ex?.synthesis_priority); },
     'rootCause');
   makeProdBar('chart-product', 'product');
+  makeDynHBar('chart-area', r => r._areaPath || 'Unclassified', () => '#0369a1', 'areaPath');
+
+  // Populate f-area dropdown (once)
+  const fareaEl = document.getElementById('f-area');
+  if (fareaEl && fareaEl.options.length <= 1) {
+    const areas = [...new Set(allData.map(r => r._areaPath).filter(Boolean))].sort();
+    areas.forEach(a => { const o = document.createElement('option'); o.value = a; o.textContent = a; fareaEl.appendChild(o); });
+  }
 
   // Case table
   filterTable();
@@ -1113,13 +1175,15 @@ function filterTable() {
   const fp = document.getElementById('f-priority').value;
   const fv = document.getElementById('f-verdict').value;
   const fa = document.getElementById('f-action').value;
+  const farea = (document.getElementById('f-area') || {}).value || '';
   // Start from chart-filtered data, then apply text/dropdown filters on top
   tbl.filtered = getFilteredAll().filter(r => {
     if (fp && r.synthesis_priority !== fp) return false;
     if (fv && r.primary_article_verdict !== fv) return false;
     if (fa && r.primary_article_action_required !== fa) return false;
+    if (farea && r._areaPath !== farea) return false;
     if (q) {
-      const hay = [r.case_number, r._product, r.primary_article_verdict, r.synthesis_priority, r.synthesis_root_cause_category, r.primary_article_action_required].join(' ').toLowerCase();
+      const hay = [r.case_number, r._product, r.primary_article_verdict, r.synthesis_priority, r.synthesis_root_cause_category, r.primary_article_action_required, r._areaPath].join(' ').toLowerCase();
       if (!hay.includes(q)) return false;
     }
     return true;
@@ -1145,17 +1209,19 @@ function renderTablePage() {
   const rows = sorted.slice(start, start + pageSize);
   document.getElementById('case-tbody').innerHTML = rows.map(row => {
     const idx = state.evalData.indexOf(row);
+    const areaHtml = row._areaPath ? `<span class="area-chip">${trunc(row._areaPath, 20)}</span>` : '<span style="color:#94a3b8;font-size:10px">–</span>';
     return `<tr class="data-row" data-idx="${idx}">
       <td><button class="expand-btn" onclick="toggleDetail(this,${idx},'case-tbody',${mwea})" title="Show detail">▶</button></td>
       <td style="font-family:monospace;font-size:11px">${row.case_number||'–'}</td>
       <td>${trunc(row._product||'–', 22)}</td>
+      <td>${areaHtml}</td>
       <td>${scoreChip(row.primary_article_score)}</td>
       <td>${verdictBadge(row.primary_article_verdict)}</td>
       <td>${actionBadge(row.primary_article_action_required)}</td>
       <td>${priBadge(row.synthesis_priority)}</td>
       <td>${scoreChip(row.kt_description_quality_score)}</td>
     </tr>`;
-  }).join('') || '<tr><td colspan="8" style="text-align:center;color:#94a3b8;padding:20px">No cases match</td></tr>';
+  }).join('') || '<tr><td colspan="9" style="text-align:center;color:#94a3b8;padding:20px">No cases match</td></tr>';
 
   const totalPages = Math.ceil(filtered.length / pageSize);
   const btns = Array.from({ length: Math.min(totalPages, 10) }, (_, i) =>
@@ -1170,12 +1236,24 @@ function goPage(p) { tbl.page = p; renderTablePage(); }
 // ══════════════════════════════════════════════════════════
 function renderTrends() {
   const data = state.trendData; if (!data) return;
+
+  // Populate area filter (once)
+  const tAreaEl = document.getElementById('trend-f-area');
+  if (tAreaEl && tAreaEl.options.length <= 1) {
+    const areas = [...new Set(data.map(r => (r.area_path||'').trim()).filter(Boolean))].sort();
+    areas.forEach(a => { const o = document.createElement('option'); o.value = a; o.textContent = a; tAreaEl.appendChild(o); });
+  }
+  const tAreaVal = (tAreaEl || {}).value || '';
+  const filtered = tAreaVal ? data.filter(r => (r.area_path||'').trim() === tAreaVal) : data;
+
   const n = data.length;
+  const fn = filtered.length;
   const totalCases = data.reduce((a, r) => a + num(r.case_count), 0);
+  const filteredCases = filtered.reduce((a, r) => a + num(r.case_count), 0);
   const redN = countVal(data,'priority','red'), yelN = countVal(data,'priority','yellow'), grnN = countVal(data,'priority','green');
   const redCases = data.filter(r => r.priority==='red').reduce((a,r) => a+num(r.case_count), 0);
 
-  document.getElementById('trend-badge').textContent = n + ' clusters · ' + totalCases + ' cases';
+  document.getElementById('trend-badge').textContent = fn + (fn < n ? ' of ' + n : '') + ' clusters · ' + filteredCases + ' cases';
   document.getElementById('trend-kpis').innerHTML = [
     kpiCard('Total Clusters', n, 'trend pattern groups', null, null),
     kpiCard('Cases Covered', totalCases, 'across all clusters', null, null),
@@ -1191,11 +1269,12 @@ function renderTrends() {
   makeDonut('chart-tpri', ['🔴 Red','🟡 Yellow','🟢 Green'],
     ['red','yellow','green'].map(p => countVal(data,'priority',p)), ['#dc2626','#d97706','#16a34a']);
 
-  document.getElementById('cluster-grid').innerHTML = data.map(r => {
+  document.getElementById('cluster-grid').innerHTML = filtered.map(r => {
     const products = (r.products_affected||'').split(';').map(s => s.trim()).filter(Boolean);
     const evidenceParts = (r.supporting_evidence||'').split(';').map(s => s.trim()).filter(Boolean);
+    const areaPath = (r.area_path||'').trim();
     return `<div class="cluster-card ${r.priority||'gray'}">
-      <div class="cluster-meta">${priBadge(r.priority)}<span class="badge b-blue">${r.case_count} cases</span>${r.root_cause_pattern ? `<span class="badge b-gray">${r.root_cause_pattern}</span>` : ''}</div>
+      <div class="cluster-meta">${priBadge(r.priority)}<span class="badge b-blue">${r.case_count} cases</span>${r.root_cause_pattern ? `<span class="badge b-gray">${r.root_cause_pattern}</span>` : ''}${areaPath ? `<span class="area-chip">${trunc(areaPath, 24)}</span>` : ''}</div>
       <div class="cluster-name">${r.cluster_name||'Unnamed Cluster'}</div>
       ${products.length ? `<div style="margin-bottom:6px"><div class="cluster-fl">Products</div><div class="cluster-fv">${products.slice(0,5).join(', ')}${products.length>5?' +'+( products.length-5)+' more':''}</div></div>` : ''}
       ${r.estimated_impact ? `<div style="margin-bottom:6px"><div class="cluster-fl">Estimated Impact</div><div class="cluster-fv">${r.estimated_impact}</div></div>` : ''}

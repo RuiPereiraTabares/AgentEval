@@ -52,6 +52,8 @@ GapRecommendation = Literal["augment_existing", "create_new", "combine_multiple"
 | `transferred` | `bool \| None` | — | Whether the case was transferred (from CSV) |
 | `sr_status` | `str` | — | Service request status (from CSV) |
 | `reopened` | `bool \| None` | — | Whether the case was reopened (from CSV) |
+| `area_path` | `str \| None` | `None` | Classified area path (e.g. "Teams Meetings") — set by AreaClassificationAgent |
+| `area_path_confidence` | `int` | `0` | Confidence score 0-100 for the area classification |
 
 **Methods:** `to_dict()`, `from_dict(dict)`, `get_search_query() -> str`
 

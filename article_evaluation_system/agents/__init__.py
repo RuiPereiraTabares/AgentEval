@@ -138,6 +138,7 @@ from .gap_agent import GapAnalysisAgent
 from .description_quality_agent import DescriptionQualityAgent
 from .citation_quality_agent import CitationQualityAgent
 from .response_quality_agent import ResponseQualityAgent
+from .area_classification_agent import AreaClassificationAgent
 from .orchestrator import Orchestrator
 
 __all__ = [
@@ -151,5 +152,6 @@ __all__ = [
     'DescriptionQualityAgent',
     'CitationQualityAgent',
     'ResponseQualityAgent',
+    'AreaClassificationAgent',
     'Orchestrator'
 ]
