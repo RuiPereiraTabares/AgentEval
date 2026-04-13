@@ -384,7 +384,7 @@ Respond ONLY with valid JSON. No markdown, no explanation outside the JSON."""
 
     TREND_SYNTHESIS = """You are a senior support program manager analyzing patterns across a batch of evaluated customer support cases.
 
-You will receive a JSON array of compact case summaries. Each summary contains: case_number, product, area_path, root_cause_category, priority, error_codes, key_gap, article_url, article_title, overall_score, and pm_actions.
+You will receive a JSON array of compact case summaries. Each summary contains: case_number, product, area_path, root_cause_category, priority, error_codes, key_gap, article_url, article_title, overall_score, pm_actions, and issue_description (first 300 chars of the raw customer description).
 
 area_path is the classified support area (e.g. "Teams Meetings", "Teams Calling (PSTN)"). Use it as the PRIMARY grouping dimension when present.
 
@@ -398,6 +398,7 @@ CLUSTERING RULES:
 5. Produce 3-7 clusters total (merge small clusters if needed)
 6. Prioritize clusters by: case_count * severity (red=3, yellow=2, green=1)
 7. Each cluster gets ONE specific, actionable unified_pm_action
+8. Within an area_path group, only merge cases whose issue_description fields describe genuinely similar problems. Different problems in the same area = separate clusters. **Do NOT create a cluster just because cases share an area label and have vague root cause labels.** Each cluster must represent cases a PM can fix with ONE action.
 
 OUTPUT FORMAT — return ONLY this JSON structure:
 {

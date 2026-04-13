@@ -17,7 +17,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 .header-sub { font-size: 11px; color: #94a3b8; margin-top: 1px; }
 
 /* UPLOAD */
-.upload-section { padding: 20px 24px 4px; display: grid; grid-template-columns: 1fr 1fr; gap: 14px; max-width: 860px; margin: 0 auto; }
+.upload-section { padding: 20px 24px 4px; display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px; max-width: 900px; margin: 0 auto; }
 .upload-card { background: #fff; border: 2px dashed #cbd5e1; border-radius: 10px; padding: 18px 20px; text-align: center; cursor: pointer; transition: all 0.2s; position: relative; }
 .upload-card:hover, .upload-card.drag-over { border-color: #3b82f6; background: #eff6ff; }
 .upload-card.loaded { border-color: #16a34a; border-style: solid; background: #f0fdf4; }
@@ -209,18 +209,27 @@ canvas { cursor: pointer; }
     <div class="upload-filename" id="trend-fname"></div>
     <button class="upload-clear" onclick="clearFile(event,'trend')">✕</button>
   </label>
+  <label class="upload-card" id="overlap-card" ondragover="onDragOver(event,'overlap-card')" ondragleave="onDragLeave('overlap-card')" ondrop="onDrop(event,'overlap')">
+    <input type="file" accept=".csv" class="upload-input" id="overlap-input" onchange="handleFile(event,'overlap')">
+    <div class="upload-icon" id="overlap-icon">🔗</div>
+    <div class="upload-title">Citation Overlaps CSV</div>
+    <div class="upload-hint" id="overlap-hint">citation_overlaps_*.csv</div>
+    <div class="upload-filename" id="overlap-fname"></div>
+    <button class="upload-clear" onclick="clearFile(event,'overlap')">✕</button>
+  </label>
 </div>
 
 <div class="empty-state" id="empty-state">
   <div style="font-size:44px;margin-bottom:14px">📂</div>
   <h2>Upload a CSV to get started</h2>
-  <p>Drop <strong>evaluation_results_*.csv</strong> for MWEA results &amp; SPM action plan,<br>or <strong>trend_report_*.csv</strong> for trend clusters.</p>
+  <p>Drop <strong>evaluation_results_*.csv</strong> for MWEA results &amp; SPM action plan,<br><strong>trend_report_*.csv</strong> for trend clusters, or <strong>citation_overlaps_*.csv</strong> for overlap analysis.</p>
 </div>
 
 <nav class="tabs" id="tabs">
   <button class="tab-btn" id="tab-spm" onclick="showTab('spm')"><span class="tab-dot"></span> SPM Actions</button>
   <button class="tab-btn" id="tab-eval" onclick="showTab('eval')"><span class="tab-dot"></span> Evaluation Report</button>
   <button class="tab-btn" id="tab-trends" onclick="showTab('trends')"><span class="tab-dot"></span> Trend Report</button>
+  <button class="tab-btn" id="tab-overlaps" onclick="showTab('overlaps')"><span class="tab-dot"></span> Citation Overlaps</button>
 </nav>
 
 <!-- ═══════════════════════════════ SPM ACTIONS ═══════════════════════════════ -->
@@ -398,11 +407,33 @@ canvas { cursor: pointer; }
   </div>
 </div>
 
+<!-- ═══════════════════════════════ OVERLAPS ═══════════════════════════════ -->
+<div class="tab-content" id="content-overlaps">
+  <div class="section">
+    <div class="section-header">
+      <div class="section-title">Citation Overlap Analysis</div>
+      <div class="section-badge" id="overlap-badge"></div>
+    </div>
+    <div class="kpi-grid g3" id="overlap-kpis"></div>
+  </div>
+  <div class="section">
+    <div class="section-header"><div class="section-title">Overlap Details</div></div>
+    <div class="table-controls">
+      <select class="table-filter" id="overlap-f-type" onchange="renderOverlaps()">
+        <option value="">All Types</option>
+        <option value="cross_coverage">Cross-Coverage</option>
+        <option value="duplicate_issues">Potential Duplicates</option>
+      </select>
+    </div>
+    <div id="overlap-grid" class="cluster-grid"></div>
+  </div>
+</div>
+
 <script>
 // ══════════════════════════════════════════════════════════
 // STATE & UTILS
 // ══════════════════════════════════════════════════════════
-const state = { evalData: null, trendData: null, activeTab: null };
+const state = { evalData: null, trendData: null, overlapData: null, activeTab: null };
 const charts = {};
 let tbl = { filtered: [], page: 0, pageSize: 30, sortKey: '_priorityOrder', sortDir: 1 };
 
@@ -675,6 +706,17 @@ function parseTrend(text) {
     return row;
   }).sort((a, b) => a._priorityOrder - b._priorityOrder || b.case_count - a.case_count);
 }
+function parseOverlaps(text) {
+  const r = Papa.parse(text, { header: true, skipEmptyLines: true, dynamicTyping: true });
+  return r.data.map(row => {
+    row._snippets = (row.issue_snippets || '').split('|').map(s => s.trim()).filter(Boolean);
+    row._cases = (row.case_numbers || '').split(';').map(s => s.trim()).filter(Boolean);
+    return row;
+  }).sort((a, b) => {
+    const typeOrder = t => t === 'cross_coverage' ? 0 : 1;
+    return typeOrder(a.overlap_type) - typeOrder(b.overlap_type) || num(b.case_count) - num(a.case_count);
+  });
+}
 function isMwea(data) {
   return data.some(r => r.citation_grounding_score !== null && r.citation_grounding_score !== undefined && String(r.citation_grounding_score).trim() !== '');
 }
@@ -686,7 +728,8 @@ function onDragOver(e, id) { e.preventDefault(); document.getElementById(id).cla
 function onDragLeave(id) { document.getElementById(id).classList.remove('drag-over'); }
 function onDrop(e, type) {
   e.preventDefault();
-  document.getElementById(type === 'eval' ? 'eval-card' : 'trend-card').classList.remove('drag-over');
+  const cardId = type === 'eval' ? 'eval-card' : type === 'trend' ? 'trend-card' : 'overlap-card';
+  document.getElementById(cardId).classList.remove('drag-over');
   const f = e.dataTransfer.files[0]; if (f) readFile(f, type);
 }
 function handleFile(e, type) { if (e.target.files[0]) readFile(e.target.files[0], type); }
@@ -698,10 +741,14 @@ function readFile(file, type) {
         state.evalData = parseEval(e.target.result);
         setLoaded('eval', file.name, state.evalData.length + ' cases');
         renderSPM(); renderEval();
-      } else {
+      } else if (type === 'trend') {
         state.trendData = parseTrend(e.target.result);
         setLoaded('trend', file.name, state.trendData.length + ' clusters');
         renderTrends();
+      } else {
+        state.overlapData = parseOverlaps(e.target.result);
+        setLoaded('overlap', file.name, state.overlapData.length + ' overlaps');
+        renderOverlaps();
       }
       updateTabs();
     } catch (err) { alert('Error parsing CSV: ' + err.message); console.error(err); }
@@ -709,47 +756,61 @@ function readFile(file, type) {
   reader.readAsText(file, 'UTF-8');
 }
 function setLoaded(type, fname, sub) {
-  const card = document.getElementById(type === 'eval' ? 'eval-card' : 'trend-card');
-  card.classList.add('loaded');
-  document.getElementById(type === 'eval' ? 'eval-icon' : 'trend-icon').textContent = '✅';
-  document.getElementById(type === 'eval' ? 'eval-fname' : 'trend-fname').textContent = fname;
-  document.getElementById(type === 'eval' ? 'eval-hint' : 'trend-hint').textContent = sub;
+  const ids = { eval: ['eval-card','eval-icon','eval-fname','eval-hint'], trend: ['trend-card','trend-icon','trend-fname','trend-hint'], overlap: ['overlap-card','overlap-icon','overlap-fname','overlap-hint'] };
+  const [cardId, iconId, fnameId, hintId] = ids[type];
+  document.getElementById(cardId).classList.add('loaded');
+  document.getElementById(iconId).textContent = '✅';
+  document.getElementById(fnameId).textContent = fname;
+  document.getElementById(hintId).textContent = sub;
 }
 function clearFile(e, type) {
   e.preventDefault(); e.stopPropagation();
-  const isEval = type === 'eval';
-  document.getElementById(isEval ? 'eval-card' : 'trend-card').classList.remove('loaded');
-  document.getElementById(isEval ? 'eval-icon' : 'trend-icon').textContent = isEval ? '📋' : '📈';
-  document.getElementById(isEval ? 'eval-fname' : 'trend-fname').textContent = '';
-  document.getElementById(isEval ? 'eval-hint' : 'trend-hint').textContent = isEval ? 'evaluation_results_*.csv' : 'trend_report_*.csv';
-  document.getElementById(isEval ? 'eval-input' : 'trend-input').value = '';
-  if (isEval) { state.evalData = null; } else { state.trendData = null; }
+  const defaults = { eval: ['📋','evaluation_results_*.csv'], trend: ['📈','trend_report_*.csv'], overlap: ['🔗','citation_overlaps_*.csv'] };
+  const ids = { eval: ['eval-card','eval-icon','eval-fname','eval-hint','eval-input'], trend: ['trend-card','trend-icon','trend-fname','trend-hint','trend-input'], overlap: ['overlap-card','overlap-icon','overlap-fname','overlap-hint','overlap-input'] };
+  const [cardId, iconId, fnameId, hintId, inputId] = ids[type];
+  const [icon, hint] = defaults[type];
+  document.getElementById(cardId).classList.remove('loaded');
+  document.getElementById(iconId).textContent = icon;
+  document.getElementById(fnameId).textContent = '';
+  document.getElementById(hintId).textContent = hint;
+  document.getElementById(inputId).value = '';
+  if (type === 'eval') state.evalData = null;
+  else if (type === 'trend') state.trendData = null;
+  else state.overlapData = null;
   updateTabs();
 }
 function updateTabs() {
-  const hasEval = !!state.evalData, hasTrend = !!state.trendData, hasSome = hasEval || hasTrend;
+  const hasEval = !!state.evalData, hasTrend = !!state.trendData, hasOverlap = !!state.overlapData;
+  const hasSome = hasEval || hasTrend || hasOverlap;
   document.getElementById('empty-state').style.display = hasSome ? 'none' : 'block';
   document.getElementById('tabs').classList.toggle('visible', hasSome);
   ['spm', 'eval'].forEach(t => {
-    const btn = document.getElementById('tab-' + (t === 'spm' ? 'spm' : 'eval'));
+    const btn = document.getElementById('tab-' + t);
     btn.classList.toggle('disabled', !hasEval);
     btn.classList.toggle('has-data', hasEval);
   });
   const tBtn = document.getElementById('tab-trends');
   tBtn.classList.toggle('disabled', !hasTrend);
   tBtn.classList.toggle('has-data', hasTrend);
+  const oBtn = document.getElementById('tab-overlaps');
+  oBtn.classList.toggle('disabled', !hasOverlap);
+  oBtn.classList.toggle('has-data', hasOverlap);
 
   if (state.activeTab === 'spm' && !hasEval) state.activeTab = null;
   if (state.activeTab === 'eval' && !hasEval) state.activeTab = null;
   if (state.activeTab === 'trends' && !hasTrend) state.activeTab = null;
-  if (!state.activeTab && hasSome) state.activeTab = hasEval ? 'spm' : 'trends';
+  if (state.activeTab === 'overlaps' && !hasOverlap) state.activeTab = null;
+  if (!state.activeTab && hasSome) {
+    state.activeTab = hasEval ? 'spm' : hasTrend ? 'trends' : 'overlaps';
+  }
   if (state.activeTab) showTab(state.activeTab);
 }
 function showTab(tab) {
   if ((tab === 'spm' || tab === 'eval') && !state.evalData) return;
   if (tab === 'trends' && !state.trendData) return;
+  if (tab === 'overlaps' && !state.overlapData) return;
   state.activeTab = tab;
-  ['spm', 'eval', 'trends'].forEach(t => {
+  ['spm', 'eval', 'trends', 'overlaps'].forEach(t => {
     document.getElementById('content-' + t).classList.toggle('active', t === tab);
     document.getElementById('tab-' + t).classList.toggle('active', t === tab);
   });
@@ -1302,6 +1363,55 @@ function renderTrends() {
       ${evidenceParts.slice(0,2).map(e => `<div class="cluster-evidence">📌 ${trunc(e,200)}</div>`).join('')}
     </div>`;
   }).join('');
+}
+
+// ══════════════════════════════════════════════════════════
+// RENDER OVERLAPS
+// ══════════════════════════════════════════════════════════
+function renderOverlaps() {
+  const data = state.overlapData; if (!data) return;
+  const typeFilter = (document.getElementById('overlap-f-type') || {}).value || '';
+  const filtered = typeFilter ? data.filter(r => r.overlap_type === typeFilter) : data;
+
+  const n = data.length;
+  const crossN = data.filter(r => r.overlap_type === 'cross_coverage').length;
+  const dupeN = data.filter(r => r.overlap_type === 'duplicate_issues').length;
+  const maxCases = data.length ? Math.max(...data.map(r => num(r.case_count))) : 0;
+
+  document.getElementById('overlap-badge').textContent = filtered.length + (filtered.length < n ? ' of ' + n : '') + ' overlaps';
+  document.getElementById('overlap-kpis').innerHTML = [
+    `<div class="kpi-card"><div class="kpi-label">🔗 Total Overlapping URLs</div><div class="kpi-value c-blue">${n}</div><div class="kpi-sub">articles cited by multiple cases</div></div>`,
+    `<div class="kpi-card"><div class="kpi-label">⚡ Cross-Coverage</div><div class="kpi-value" style="color:#ea580c">${crossN}</div><div class="kpi-sub">different problems, shared article — hidden impact risk</div></div>`,
+    `<div class="kpi-card"><div class="kpi-label">🔁 Potential Duplicates</div><div class="kpi-value c-yellow">${dupeN}</div><div class="kpi-sub">same problem cited repeatedly — consolidation candidates</div></div>`,
+  ].join('');
+
+  document.getElementById('overlap-grid').innerHTML = filtered.map(r => {
+    const isCross = r.overlap_type === 'cross_coverage';
+    const borderColor = isCross ? '#ea580c' : '#d97706';
+    const typeBadge = isCross
+      ? `<span class="badge" style="background:#fff7ed;color:#c2410c">⚡ Cross-Coverage</span>`
+      : `<span class="badge b-yellow">🔁 Potential Duplicate</span>`;
+    const simPct = Math.round(num(r.similarity_score) * 100);
+    const simColor = simPct >= 35 ? '#d97706' : '#3b82f6';
+    const urlShort = trunc(r.url || '', 60);
+    const snippets = (r._snippets || []).slice(0, 4);
+    const cases = (r._cases || []);
+    return `<div class="cluster-card" style="border-left-color:${borderColor}">
+      <div class="cluster-meta">${typeBadge}<span class="badge b-blue">${r.case_count} cases</span></div>
+      ${r.url ? `<div style="margin:6px 0 8px"><a href="${r.url}" target="_blank" class="detail-link" title="${r.url}">${urlShort}</a></div>` : ''}
+      ${cases.length ? `<div style="margin-bottom:8px"><div class="cluster-fl">Cases</div><div class="cluster-fv" style="font-family:monospace;font-size:11px">${cases.join(' · ')}</div></div>` : ''}
+      <div style="margin-bottom:8px">
+        <div class="cluster-fl">Description Similarity</div>
+        <div style="display:flex;align-items:center;gap:8px;margin-top:3px">
+          <div class="score-bar-track" style="flex:1"><div class="score-bar-fill" style="width:${simPct}%;background:${simColor}"></div></div>
+          <span style="font-size:11px;font-weight:700;color:${simColor}">${num(r.similarity_score).toFixed(2)}</span>
+        </div>
+      </div>
+      ${r.flag_reason ? `<div class="cluster-evidence">⚠️ ${trunc(r.flag_reason, 200)}</div>` : ''}
+      ${r.recommendation ? `<div class="cluster-action">💡 ${r.recommendation}</div>` : ''}
+      ${snippets.length ? `<div style="margin-top:8px"><div class="cluster-fl">Issue Snippets</div>${snippets.map((s,i) => `<div style="font-size:11px;color:#374151;background:#f8fafc;border-radius:4px;padding:5px 8px;margin-top:4px"><span style="font-weight:700;color:#64748b">Case ${cases[i]||i+1}:</span> ${trunc(s,150)}</div>`).join('')}</div>` : ''}
+    </div>`;
+  }).join('') || '<div style="text-align:center;color:#94a3b8;padding:40px">No overlaps match the current filter.</div>';
 }
 
 // Init

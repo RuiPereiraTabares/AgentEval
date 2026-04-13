@@ -5,9 +5,10 @@ Trend-based aggregate synthesis — clusters batch results into 3-7 high-impact 
 import json
 import logging
 from collections import defaultdict
+from statistics import mean
 
 from ..agents import BaseAgent
-from ..models.evaluation import TrendCluster
+from ..models.evaluation import CitationOverlap, TrendCluster
 from ..utils.prompts import AgentPrompts
 
 logger = logging.getLogger(__name__)
@@ -34,16 +35,20 @@ class TrendSynthesizer(BaseAgent):
             executive_summary (str).
         """
         if not results:
-            return {"clusters": [], "executive_summary": "No cases to analyse."}
+            return {"clusters": [], "executive_summary": "No cases to analyse.", "citation_overlaps": []}
 
         case_summaries = self._build_case_summaries(results)
 
         if not case_summaries:
-            return {"clusters": [], "executive_summary": "No evaluable cases found."}
+            return {"clusters": [], "executive_summary": "No evaluable cases found.", "citation_overlaps": []}
+
+        citation_overlaps = self._build_citation_overlaps(results, case_summaries)
 
         # Process in chunks if >_CHUNK_SIZE
         if len(case_summaries) <= _CHUNK_SIZE:
-            return self._synthesize_chunk(case_summaries)
+            result = self._synthesize_chunk(case_summaries)
+            result["citation_overlaps"] = citation_overlaps
+            return result
 
         all_clusters: list[dict] = []
         for i in range(0, len(case_summaries), _CHUNK_SIZE):
@@ -53,10 +58,12 @@ class TrendSynthesizer(BaseAgent):
 
         # Merge clusters from chunks via a second LLM pass
         if len(all_clusters) > 7:
-            return self._merge_clusters(all_clusters)
+            result = self._merge_clusters(all_clusters)
+            result["citation_overlaps"] = citation_overlaps
+            return result
 
         executive_summary = self._build_executive_summary(all_clusters)
-        return {"clusters": all_clusters, "executive_summary": executive_summary}
+        return {"clusters": all_clusters, "executive_summary": executive_summary, "citation_overlaps": citation_overlaps}
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -80,6 +87,7 @@ class TrendSynthesizer(BaseAgent):
             key_gap = (doc_gaps[0] if doc_gaps else
                        pm_actions[0] if pm_actions else "")
 
+            raw_desc = issue.get("raw_description", "")
             summaries.append({
                 "case_number": r.get("case_number", ""),
                 "product": issue.get("product", "Unknown"),
@@ -92,6 +100,7 @@ class TrendSynthesizer(BaseAgent):
                 "article_title": article.get("title", ""),
                 "overall_score": ev.get("overall_score", 0),
                 "pm_actions": pm_actions[:2],
+                "issue_description": raw_desc[:300],
             })
         return summaries
 
@@ -156,6 +165,16 @@ class TrendSynthesizer(BaseAgent):
                 key = f"{area}|{cs.get('root_cause_category', 'unknown')}"
             else:
                 key = f"{cs.get('product', 'Unknown')}|{cs.get('root_cause_category', 'unknown')}"
+
+            # Only add to group if semantically similar to the first case (centroid)
+            desc = cs.get("issue_description", "")
+            bucket = groups[key]
+            if bucket:
+                centroid_desc = bucket[0].get("issue_description", "")
+                if self._jaccard(desc, centroid_desc) < 0.15:
+                    # Route to an "other" bucket for this area
+                    area_label = area or cs.get("product", "Unknown")
+                    key = f"{area_label}|other"
             groups[key].append(cs)
 
         # Filter groups with >=2 cases, sort by size desc
@@ -184,7 +203,105 @@ class TrendSynthesizer(BaseAgent):
             ).to_dict())
 
         executive_summary = self._build_executive_summary(clusters)
-        return {"clusters": clusters, "executive_summary": executive_summary}
+        return {"clusters": clusters, "executive_summary": executive_summary, "citation_overlaps": []}
+
+    @staticmethod
+    def _jaccard(text_a: str, text_b: str) -> float:
+        """Token-set Jaccard similarity between two texts."""
+        a = {t for t in text_a.lower().split() if len(t) > 2}
+        b = {t for t in text_b.lower().split() if len(t) > 2}
+        if not a or not b:
+            return 0.0
+        return len(a & b) / len(a | b)
+
+    @staticmethod
+    def _extract_urls(result: dict) -> list:
+        """All article URLs referenced in a case result."""
+        ev = result.get("evaluation", {})
+        urls = []
+        primary = ev.get("current_article_evaluation", {}).get("url", "")
+        if primary:
+            urls.append(primary)
+        for pcr in ev.get("citation_quality", {}).get("per_citation_results", []):
+            u = pcr.get("url", "")
+            if u and u not in urls:
+                urls.append(u)
+        return urls
+
+    def _build_citation_overlaps(self, results: list[dict], case_summaries: list[dict]) -> list[dict]:
+        """Find URLs cited by ≥2 cases and classify as duplicate_issues or cross_coverage."""
+        # Build case_number → description map
+        desc_map: dict[str, str] = {
+            cs.get("case_number", ""): cs.get("issue_description", "")
+            for cs in case_summaries
+        }
+
+        # Build url → list of (case_number, description, snippet)
+        url_cases: dict[str, list] = defaultdict(list)
+        for result in results:
+            case_num = result.get("case_number", "")
+            desc = desc_map.get(case_num, "")
+            snippet = desc[:150]
+            for url in self._extract_urls(result):
+                if not url:
+                    continue
+                # Avoid duplicate case entries per URL
+                existing = [e[0] for e in url_cases[url]]
+                if case_num not in existing:
+                    url_cases[url].append((case_num, desc, snippet))
+
+        overlaps = []
+        for url, entries in url_cases.items():
+            if len(entries) < 2:
+                continue
+
+            case_numbers = [e[0] for e in entries]
+            descs = [e[1] for e in entries]
+            snippets = [e[2] for e in entries]
+
+            # Compute pairwise Jaccard scores
+            pairs = []
+            for i in range(len(descs)):
+                for j in range(i + 1, len(descs)):
+                    pairs.append(self._jaccard(descs[i], descs[j]))
+            avg_similarity = mean(pairs) if pairs else 0.0
+
+            n = len(entries)
+            if avg_similarity >= 0.35:
+                overlap_type = "duplicate_issues"
+                flag_reason = (
+                    f"{n} cases describe the same problem (similarity: {avg_similarity:.2f}). "
+                    "Likely duplicates — one consolidated fix should close all."
+                )
+                recommendation = (
+                    "Consolidate these cases into a single ticket. "
+                    "One targeted article update or fix should resolve all of them."
+                )
+            else:
+                overlap_type = "cross_coverage"
+                flag_reason = (
+                    f"{n} cases cite this article for different problems. "
+                    "Changes to this article have hidden impact across unrelated issues."
+                )
+                recommendation = (
+                    "Review this article carefully before editing. "
+                    "Changes may inadvertently affect multiple unrelated support scenarios."
+                )
+
+            overlaps.append(CitationOverlap(
+                url=url,
+                overlap_type=overlap_type,
+                case_count=n,
+                case_numbers=case_numbers,
+                similarity_score=avg_similarity,
+                issue_snippets=snippets,
+                flag_reason=flag_reason,
+                recommendation=recommendation,
+            ).to_dict())
+
+        # Sort: cross_coverage first, then by case_count desc
+        overlaps.sort(key=lambda o: (0 if o["overlap_type"] == "cross_coverage" else 1, -o["case_count"]))
+        return overlaps
 
     @staticmethod
     def _build_executive_summary(clusters: list[dict]) -> str:

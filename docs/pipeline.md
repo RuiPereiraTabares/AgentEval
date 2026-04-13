@@ -226,6 +226,38 @@ When running with `--mweaeval`, the orchestrator uses `evaluate_with_citations()
                              END
 ```
 
+## Batch Trend Analysis (opt-in: `--trend-report`)
+
+After all cases are evaluated, `TrendSynthesizer.synthesize_trends()` runs as a post-processing step:
+
+```
+list[EvaluationResult dicts]
+    |
+    +-- _build_case_summaries()
+    |     Compact each result; include issue_description (first 300 chars)
+    |
+    +-- _build_citation_overlaps()
+    |     For each URL cited by ≥2 cases:
+    |       compute pairwise Jaccard similarity between descriptions
+    |       avg_similarity ≥ 0.35 → duplicate_issues
+    |       avg_similarity  < 0.35 → cross_coverage
+    |
+    +-- LLM clustering (or _deterministic_fallback)
+    |     Groups by area_path (primary) + root_cause_category + issue_description similarity
+    |     Jaccard ≥ 0.15 guard in fallback prevents dissimilar cases from being merged
+    |
+    v
+{ clusters: list[TrendCluster],
+  executive_summary: str,
+  citation_overlaps: list[CitationOverlap] }
+    |
+    v
+trend_report_{ts}.csv         (one row per cluster)
+citation_overlaps_{ts}.csv    (one row per overlapping URL, if any)
+```
+
+See [Agents > TrendSynthesizer](agents.md#trendsynthesizer) for full method reference.
+
 ## Per-Case LLM Call Count
 
 | Scenario | LLM Calls | Agents Used |

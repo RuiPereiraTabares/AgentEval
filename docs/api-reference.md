@@ -209,6 +209,8 @@ When `--output` is not specified, files are auto-named with a timestamp:
 
 - **Detailed:** `evaluation_results_{YYYYMMDD_HHMMSS}.{json|csv}`
 - **Summary:** `evaluation_summary_{YYYYMMDD_HHMMSS}.csv` (always produced)
+- **Trend report:** `trend_report_{YYYYMMDD_HHMMSS}.csv` (with `--trend-report`)
+- **Citation overlaps:** `citation_overlaps_{YYYYMMDD_HHMMSS}.csv` (auto-generated alongside trend report when overlaps exist)
 
 ### Full Argument Reference
 
@@ -280,6 +282,27 @@ List fields use `; ` as separator.
 Produced by `write_results_csv_summary()`. Key scores and reasons, plus citation quality and response quality columns:
 
 `case_number`, `ai_response`, `issue_description`, `issue_product`, `sap_path`, `primary_article_score`, `primary_article_verdict`, `article_relevance_score`, `article_relevance_verdict`, `article_relevance_matched`, `article_relevance_unmatched`, `article_completeness_score`, `article_completeness_verdict`, `article_completeness_missing`, `article_validity_score`, `article_validity_verdict`, `article_validity_issues`, `kt_description_quality_score`, `kt_description_quality_verdict`, `kt_description_missing`, `kt_description_improvements`, `citation_grounding_score`, `citation_grounding_verdict`, `cited_percentage`, `uncited_percentage`, `citations_total`, `citations_good`, `citations_partial`, `citations_bad`, `citation_N_*` (per-citation breakdown), `rq_ai_response_quality_score`, `rq_ai_response_quality_verdict`, `rq_response_quality_score`, `rq_groundedness_score`, `rq_issue_resolution_score`, `rq_quality_weaknesses`, `synthesis_priority`, `synthesis_priority_reason`, `synthesis_pm_actions`, `synthesis_root_cause_category`, `final_recommendation`, `error`
+
+### Trend Report CSV
+
+Produced by `write_trend_report_csv()` (opt-in: `--trend-report`). One row per cluster:
+
+`cluster_name`, `area_path`, `priority`, `case_count`, `case_numbers` (`;`-separated), `root_cause_pattern`, `products_affected` (`;`-separated), `unified_pm_action`, `estimated_impact`, `supporting_evidence` (`;`-separated)
+
+### Citation Overlaps CSV
+
+Produced by `write_citation_overlaps_csv()`. Auto-generated alongside trend report when any article is cited by ≥2 cases. One row per overlapping URL:
+
+| Column | Description |
+|--------|-------------|
+| `url` | Shared article URL |
+| `overlap_type` | `duplicate_issues` (Jaccard ≥ 0.35) or `cross_coverage` (< 0.35) |
+| `case_count` | Number of cases citing this URL |
+| `case_numbers` | `;`-separated case identifiers |
+| `similarity_score` | Average pairwise Jaccard similarity (0.0–1.0) |
+| `flag_reason` | Why this overlap was flagged |
+| `recommendation` | Suggested PM action |
+| `issue_snippets` | `|`-separated first 150 chars of each case's description |
 
 ## JSON Output Format
 

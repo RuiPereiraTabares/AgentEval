@@ -383,6 +383,38 @@ def write_results_csv_summary(results: list[dict], output_path: str):
     logger.info(f"Summary results written to {output_path}")
 
 
+def write_citation_overlaps_csv(overlaps: list[dict], output_path: str):
+    """Write citation overlap analysis to a CSV file.
+
+    Args:
+        overlaps: List of CitationOverlap dicts.
+        output_path: Path to output CSV file.
+    """
+    if not overlaps:
+        logger.warning("No citation overlaps to write")
+        return
+
+    fieldnames = [
+        "url", "overlap_type", "case_count", "case_numbers",
+        "similarity_score", "flag_reason", "recommendation", "issue_snippets",
+    ]
+    with open(output_path, 'w', newline='', encoding='utf-8') as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        for o in overlaps:
+            writer.writerow({
+                "url": o.get("url", ""),
+                "overlap_type": o.get("overlap_type", ""),
+                "case_count": o.get("case_count", 0),
+                "case_numbers": "; ".join(o.get("case_numbers", [])),
+                "similarity_score": o.get("similarity_score", 0.0),
+                "flag_reason": o.get("flag_reason", ""),
+                "recommendation": o.get("recommendation", ""),
+                "issue_snippets": " | ".join(o.get("issue_snippets", [])),
+            })
+    logger.info(f"Citation overlaps written to {output_path}")
+
+
 def write_trend_report_csv(clusters: list[dict], output_path: str):
     """Write trend clusters to a CSV file.
 

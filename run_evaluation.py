@@ -33,7 +33,7 @@ from article_evaluation_system import ArticleEvaluator
 from article_evaluation_system.main import (
     read_csv_cases, read_mweaeval_csv_cases,
     write_results_json, write_results_csv, write_results_csv_summary,
-    write_trend_report_csv,
+    write_trend_report_csv, write_citation_overlaps_csv,
 )
 
 
@@ -390,6 +390,15 @@ def main():
         trend_output = f'trend_report_{timestamp}.csv'
         write_trend_report_csv(trend_clusters, trend_output)
         print(f"Trend report written to {trend_output}")
+
+        citation_overlaps = trend_result.get("citation_overlaps", [])
+        if citation_overlaps:
+            overlaps_output = f'citation_overlaps_{timestamp}.csv'
+            write_citation_overlaps_csv(citation_overlaps, overlaps_output)
+            print(f"Citation overlaps written to {overlaps_output}")
+            cross = sum(1 for o in citation_overlaps if o.get("overlap_type") == "cross_coverage")
+            dupes = len(citation_overlaps) - cross
+            print(f"  {cross} cross-coverage overlaps, {dupes} potential duplicates")
 
         # Print trend summary to console
         if trend_clusters:
