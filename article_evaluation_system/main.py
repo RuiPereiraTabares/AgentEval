@@ -202,6 +202,8 @@ def write_results_csv(results: list[dict], output_path: str):
             'issue_description': eval_data.get('issue_summary', {}).get('raw_description', ''),
             'issue_product': r.get('sap_path', '').split('/')[0].strip() if r.get('sap_path') else '',
             'sap_path': r.get('sap_path', ''),
+            'area_path': eval_data.get('issue_summary', {}).get('area_path', ''),
+            'area_path_confidence': eval_data.get('issue_summary', {}).get('area_path_confidence', ''),
             'issue_type': eval_data.get('issue_summary', {}).get('issue_type', ''),
             'primary_article_url': article_eval.get('url', ''),
             'primary_article_score': eval_data.get('overall_score', 0),
@@ -316,6 +318,8 @@ def write_results_csv_summary(results: list[dict], output_path: str):
             'issue_description': eval_data.get('issue_summary', {}).get('raw_description', ''),
             'issue_product': r.get('sap_path', '').split('/')[0].strip() if r.get('sap_path') else '',
             'sap_path': r.get('sap_path', ''),
+            'area_path': eval_data.get('issue_summary', {}).get('area_path', ''),
+            'area_path_confidence': eval_data.get('issue_summary', {}).get('area_path_confidence', ''),
             'primary_article_score': eval_data.get('overall_score', 0),
             'primary_article_verdict': eval_data.get('verdict', ''),
             # Relevance — score + reasons (primary article)
@@ -391,7 +395,7 @@ def write_trend_report_csv(clusters: list[dict], output_path: str):
         return
 
     fieldnames = [
-        "cluster_name", "priority", "case_count", "case_numbers",
+        "cluster_name", "area_path", "priority", "case_count", "case_numbers",
         "root_cause_pattern", "products_affected", "unified_pm_action",
         "estimated_impact", "supporting_evidence",
     ]
@@ -402,6 +406,7 @@ def write_trend_report_csv(clusters: list[dict], output_path: str):
         for cluster in clusters:
             writer.writerow({
                 "cluster_name": cluster.get("cluster_name", ""),
+                "area_path": cluster.get("area_path", ""),
                 "priority": cluster.get("priority", ""),
                 "case_count": cluster.get("case_count", 0),
                 "case_numbers": "; ".join(cluster.get("case_numbers", [])),

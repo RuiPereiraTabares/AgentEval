@@ -384,43 +384,48 @@ Respond ONLY with valid JSON. No markdown, no explanation outside the JSON."""
 
     TREND_SYNTHESIS = """You are a senior support program manager analyzing patterns across a batch of evaluated customer support cases.
 
-You will receive a JSON array of compact case summaries. Each summary contains: case_number, product, root_cause_category, priority, error_codes, key_gap, article_url, article_title, overall_score, and pm_actions.
+You will receive a JSON array of compact case summaries. Each summary contains: case_number, product, area_path, root_cause_category, priority, error_codes, key_gap, article_url, article_title, overall_score, and pm_actions.
+
+area_path is the classified support area (e.g. "Teams Meetings", "Teams Calling (PSTN)"). Use it as the PRIMARY grouping dimension when present.
 
 Your task: cluster these cases by pattern and produce 3-7 high-impact unified actions that a PM can execute across the batch, instead of reviewing 100+ individual actions.
 
 CLUSTERING RULES:
-1. Group cases by similarity across: product + root_cause_category + gap type + error pattern
-2. Each cluster must contain at least 2 cases
-3. Produce 3-7 clusters total (merge small clusters if needed)
-4. Prioritize clusters by: case_count * severity (red=3, yellow=2, green=1)
-5. Each cluster gets ONE specific, actionable unified_pm_action
+1. Use area_path as the PRIMARY grouping dimension (e.g. all "Teams Meetings" cases with similar root causes form one cluster)
+2. Within each area_path group, further distinguish by root_cause_category + gap type + error pattern
+3. Cases without an area_path: group by product + root_cause_category
+4. Each cluster must contain at least 2 cases
+5. Produce 3-7 clusters total (merge small clusters if needed)
+6. Prioritize clusters by: case_count * severity (red=3, yellow=2, green=1)
+7. Each cluster gets ONE specific, actionable unified_pm_action
 
 OUTPUT FORMAT — return ONLY this JSON structure:
 {
     "clusters": [
         {
             "cluster_name": "Short descriptive name for this pattern",
+            "area_path": "The area_path that defines this cluster (empty string if not applicable)",
             "case_count": <number of cases in cluster>,
             "case_numbers": ["case1", "case2", ...],
             "root_cause_pattern": "The common root cause across these cases",
             "products_affected": ["Product1", "Product2"],
             "unified_pm_action": "ONE specific, actionable recommendation that addresses all cases in this cluster",
-            "estimated_impact": "Description of impact if this action is taken (e.g., 'Would resolve ~15 cases affecting Exchange Online NDR errors')",
+            "estimated_impact": "Description of impact if this action is taken (e.g., 'Would resolve ~15 cases in Teams Meetings')",
             "priority": "<one of: red, yellow, green>",
             "supporting_evidence": ["Key finding 1 from the cases", "Key finding 2"]
         }
     ],
-    "executive_summary": "2-3 sentence summary of the top patterns and recommended focus areas"
+    "executive_summary": "2-3 sentence summary of the top area patterns and recommended focus areas"
 }
 
 UNIFIED ACTION GUIDELINES:
-- Be specific and actionable: reference specific products, error patterns, or article gaps
-- An action should address the PATTERN, not repeat individual case actions
+- Be specific and actionable: reference the area_path, specific products, error patterns, or article gaps
+- An action should address the PATTERN across all cases in the cluster, not repeat individual case actions
 - Examples of good unified actions:
   - "Create a comprehensive NDR troubleshooting guide for Exchange Online covering errors 550 5.7.x — would resolve 12 cases"
-  - "Update Teams call forwarding documentation to cover resource account scenarios — 8 cases cite outdated articles"
-  - "Improve AI response grounding for Azure AD/Entra ID topics — 15 cases have poorly grounded citations"
+  - "Update Teams Calling (PSTN) documentation on resource account call forwarding — 8 cases cite outdated articles"
+  - "Improve AI response grounding for Teams Identity and Authentication topics — 15 cases have poorly grounded citations"
 
-GROUNDING CONSTRAINT: Only reference products, errors, articles, and patterns that appear in the input case summaries. Do NOT hallucinate details.
+GROUNDING CONSTRAINT: Only reference area paths, products, errors, articles, and patterns that appear in the input case summaries. Do NOT hallucinate details.
 
 Respond ONLY with valid JSON. No markdown, no explanation outside the JSON."""

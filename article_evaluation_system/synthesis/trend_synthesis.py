@@ -83,6 +83,7 @@ class TrendSynthesizer(BaseAgent):
             summaries.append({
                 "case_number": r.get("case_number", ""),
                 "product": issue.get("product", "Unknown"),
+                "area_path": issue.get("area_path", ""),
                 "root_cause_category": ev.get("synthesis_root_cause_category", ""),
                 "priority": ev.get("synthesis_priority", ""),
                 "error_codes": issue.get("error_codes", []),
@@ -143,10 +144,18 @@ class TrendSynthesizer(BaseAgent):
             }
 
     def _deterministic_fallback(self, case_summaries: list[dict]) -> dict:
-        """Group by product + root_cause_category without LLM."""
+        """Group by area_path + root_cause_category without LLM.
+
+        Uses area_path as the primary grouping dimension when available,
+        falling back to product + root_cause_category for uncategorized cases.
+        """
         groups: dict[str, list[dict]] = defaultdict(list)
         for cs in case_summaries:
-            key = f"{cs.get('product', 'Unknown')}|{cs.get('root_cause_category', 'unknown')}"
+            area = cs.get("area_path", "")
+            if area:
+                key = f"{area}|{cs.get('root_cause_category', 'unknown')}"
+            else:
+                key = f"{cs.get('product', 'Unknown')}|{cs.get('root_cause_category', 'unknown')}"
             groups[key].append(cs)
 
         # Filter groups with >=2 cases, sort by size desc
@@ -156,20 +165,22 @@ class TrendSynthesizer(BaseAgent):
         clusters = []
         for key in sorted_keys:
             cases = valid_groups[key]
-            product, root_cause = key.split("|", 1)
+            primary_label, root_cause = key.split("|", 1)
             priorities = [c.get("priority", "") for c in cases]
             priority = "red" if "red" in priorities else ("yellow" if "yellow" in priorities else "green")
+            area_path = cases[0].get("area_path", "")
 
             clusters.append(TrendCluster(
-                cluster_name=f"{product} — {root_cause}",
+                cluster_name=f"{primary_label} — {root_cause}",
                 case_count=len(cases),
                 case_numbers=[c.get("case_number", "") for c in cases],
                 root_cause_pattern=root_cause,
                 products_affected=list({c.get("product", "") for c in cases}),
-                unified_pm_action=f"Address {root_cause} issues for {product} ({len(cases)} cases)",
+                unified_pm_action=f"Address {root_cause} issues in {primary_label} ({len(cases)} cases)",
                 estimated_impact=f"Would resolve ~{len(cases)} cases",
                 priority=priority,
                 supporting_evidence=[c.get("key_gap", "")[:150] for c in cases[:3] if c.get("key_gap")],
+                area_path=area_path,
             ).to_dict())
 
         executive_summary = self._build_executive_summary(clusters)

@@ -16,6 +16,7 @@ from .gap_agent import GapAnalysisAgent
 from .description_quality_agent import DescriptionQualityAgent
 from .citation_quality_agent import CitationQualityAgent
 from .response_quality_agent import ResponseQualityAgent
+from .area_classification_agent import AreaClassificationAgent
 
 from ..models.issue import Issue
 from ..models.article import Article
@@ -62,6 +63,7 @@ class Orchestrator(BaseAgent):
 
         # Initialize all agents with same provider settings
         self.issue_parser = IssueParserAgent(client, model, provider)
+        self.area_classification_agent = AreaClassificationAgent(client, model, provider)
         self.relevance_agent = RelevanceAgent(client, model, provider)
         self.completeness_agent = CompletenessAgent(client, model, provider)
         self.validity_agent = ValidityAgent(client, model, provider)
@@ -98,6 +100,17 @@ class Orchestrator(BaseAgent):
         logger.info("Parsing customer issue...")
         issue = self.issue_parser.evaluate(customer_issue, product_info=product_info)
         logger.info(f"Issue parsed: product={issue.product}, type={issue.issue_type}")
+
+        # Step 1a: Classify into area path
+        logger.info("--- Running AreaClassificationAgent ---")
+        area_result = self.area_classification_agent.classify(issue)
+        if area_result:
+            issue.area_path = area_result["area_path"]
+            issue.area_path_confidence = area_result["area_confidence"]
+            logger.info(
+                f"[AreaClassificationAgent] area_path='{issue.area_path}', "
+                f"confidence={issue.area_path_confidence}"
+            )
 
         # Step 1b: Evaluate description quality (KT framework)
         logger.info("--- Running DescriptionQualityAgent ---")
@@ -208,6 +221,17 @@ class Orchestrator(BaseAgent):
         logger.info("Parsing customer issue...")
         issue = self.issue_parser.evaluate(customer_issue, product_info=product_info)
         logger.info(f"Issue parsed: product={issue.product}, type={issue.issue_type}")
+
+        # Step 1a: Classify into area path
+        logger.info("--- Running AreaClassificationAgent ---")
+        area_result = self.area_classification_agent.classify(issue)
+        if area_result:
+            issue.area_path = area_result["area_path"]
+            issue.area_path_confidence = area_result["area_confidence"]
+            logger.info(
+                f"[AreaClassificationAgent] area_path='{issue.area_path}', "
+                f"confidence={issue.area_path_confidence}"
+            )
 
         # Step 2: Evaluate description quality
         logger.info("--- Running DescriptionQualityAgent ---")
@@ -638,6 +662,8 @@ class Orchestrator(BaseAgent):
                 "symptoms": issue.symptoms[:3] if issue.symptoms else [],
                 "raw_description": (issue.raw_description or "")[:500],
                 "error_codes": issue.error_codes if issue.error_codes else [],
+                "area_path": issue.area_path or "",
+                "area_path_confidence": issue.area_path_confidence,
             },
             "overall_score": overall_score,
             "verdict": verdict,
