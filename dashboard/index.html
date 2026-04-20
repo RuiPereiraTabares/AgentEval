@@ -158,16 +158,32 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 
 /* CLUSTER CARDS */
 .cluster-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 14px; }
-.cluster-card { background: #fff; border: 1px solid #e2e8f0; border-left: 4px solid; border-radius: 10px; padding: 14px 16px; }
+.cluster-card { background: #fff; border: 1px solid #e2e8f0; border-left: 4px solid; border-radius: 10px; padding: 14px 16px; transition: box-shadow 0.15s; }
 .cluster-card.red { border-left-color: #dc2626; }
 .cluster-card.yellow { border-left-color: #d97706; }
 .cluster-card.green { border-left-color: #16a34a; }
+.cluster-card.open { box-shadow: 0 4px 16px rgba(59,130,246,0.12); border-color: #93c5fd; }
 .cluster-name { font-size: 13px; font-weight: 700; color: #1e293b; margin: 6px 0 10px; }
 .cluster-meta { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 8px; }
 .cluster-fl { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #94a3b8; margin-bottom: 2px; }
 .cluster-fv { font-size: 12px; color: #374151; line-height: 1.4; }
 .cluster-action { background: #eff6ff; border-radius: 6px; padding: 8px 10px; margin-top: 8px; font-size: 12px; color: #1d4ed8; }
 .cluster-evidence { background: #f8fafc; border-radius: 6px; padding: 7px 10px; margin-top: 6px; font-size: 11px; color: #64748b; line-height: 1.5; }
+/* Cluster expand toggle */
+.cluster-toggle { display: flex; align-items: center; justify-content: space-between; margin-top: 10px; padding-top: 8px; border-top: 1px solid #f1f5f9; cursor: pointer; user-select: none; }
+.cluster-toggle:hover { opacity: 0.8; }
+.cluster-toggle-label { font-size: 11px; font-weight: 600; color: #3b82f6; }
+.cluster-chevron { font-size: 10px; color: #94a3b8; transition: transform 0.2s; display: inline-block; }
+.cluster-chevron.open { transform: rotate(180deg); }
+/* Cluster expand detail panel */
+.cluster-detail { display: none; margin-top: 10px; border-top: 2px solid #dbeafe; padding-top: 10px; }
+.cluster-detail.open { display: block; }
+.cluster-case-chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px; }
+.case-chip { display: inline-flex; align-items: center; padding: 3px 9px; border-radius: 6px; font-size: 11px; font-weight: 700; background: #f1f5f9; color: #374151; font-family: monospace; }
+.case-chip.clickable { cursor: pointer; }
+.case-chip.clickable:hover { background: #dbeafe; color: #1d4ed8; }
+.cluster-article-item { background: #f8fafc; border-radius: 6px; padding: 7px 10px; margin-top: 4px; font-size: 11px; color: #64748b; line-height: 1.5; border-left: 3px solid #e2e8f0; }
+.cluster-article-item.has-url { border-left-color: #3b82f6; }
 
 canvas { cursor: pointer; }
 .area-chip { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 10px; font-size: 10px; font-weight: 600; background: #f0f9ff; color: #0369a1; border: 1px solid #bae6fd; white-space: nowrap; max-width: 200px; overflow: hidden; text-overflow: ellipsis; }
@@ -1297,6 +1313,26 @@ function renderTablePage() {
 function goPage(p) { tbl.page = p; renderTablePage(); }
 
 // ══════════════════════════════════════════════════════════
+// CLUSTER EXPAND / CASE DRILL
+// ══════════════════════════════════════════════════════════
+function toggleCluster(card) {
+  const detail = card.querySelector('.cluster-detail');
+  const chevron = card.querySelector('.cluster-chevron');
+  const isOpen = detail.classList.contains('open');
+  detail.classList.toggle('open', !isOpen);
+  chevron.classList.toggle('open', !isOpen);
+  card.classList.toggle('open', !isOpen);
+}
+
+function drillCase(caseNum, evt) {
+  if (evt) evt.stopPropagation();
+  if (!state.evalData) return;
+  showTab('eval');
+  const searchEl = document.getElementById('table-search');
+  if (searchEl) { searchEl.value = caseNum; filterTable(); }
+  document.getElementById('content-eval').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
 // RENDER TRENDS
 // ══════════════════════════════════════════════════════════
 function renderTrends() {
@@ -1350,17 +1386,50 @@ function renderTrends() {
     });
   }
 
-  document.getElementById('cluster-grid').innerHTML = filtered.map(r => {
+  document.getElementById('cluster-grid').innerHTML = filtered.map((r, idx) => {
     const products = (r.products_affected||'').split(';').map(s => s.trim()).filter(Boolean);
     const evidenceParts = (r.supporting_evidence||'').split(';').map(s => s.trim()).filter(Boolean);
+    const caseNums = String(r.case_numbers||'').split(';').map(s => s.trim()).filter(Boolean);
     const areaPath = (r.area_path||'').trim();
-    return `<div class="cluster-card ${r.priority||'gray'}">
+    const hasEval = !!state.evalData;
+
+    // Case chips — clickable if eval data loaded
+    const caseChipsHtml = caseNums.length
+      ? caseNums.map(c => `<span class="case-chip${hasEval?' clickable':''}" ${hasEval?`onclick="drillCase('${c}',event)" title="View in Eval tab"`:''}>${c}</span>`).join('')
+      : `<em style="font-size:11px;color:#94a3b8">${r.case_count} cases (load eval CSV for case numbers)</em>`;
+
+    // Full evidence list with URL detection
+    const fullEvidenceHtml = evidenceParts.map(e => {
+      const isUrl = /^https?:\/\//.test(e.trim());
+      return isUrl
+        ? `<div class="cluster-article-item has-url">🔗 <a href="${e}" target="_blank" class="detail-link">${trunc(e,90)}</a></div>`
+        : `<div class="cluster-article-item">📌 ${e}</div>`;
+    }).join('');
+
+    // Extra products (beyond first 5) shown in detail panel
+    const extraProductsHtml = products.length > 5
+      ? `<div style="margin-top:10px"><div class="cluster-fl">All Products Affected</div><div class="cluster-fv" style="margin-top:4px">${products.join(' · ')}</div></div>`
+      : '';
+
+    const toggleLabel = `${caseNums.length || r.case_count} case${(caseNums.length||r.case_count)!==1?'s':''} · article details`;
+
+    return `<div class="cluster-card ${r.priority||'gray'}" data-tidx="${idx}">
       <div class="cluster-meta">${priBadge(r.priority)}<span class="badge b-blue">${r.case_count} cases</span>${r.root_cause_pattern ? `<span class="badge b-gray">${r.root_cause_pattern}</span>` : ''}${areaPath ? `<span class="area-chip">${trunc(areaPath, 24)}</span>` : ''}</div>
       <div class="cluster-name">${r.cluster_name||'Unnamed Cluster'}</div>
-      ${products.length ? `<div style="margin-bottom:6px"><div class="cluster-fl">Products</div><div class="cluster-fv">${products.slice(0,5).join(', ')}${products.length>5?' +'+( products.length-5)+' more':''}</div></div>` : ''}
+      ${products.length ? `<div style="margin-bottom:6px"><div class="cluster-fl">Products</div><div class="cluster-fv">${products.slice(0,5).join(', ')}${products.length>5?` <span style="color:#94a3b8">+${products.length-5} more</span>`:''}</div></div>` : ''}
       ${r.estimated_impact ? `<div style="margin-bottom:6px"><div class="cluster-fl">Estimated Impact</div><div class="cluster-fv">${r.estimated_impact}</div></div>` : ''}
       ${r.unified_pm_action ? `<div class="cluster-action">💡 ${r.unified_pm_action}</div>` : ''}
       ${evidenceParts.slice(0,2).map(e => `<div class="cluster-evidence">📌 ${trunc(e,200)}</div>`).join('')}
+      <div class="cluster-toggle" onclick="toggleCluster(this.closest('.cluster-card'))">
+        <span class="cluster-toggle-label">▾ ${toggleLabel}</span>
+        <span class="cluster-chevron">▼</span>
+      </div>
+      <div class="cluster-detail">
+        <div class="cluster-fl" style="margin-bottom:5px">Cases in this cluster</div>
+        <div class="cluster-case-chips">${caseChipsHtml}</div>
+        ${extraProductsHtml}
+        ${evidenceParts.length ? `<div style="margin-top:10px"><div class="cluster-fl" style="margin-bottom:3px">Update articles — supporting evidence</div>${fullEvidenceHtml}</div>` : ''}
+      </div>
     </div>`;
   }).join('');
 }
