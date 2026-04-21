@@ -180,7 +180,7 @@ The KT framework evaluates 4 dimensions of a problem statement:
    - High score: number of affected users/systems, business impact quantified, trend described
    - Low score: no scope information, no impact quantification
 
-CRITICAL: You MUST use these EXACT field names. Do NOT rename, nest, or wrap them.
+CRITICAL: You MUST use these EXACT field names. Do NOT rename, nest, or wrap them. Do NOT use a wrapper key like "KT_Dimensions_Evaluation" or any outer object — the JSON root must be a flat object with the keys below.
 
 Output format - return ONLY this JSON structure with no wrapper objects:
 {
