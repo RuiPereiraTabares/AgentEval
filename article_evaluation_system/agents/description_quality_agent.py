@@ -92,6 +92,15 @@ class DescriptionQualityAgent(BaseAgent):
             response = self._call_llm(self.system_prompt, user_message)
             parsed_data = self._parse_json_response(response)
             result = DescriptionQualityResult.from_dict(parsed_data)
+            # If all dimension scores are 0 the LLM returned an unexpected format
+            # (e.g. wrapped in KT_Dimensions_Evaluation) — fall back to heuristic
+            if not any([result.identity_score, result.location_score,
+                        result.timing_score, result.magnitude_score]):
+                logger.warning(
+                    "[DescriptionQualityAgent] All dimension scores are 0 — "
+                    "likely format mismatch, using heuristic fallback"
+                )
+                return self._heuristic_evaluation(description, issue)
             logger.info(
                 f"[DescriptionQualityAgent] Result: overall={result.description_quality_score}, "
                 f"verdict={result.description_quality_verdict}, "
