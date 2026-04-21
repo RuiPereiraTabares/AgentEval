@@ -452,6 +452,75 @@ def write_trend_report_csv(clusters: list[dict], output_path: str):
     logger.info(f"Trend report written to {output_path}")
 
 
+def read_results_csv_as_results(filepath: str) -> list[dict]:
+    """Read a flat evaluation output CSV and reconstruct the nested results structure
+    expected by TrendSynthesizer.synthesize_trends().
+
+    Compatible with both write_results_csv (detailed) and write_results_csv_summary outputs.
+
+    Args:
+        filepath: Path to an existing evaluation output CSV.
+
+    Returns:
+        List of result dicts in the same format produced by the evaluation pipeline.
+    """
+    try:
+        f = open(filepath, 'r', encoding='utf-8-sig')
+        f.read()
+        f.seek(0)
+    except UnicodeDecodeError:
+        f = open(filepath, 'r', encoding='cp1252')
+
+    results = []
+    with f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            # Reconstruct per-citation URL list from citation_N_url columns
+            per_citation_results = []
+            for idx in range(1, 30):
+                url = row.get(f'citation_{idx}_url', '')
+                if not url:
+                    break
+                per_citation_results.append({'url': url})
+
+            result = {
+                'case_number': row.get('case_number', ''),
+                'ai_response': row.get('ai_response', ''),
+                'sap_path': row.get('sap_path', ''),
+                'evaluation': {
+                    'issue_summary': {
+                        'product': row.get('issue_product', ''),
+                        'area_path': row.get('area_path', ''),
+                        'raw_description': row.get('issue_description', ''),
+                        'error_codes': [],
+                    },
+                    'current_article_evaluation': {
+                        'url': row.get('primary_article_url', ''),
+                        'title': row.get('primary_article_url', ''),
+                    },
+                    'content_gaps': {
+                        'documentation_gaps': [],
+                    },
+                    'synthesis_pm_actions': [
+                        a.strip()
+                        for a in row.get('synthesis_pm_actions', '').split(';')
+                        if a.strip()
+                    ],
+                    'synthesis_root_cause_category': row.get('synthesis_root_cause_category', ''),
+                    'synthesis_priority': row.get('synthesis_priority', ''),
+                    'verdict': row.get('primary_article_verdict', ''),
+                    'overall_score': int(row.get('primary_article_score', 0) or 0),
+                    'citation_quality': {
+                        'per_citation_results': per_citation_results,
+                    },
+                },
+            }
+            results.append(result)
+
+    logger.info(f"Loaded {len(results)} results from {filepath}")
+    return results
+
+
 def write_results_json(results: list[dict], output_path: str):
     """Write evaluation results to JSON file."""
     with open(output_path, 'w', encoding='utf-8') as f:

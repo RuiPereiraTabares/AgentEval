@@ -31,7 +31,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from article_evaluation_system import ArticleEvaluator
 from article_evaluation_system.main import (
-    read_csv_cases, read_mweaeval_csv_cases,
+    read_csv_cases, read_mweaeval_csv_cases, read_results_csv_as_results,
     write_results_json, write_results_csv, write_results_csv_summary,
     write_trend_report_csv, write_citation_overlaps_csv,
 )
@@ -61,6 +61,12 @@ def main():
     # Trend report
     parser.add_argument('--trend-report', action='store_true',
                         help='Generate a trend report that clusters cases by pattern and produces 3-7 unified PM actions')
+
+    # Trends-only mode (run trends/overlaps against existing output CSVs, no evaluation)
+    parser.add_argument('--trends-only', action='store_true',
+                        help='Skip evaluation — generate trends and citation overlaps from existing output CSV(s)')
+    parser.add_argument('--from-results', nargs='+', metavar='CSV',
+                        help='One or more existing evaluation output CSV files (use with --trends-only)')
 
     # Batch mode
     parser.add_argument('--batch-size', type=int, help='Number of cases per batch (enables batch mode)')
@@ -122,6 +128,77 @@ def main():
         token=args.token,
         force_new=args.new_token
     )
+
+    # --trends-only mode: load existing output CSV(s) and run trends/overlaps
+    if args.trends_only:
+        if not args.from_results:
+            print("ERROR: --trends-only requires --from-results <csv> [csv ...]")
+            sys.exit(1)
+
+        print(f"Trends-only mode: loading {len(args.from_results)} result file(s)...")
+        combined_results = []
+        for filepath in args.from_results:
+            if not os.path.exists(filepath):
+                print(f"ERROR: File not found: {filepath}")
+                sys.exit(1)
+            file_results = read_results_csv_as_results(filepath)
+            combined_results.extend(file_results)
+            print(f"  Loaded {len(file_results)} cases from {filepath}")
+
+        print(f"Total cases loaded: {len(combined_results)}")
+
+        if len(combined_results) < 2:
+            print("ERROR: Need at least 2 cases for trend clustering.")
+            sys.exit(1)
+
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+
+        print("Initializing trend synthesizer...")
+        # Minimal evaluator instantiation just to get a client
+        evaluator = ArticleEvaluator(
+            model=args.model,
+            provider='mwai',
+            mwai_token=mwai_token,
+        )
+        from article_evaluation_system.synthesis.trend_synthesis import TrendSynthesizer
+        trend_synthesizer = TrendSynthesizer(
+            client=evaluator.orchestrator.client,
+            model=args.model,
+            provider='mwai',
+        )
+
+        print("Generating trend report...")
+        trend_result = trend_synthesizer.synthesize_trends(combined_results)
+        trend_clusters = trend_result.get("clusters", [])
+        trend_summary = trend_result.get("executive_summary", "")
+
+        trend_output = f'trend_report_{timestamp}.csv'
+        write_trend_report_csv(trend_clusters, trend_output)
+        print(f"Trend report written to {trend_output} ({len(trend_clusters)} clusters)")
+
+        citation_overlaps = trend_result.get("citation_overlaps", [])
+        if citation_overlaps:
+            overlaps_output = f'citation_overlaps_{timestamp}.csv'
+            write_citation_overlaps_csv(citation_overlaps, overlaps_output)
+            cross = sum(1 for o in citation_overlaps if o.get("overlap_type") == "cross_coverage")
+            dupes = len(citation_overlaps) - cross
+            print(f"Citation overlaps written to {overlaps_output}")
+            print(f"  {cross} cross-coverage overlaps, {dupes} potential duplicates")
+
+        if trend_clusters:
+            print(f"\n{'=' * 50}")
+            print("TREND REPORT")
+            print(f"{'=' * 50}")
+            if trend_summary:
+                print(f"Executive summary: {trend_summary}")
+            print()
+            for i, cluster in enumerate(trend_clusters, 1):
+                print(f"  {i}. [{cluster.get('priority', '?').upper()}] "
+                      f"{cluster.get('cluster_name', 'N/A')} "
+                      f"({cluster.get('case_count', 0)} cases)")
+                print(f"     Action: {cluster.get('unified_pm_action', 'N/A')}")
+
+        sys.exit(0)
 
     # Check input file
     if not os.path.exists(args.input):
