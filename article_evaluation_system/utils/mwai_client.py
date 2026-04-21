@@ -18,7 +18,7 @@ import requests
 logger = logging.getLogger(__name__)
 
 # Delay between MWAI API requests to avoid rate limiting
-MWAI_REQUEST_DELAY = 0.3  # seconds — increase to 0.5 if 429 rate-limit errors appear
+MWAI_REQUEST_DELAY = 1.2  # seconds — reduce to 0.3 if no 429 rate-limit errors appear
 
 # ---------------------------------------------------------------------------
 # MWAI API Configuration
