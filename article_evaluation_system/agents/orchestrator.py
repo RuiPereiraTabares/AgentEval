@@ -2,6 +2,7 @@
 Orchestrator Agent - Coordinates all agents and produces final evaluation report.
 """
 
+import concurrent.futures
 import json
 import logging
 import os
@@ -101,9 +102,14 @@ class Orchestrator(BaseAgent):
         issue = self.issue_parser.evaluate(customer_issue, product_info=product_info)
         logger.info(f"Issue parsed: product={issue.product}, type={issue.issue_type}")
 
-        # Step 1a: Classify into area path
-        logger.info("--- Running AreaClassificationAgent ---")
-        area_result = self.area_classification_agent.classify(issue)
+        # Step 1a+1b: Classify area path and evaluate description quality (parallel)
+        logger.info("--- Running AreaClassificationAgent + DescriptionQualityAgent (parallel) ---")
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+            future_area = executor.submit(self.area_classification_agent.classify, issue)
+            future_desc = executor.submit(self.description_quality_agent.evaluate, issue)
+            area_result = future_area.result()
+            description_quality_result = future_desc.result()
+
         if area_result:
             issue.area_path = area_result["area_path"]
             issue.area_path_confidence = area_result["area_confidence"]
@@ -112,9 +118,6 @@ class Orchestrator(BaseAgent):
                 f"confidence={issue.area_path_confidence}"
             )
 
-        # Step 1b: Evaluate description quality (KT framework)
-        logger.info("--- Running DescriptionQualityAgent ---")
-        description_quality_result = self.description_quality_agent.evaluate(issue)
         reliability_threshold = THRESHOLDS.get("description_quality_reliability", 40)
         evaluation_reliability_warning = (
             description_quality_result.description_quality_score < reliability_threshold
@@ -148,35 +151,35 @@ class Orchestrator(BaseAgent):
                 issue, description_quality_result, evaluation_reliability_warning
             )
 
-        # Step 2: Fetch and evaluate each article
-        article_evaluations = []
-        best_evaluation = None
-        best_score = -1
+        # Step 2: Fetch and evaluate each article (parallel when multiple URLs)
+        with concurrent.futures.ThreadPoolExecutor(max_workers=len(urls_to_evaluate)) as executor:
+            article_evaluations = list(executor.map(
+                lambda url: self._evaluate_single_article(issue, url),
+                urls_to_evaluate
+            ))
 
-        for url in urls_to_evaluate:
-            eval_result = self._evaluate_single_article(issue, url)
-            article_evaluations.append(eval_result)
+        best_evaluation = max(article_evaluations, key=lambda e: e["overall_score"])
+        best_score = best_evaluation["overall_score"]
 
-            if eval_result["overall_score"] > best_score:
-                best_score = eval_result["overall_score"]
-                best_evaluation = eval_result
-
-        # Step 3: Determine if we need to search for better articles
+        # Step 3+4: Search for alternatives and/or gap analysis (parallel when both needed)
         search_result = None
-        if best_score < 70:
-            logger.info("Score below threshold, searching for alternatives...")
-            search_result = self.search_agent.evaluate(issue, best_score)
-
-        # Step 4: Perform gap analysis if needed
         gap_result = None
         if best_score < 60:
-            logger.info("Performing gap analysis...")
-            gap_result = self.gap_agent.evaluate(
-                issue,
-                relevance_result=best_evaluation.get("_relevance_obj"),
-                completeness_result=best_evaluation.get("_completeness_obj"),
-                validity_result=best_evaluation.get("_validity_obj")
-            )
+            logger.info("Score below 60 — running Search + GapAnalysis in parallel...")
+            with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+                future_search = executor.submit(self.search_agent.evaluate, issue, best_score)
+                future_gap = executor.submit(
+                    self.gap_agent.evaluate,
+                    issue,
+                    relevance_result=best_evaluation.get("_relevance_obj"),
+                    completeness_result=best_evaluation.get("_completeness_obj"),
+                    validity_result=best_evaluation.get("_validity_obj"),
+                )
+                search_result = future_search.result()
+                gap_result = future_gap.result()
+        elif best_score < 70:
+            logger.info("Score below threshold, searching for alternatives...")
+            search_result = self.search_agent.evaluate(issue, best_score)
 
         # Step 5: Build final result
         result = self._build_final_result(
@@ -222,9 +225,14 @@ class Orchestrator(BaseAgent):
         issue = self.issue_parser.evaluate(customer_issue, product_info=product_info)
         logger.info(f"Issue parsed: product={issue.product}, type={issue.issue_type}")
 
-        # Step 1a: Classify into area path
-        logger.info("--- Running AreaClassificationAgent ---")
-        area_result = self.area_classification_agent.classify(issue)
+        # Step 1a+1b: Classify area path and evaluate description quality (parallel)
+        logger.info("--- Running AreaClassificationAgent + DescriptionQualityAgent (parallel) ---")
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+            future_area = executor.submit(self.area_classification_agent.classify, issue)
+            future_desc = executor.submit(self.description_quality_agent.evaluate, issue)
+            area_result = future_area.result()
+            description_quality_result = future_desc.result()
+
         if area_result:
             issue.area_path = area_result["area_path"]
             issue.area_path_confidence = area_result["area_confidence"]
@@ -233,9 +241,6 @@ class Orchestrator(BaseAgent):
                 f"confidence={issue.area_path_confidence}"
             )
 
-        # Step 2: Evaluate description quality
-        logger.info("--- Running DescriptionQualityAgent ---")
-        description_quality_result = self.description_quality_agent.evaluate(issue)
         reliability_threshold = THRESHOLDS.get("description_quality_reliability", 40)
         evaluation_reliability_warning = (
             description_quality_result.description_quality_score < reliability_threshold
@@ -411,9 +416,16 @@ class Orchestrator(BaseAgent):
 
         logger.info(f"Article fetched: title='{article.title}', content_length={len(article.content)}")
 
-        # Run evaluation agents
-        logger.info("--- Running RelevanceAgent ---")
-        relevance_result = self.relevance_agent.evaluate(issue, article)
+        # Run R/C/V evaluation agents in parallel
+        logger.info("--- Running RelevanceAgent + CompletenessAgent + ValidityAgent (parallel) ---")
+        with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
+            future_rel = executor.submit(self.relevance_agent.evaluate, issue, article)
+            future_comp = executor.submit(self.completeness_agent.evaluate, issue, article)
+            future_val = executor.submit(self.validity_agent.evaluate, issue, article)
+            relevance_result = future_rel.result()
+            completeness_result = future_comp.result()
+            validity_result = future_val.result()
+
         logger.info(
             f"  RelevanceAgent result: score={relevance_result.relevance_score}, "
             f"verdict={relevance_result.relevance_verdict}, "
@@ -423,9 +435,6 @@ class Orchestrator(BaseAgent):
         )
         logger.info(f"  Matched aspects: {relevance_result.matched_aspects}")
         logger.info(f"  Unmatched aspects: {relevance_result.unmatched_aspects}")
-
-        logger.info("--- Running CompletenessAgent ---")
-        completeness_result = self.completeness_agent.evaluate(issue, article)
         logger.info(
             f"  CompletenessAgent result: score={completeness_result.completeness_score}, "
             f"verdict={completeness_result.completeness_verdict}, "
@@ -435,9 +444,6 @@ class Orchestrator(BaseAgent):
             f"has_troubleshooting={completeness_result.has_troubleshooting}"
         )
         logger.info(f"  Missing elements: {completeness_result.missing_elements}")
-
-        logger.info("--- Running ValidityAgent ---")
-        validity_result = self.validity_agent.evaluate(issue, article)
         logger.info(
             f"  ValidityAgent result: score={validity_result.validity_score}, "
             f"verdict={validity_result.validity_verdict}, "
