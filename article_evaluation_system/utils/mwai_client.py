@@ -5,7 +5,6 @@ Provides MSAL-based token acquisition and a simple chat completion interface
 compatible with the Agentic Insight Engine's BaseAgent.
 """
 
-import base64
 import json
 import logging
 import os
@@ -31,7 +30,7 @@ ENDPOINT_WITHOUT_DATA = f"{BASE_API_URL}/ChatCompletionWithoutData"
 _CLIENT_ID = "fb189e14-af5d-4383-9ce6-1ea93749aa1e"
 _TENANT_ID = "72f988bf-86f1-41af-91ab-2d7cd011db47"
 _REDIRECT_URI = "http://localhost"
-_SCOPES = ["https://api.ppe.mwai.microsoft.net/Index.Read"]
+_SCOPES = ["https://api.ppe.mwai.microsoft.net/Index.Read", "offline_access"]
 _AUTHORITY = f"https://login.microsoftonline.com/{_TENANT_ID}"
 
 # MSAL persists tokens here so re-runs are silent (uses refresh token)
@@ -114,31 +113,6 @@ def resolve_mwai_token(token: str = None, force_new: bool = False) -> str:
 
 
 # ---------------------------------------------------------------------------
-# JWT helpers
-# ---------------------------------------------------------------------------
-
-# Refresh token this many seconds before it actually expires
-_TOKEN_REFRESH_BUFFER_SECS = 60
-
-
-def _decode_jwt_exp(token: str) -> int | None:
-    """
-    Extract the `exp` (expiry) Unix timestamp from a JWT without verifying
-    the signature.  Returns None if the token can't be decoded or has no `exp`.
-    """
-    try:
-        parts = token.split(".")
-        if len(parts) != 3:
-            return None
-        # JWT payload is base64url-encoded; pad to a multiple of 4
-        payload_b64 = parts[1] + "=" * (-len(parts[1]) % 4)
-        payload = json.loads(base64.urlsafe_b64decode(payload_b64))
-        return payload.get("exp")
-    except Exception:
-        return None
-
-
-# ---------------------------------------------------------------------------
 # MWAI Client
 # ---------------------------------------------------------------------------
 
@@ -155,44 +129,26 @@ class MwaiClient:
         Initialize the MWAI client.
 
         Args:
-            token: MWAI bearer token (JWT)
+            token: MWAI bearer token
             timeout: Request timeout in seconds
-            _via_msal: Internal flag — True when token came from MSAL so we can
-                       silently refresh it when it nears expiry.
+            _via_msal: True when token came from MSAL — enables silent refresh
+                       before each request via acquire_token_silent.
         """
         self.token = token
         self.timeout = timeout
         self._via_msal = _via_msal
-        self._token_expiry: int | None = _decode_jwt_exp(token)
-        if self._token_expiry:
-            import datetime
-            exp_utc = datetime.datetime.fromtimestamp(self._token_expiry, tz=datetime.timezone.utc)
-            logger.info("MWAI token expires at %s UTC", exp_utc.isoformat())
 
     def _ensure_token_fresh(self) -> None:
         """
-        Refresh the bearer token if it is within _TOKEN_REFRESH_BUFFER_SECS of
-        expiry.  Blocks until the new token is acquired.  No-op when the token
-        was supplied explicitly (not via MSAL) or has no `exp` claim.
+        Refresh the bearer token via MSAL before each request.
+
+        MSAL returns a cached token when it is still valid and silently
+        acquires a new one (using the refresh token) when it has expired.
+        No-op when the token was supplied explicitly (not via MSAL).
         """
-        if not self._via_msal or self._token_expiry is None:
+        if not self._via_msal:
             return
-
-        seconds_left = self._token_expiry - time.time()
-        if seconds_left > _TOKEN_REFRESH_BUFFER_SECS:
-            return
-
-        logger.info(
-            "MWAI token expires in %.0fs — refreshing before request...",
-            max(seconds_left, 0),
-        )
-        new_token = acquire_msal_token()
-        self.token = new_token
-        self._token_expiry = _decode_jwt_exp(new_token)
-        import datetime
-        if self._token_expiry:
-            exp_utc = datetime.datetime.fromtimestamp(self._token_expiry, tz=datetime.timezone.utc)
-            logger.info("MWAI token refreshed — new expiry %s UTC", exp_utc.isoformat())
+        self.token = acquire_msal_token()
 
     def chat_completion(self, system_prompt: str, user_message: str) -> str:
         """
@@ -208,6 +164,8 @@ class MwaiClient:
         Raises:
             RuntimeError: If the API call fails
         """
+        self._ensure_token_fresh()
+
         headers = {
             "Authorization": f"Bearer {self.token}",
             "Content-Type": "application/json",
@@ -222,8 +180,6 @@ class MwaiClient:
             "max_tokens": 4096,
             "response_format": {"type": "json_object"},
         }
-
-        self._ensure_token_fresh()
 
         logger.info(f"MWAI request to {ENDPOINT_WITHOUT_DATA}")
         logger.debug(
