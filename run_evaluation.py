@@ -23,6 +23,12 @@ import argparse
 from datetime import datetime
 from dotenv import load_dotenv
 
+# Ensure stdout/stderr handle non-ASCII characters (e.g. special chars in case titles)
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+
 # Load environment variables from .env file
 load_dotenv()
 

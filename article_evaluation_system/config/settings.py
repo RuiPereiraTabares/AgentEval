@@ -61,7 +61,7 @@ class Settings:
     """Application settings."""
 
     # API Configuration
-    mwai_token: str = field(default_factory=lambda: os.environ.get("MWAI_TOKEN", ""))
+    mwai_token: str = ""
     model: str = "gpt-4o"
 
     # Rate Limiting
@@ -91,7 +91,6 @@ class Settings:
     def from_env(cls) -> "Settings":
         """Create settings from environment variables."""
         return cls(
-            mwai_token=os.environ.get("MWAI_TOKEN", ""),
             model=os.environ.get("MWAI_MODEL", "gpt-4o"),
             verbose=os.environ.get("VERBOSE", "").lower() == "true"
         )

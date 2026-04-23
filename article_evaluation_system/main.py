@@ -27,6 +27,11 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+def _join(items: list, sep: str = '; ') -> str:
+    """Join list items as strings, safely handling non-str elements (e.g. dicts from LLM)."""
+    return sep.join(str(item) for item in items)
+
+
 def read_csv_cases(
     filepath: str,
     limit: int = None,
@@ -212,15 +217,15 @@ def write_results_csv(results: list[dict], output_path: str):
             # Relevance details (primary article)
             'article_relevance_score': rel.get('relevance_score', 0),
             'article_relevance_verdict': rel.get('relevance_verdict', ''),
-            'article_relevance_matched_aspects': '; '.join(rel.get('matched_aspects', [])),
-            'article_relevance_unmatched_aspects': '; '.join(rel.get('unmatched_aspects', [])),
+            'article_relevance_matched_aspects': _join(rel.get('matched_aspects', [])),
+            'article_relevance_unmatched_aspects': _join(rel.get('unmatched_aspects', [])),
             'article_relevance_product_match': rel.get('product_match', ''),
             'article_relevance_version_match': rel.get('version_match', ''),
             'article_relevance_is_outdated': rel.get('is_outdated', ''),
             # Completeness details (primary article)
             'article_completeness_score': comp.get('completeness_score', 0),
             'article_completeness_verdict': comp.get('completeness_verdict', ''),
-            'article_completeness_missing_elements': '; '.join(comp.get('missing_elements', [])),
+            'article_completeness_missing_elements': _join(comp.get('missing_elements', [])),
             'article_completeness_has_prerequisites': comp.get('has_prerequisites', ''),
             'article_completeness_has_step_by_step': comp.get('has_step_by_step', ''),
             'article_completeness_has_examples': comp.get('has_examples', ''),
@@ -229,7 +234,7 @@ def write_results_csv(results: list[dict], output_path: str):
             # Validity details (primary article)
             'article_validity_score': val.get('validity_score', 0),
             'article_validity_verdict': val.get('validity_verdict', ''),
-            'article_validity_potential_issues': '; '.join(val.get('potential_issues', [])),
+            'article_validity_potential_issues': _join(val.get('potential_issues', [])),
             'article_validity_addresses_root_cause': val.get('addresses_root_cause', ''),
             'article_validity_is_current_solution': val.get('is_current_solution', ''),
             'article_validity_environment_compatible': val.get('environment_compatible', ''),
@@ -245,8 +250,8 @@ def write_results_csv(results: list[dict], output_path: str):
             'kt_location_analysis': dq.get('location_analysis', ''),
             'kt_timing_analysis': dq.get('timing_analysis', ''),
             'kt_magnitude_analysis': dq.get('magnitude_analysis', ''),
-            'kt_missing_elements': '; '.join(dq.get('missing_kt_elements', [])),
-            'kt_improvement_suggestions': '; '.join(dq.get('improvement_suggestions', [])),
+            'kt_missing_elements': _join(dq.get('missing_kt_elements', [])),
+            'kt_improvement_suggestions': _join(dq.get('improvement_suggestions', [])),
             'kt_evaluation_reliability_warning': eval_data.get('evaluation_reliability_warning', False),
             # Citation quality — summary
             'citation_grounding_score': cq.get('overall_grounding_score', ''),
@@ -270,12 +275,12 @@ def write_results_csv(results: list[dict], output_path: str):
             'rq_groundedness_analysis': rq.get('groundedness_analysis', ''),
             'rq_issue_resolution_score': rq.get('issue_resolution_score', ''),
             'rq_issue_resolution_analysis': rq.get('issue_resolution_analysis', ''),
-            'rq_quality_weaknesses': '; '.join(rq.get('quality_weaknesses', [])),
-            'rq_improvement_suggestions': '; '.join(rq.get('improvement_suggestions', [])),
+            'rq_quality_weaknesses': _join(rq.get('quality_weaknesses', [])),
+            'rq_improvement_suggestions': _join(rq.get('improvement_suggestions', [])),
             # LLM-synthesized recommendation
             'synthesis_priority': eval_data.get('synthesis_priority', ''),
             'synthesis_priority_reason': eval_data.get('synthesis_priority_reason', ''),
-            'synthesis_pm_actions': '; '.join(eval_data.get('synthesis_pm_actions', [])),
+            'synthesis_pm_actions': _join(eval_data.get('synthesis_pm_actions', [])),
             'synthesis_root_cause_category': eval_data.get('synthesis_root_cause_category', ''),
             # Summary
             'final_recommendation': eval_data.get('final_recommendation', ''),
@@ -325,21 +330,21 @@ def write_results_csv_summary(results: list[dict], output_path: str):
             # Relevance — score + reasons (primary article)
             'article_relevance_score': rel.get('relevance_score', 0),
             'article_relevance_verdict': rel.get('relevance_verdict', ''),
-            'article_relevance_matched': '; '.join(rel.get('matched_aspects', [])),
-            'article_relevance_unmatched': '; '.join(rel.get('unmatched_aspects', [])),
+            'article_relevance_matched': _join(rel.get('matched_aspects', [])),
+            'article_relevance_unmatched': _join(rel.get('unmatched_aspects', [])),
             # Completeness — score + reasons (primary article)
             'article_completeness_score': comp.get('completeness_score', 0),
             'article_completeness_verdict': comp.get('completeness_verdict', ''),
-            'article_completeness_missing': '; '.join(comp.get('missing_elements', [])),
+            'article_completeness_missing': _join(comp.get('missing_elements', [])),
             # Validity — score + reasons (primary article)
             'article_validity_score': val.get('validity_score', 0),
             'article_validity_verdict': val.get('validity_verdict', ''),
-            'article_validity_issues': '; '.join(val.get('potential_issues', [])),
+            'article_validity_issues': _join(val.get('potential_issues', [])),
             # Description quality — score + reasons (KT framework)
             'kt_description_quality_score': dq.get('description_quality_score', 0),
             'kt_description_quality_verdict': dq.get('description_quality_verdict', ''),
-            'kt_description_missing': '; '.join(dq.get('missing_kt_elements', [])),
-            'kt_description_improvements': '; '.join(dq.get('improvement_suggestions', [])),
+            'kt_description_missing': _join(dq.get('missing_kt_elements', [])),
+            'kt_description_improvements': _join(dq.get('improvement_suggestions', [])),
             # Citation quality — summary
             'citation_grounding_score': cq.get('overall_grounding_score', ''),
             'citation_grounding_verdict': cq.get('overall_verdict', ''),
@@ -360,11 +365,11 @@ def write_results_csv_summary(results: list[dict], output_path: str):
             'rq_response_quality_score': rq.get('response_quality_score', ''),
             'rq_groundedness_score': rq.get('groundedness_score', ''),
             'rq_issue_resolution_score': rq.get('issue_resolution_score', ''),
-            'rq_quality_weaknesses': '; '.join(rq.get('quality_weaknesses', [])),
+            'rq_quality_weaknesses': _join(rq.get('quality_weaknesses', [])),
             # LLM-synthesized recommendation
             'synthesis_priority': eval_data.get('synthesis_priority', ''),
             'synthesis_priority_reason': eval_data.get('synthesis_priority_reason', ''),
-            'synthesis_pm_actions': '; '.join(eval_data.get('synthesis_pm_actions', [])),
+            'synthesis_pm_actions': _join(eval_data.get('synthesis_pm_actions', [])),
             'synthesis_root_cause_category': eval_data.get('synthesis_root_cause_category', ''),
             # Final
             'final_recommendation': eval_data.get('final_recommendation', ''),
@@ -649,12 +654,12 @@ def main():
     )
     parser.add_argument(
         '--token',
-        help='MWAI bearer token (or set MWAI_TOKEN env var)'
+        help='MWAI bearer token override (skips MSAL authentication)'
     )
     parser.add_argument(
         '--new-token',
         action='store_true',
-        help='Force re-prompt for a new MWAI token (ignore cache)'
+        help='Clear MSAL token cache and force interactive re-authentication'
     )
 
     args = parser.parse_args()

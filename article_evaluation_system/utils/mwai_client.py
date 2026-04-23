@@ -1,18 +1,16 @@
 """
 MWAI API Client - Wraps the ChatCompletionWithoutData endpoint.
 
-Provides token management (caching, expiration) and a simple chat completion interface
+Provides MSAL-based token acquisition and a simple chat completion interface
 compatible with the Agentic Insight Engine's BaseAgent.
 """
 
-import base64
 import json
 import logging
 import os
-import sys
 import time
-import webbrowser
 
+import msal
 import requests
 
 logger = logging.getLogger(__name__)
@@ -23,108 +21,95 @@ MWAI_REQUEST_DELAY = 1.2  # seconds — reduce to 0.3 if no 429 rate-limit error
 # ---------------------------------------------------------------------------
 # MWAI API Configuration
 # ---------------------------------------------------------------------------
-BASE_API_URL = "https://api.mwai.microsoft.com/ai/ChatCompletions"
-AUTH_ME_URL = "https://playground.mwai.microsoft.com/.auth/me"
-
+BASE_API_URL = "https://api.ppe.mwai.microsoft.net/ai/ChatCompletions"
 ENDPOINT_WITHOUT_DATA = f"{BASE_API_URL}/ChatCompletionWithoutData"
 
-# Token cache lives next to the user's home directory
-TOKEN_CACHE_FILE = os.path.join(os.path.expanduser("~"), ".mwai_token")
+# ---------------------------------------------------------------------------
+# MSAL Configuration
+# ---------------------------------------------------------------------------
+_CLIENT_ID = "fb189e14-af5d-4383-9ce6-1ea93749aa1e"
+_TENANT_ID = "72f988bf-86f1-41af-91ab-2d7cd011db47"
+_REDIRECT_URI = "http://localhost"
+_SCOPES = ["https://api.ppe.mwai.microsoft.net/Index.Read"]
+_AUTHORITY = f"https://login.microsoftonline.com/{_TENANT_ID}"
+
+# MSAL persists tokens here so re-runs are silent (uses refresh token)
+_MSAL_CACHE_FILE = os.path.join(os.path.expanduser("~"), ".mwai_msal_cache.json")
 
 
 # ---------------------------------------------------------------------------
-# Token helpers
+# MSAL token helpers
 # ---------------------------------------------------------------------------
 
-def _is_token_expired(token: str) -> bool:
-    """Check if a JWT token is expired by decoding the payload."""
-    try:
-        payload_b64 = token.split(".")[1]
-        payload_b64 += "=" * (-len(payload_b64) % 4)
-        payload = json.loads(base64.urlsafe_b64decode(payload_b64))
-        exp = payload.get("exp", 0)
-        return time.time() >= exp
-    except Exception:
-        return True
+def _load_msal_cache() -> msal.SerializableTokenCache:
+    cache = msal.SerializableTokenCache()
+    if os.path.exists(_MSAL_CACHE_FILE):
+        with open(_MSAL_CACHE_FILE, "r") as f:
+            cache.deserialize(f.read())
+    return cache
 
 
-def _load_cached_token() -> str | None:
-    """Load token from cache file if it exists and is not expired."""
-    if not os.path.exists(TOKEN_CACHE_FILE):
-        return None
-    with open(TOKEN_CACHE_FILE, "r") as f:
-        token = f.read().strip()
-    if not token or _is_token_expired(token):
-        return None
-    return token
+def _save_msal_cache(cache: msal.SerializableTokenCache):
+    if cache.has_state_changed:
+        with open(_MSAL_CACHE_FILE, "w") as f:
+            f.write(cache.serialize())
 
 
-def _save_token_to_cache(token: str):
-    """Save token to local cache file."""
-    with open(TOKEN_CACHE_FILE, "w") as f:
-        f.write(token)
+def acquire_msal_token() -> str:
+    """
+    Acquire an MWAI access token via MSAL.
 
+    Tries silent acquisition first (using cached refresh token).
+    Falls back to interactive browser auth on first run or after cache is cleared.
 
-def _prompt_for_token() -> str:
-    """Open .auth/me in browser and prompt user to paste the access_token."""
-    print("[*] Opening the MWAI auth endpoint in your browser...")
-    print(f"    {AUTH_ME_URL}")
-    webbrowser.open(AUTH_ME_URL)
-    print()
-    print('    1. Log in if prompted')
-    print('    2. Copy the "access_token" value from the JSON response')
-    print('    3. Paste it below')
-    print()
-    token = input("    access_token: ").strip()
-    if not token:
-        print("ERROR: No token provided.")
-        sys.exit(1)
-    return token
+    Returns:
+        Access token string
+    """
+    cache = _load_msal_cache()
+    app = msal.PublicClientApplication(
+        client_id=_CLIENT_ID,
+        authority=_AUTHORITY,
+        token_cache=cache,
+    )
+
+    result = None
+    accounts = app.get_accounts()
+    if accounts:
+        result = app.acquire_token_silent(_SCOPES, account=accounts[0])
+
+    if not result:
+        logger.info("No cached MSAL credentials — launching browser for authentication...")
+        result = app.acquire_token_interactive(scopes=_SCOPES)
+
+    _save_msal_cache(cache)
+
+    if "access_token" not in result:
+        error = result.get("error_description", result.get("error", "Unknown MSAL error"))
+        raise RuntimeError(f"MSAL authentication failed: {error}")
+
+    logger.info("MSAL token acquired successfully.")
+    return result["access_token"]
 
 
 def resolve_mwai_token(token: str = None, force_new: bool = False) -> str:
     """
     Resolve an MWAI bearer token.
 
-    Priority: explicit token arg > cached token > interactive prompt.
-
     Args:
-        token: Explicit token string (e.g. from --token CLI arg)
-        force_new: Force interactive prompt even if cache exists
+        token: Explicit token string override (skips MSAL)
+        force_new: Clear MSAL cache and force interactive re-authentication
 
     Returns:
         Valid bearer token string
     """
     if token:
-        if not _is_token_expired(token):
-            _save_token_to_cache(token)
         return token
 
-    # Check environment variable
-    env_token = os.environ.get("MWAI_TOKEN", "").strip()
-    if env_token:
-        if not _is_token_expired(env_token):
-            logger.info("Using MWAI token from MWAI_TOKEN environment variable.")
-            _save_token_to_cache(env_token)
-            return env_token
-        else:
-            logger.warning("MWAI_TOKEN environment variable is set but token is expired.")
+    if force_new and os.path.exists(_MSAL_CACHE_FILE):
+        os.remove(_MSAL_CACHE_FILE)
+        logger.info("MSAL cache cleared — will re-authenticate interactively.")
 
-    if not force_new:
-        cached = _load_cached_token()
-        if cached:
-            logger.info("Using cached MWAI token (still valid).")
-            return cached
-
-    token = _prompt_for_token()
-
-    if _is_token_expired(token):
-        logger.warning("This token appears to be expired.")
-    else:
-        _save_token_to_cache(token)
-        logger.info("MWAI token cached for future runs.")
-
-    return token
+    return acquire_msal_token()
 
 
 # ---------------------------------------------------------------------------

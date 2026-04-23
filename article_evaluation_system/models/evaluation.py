@@ -276,9 +276,98 @@ _DESCRIPTION_QUALITY_LABEL_MAP = {
     "weak": 20, "below average": 25, "vague": 20, "unclear": 20,
     "very low": 10, "minimal": 15, "insufficient": 20, "inadequate": 20,
     "none": 0, "missing": 0, "empty": 0, "n/a": 0,
+    "absent": 0, "not present": 0, "not specified": 0, "not mentioned": 0,
+    "not provided": 0, "unavailable": 0,
     # Boolean-like
     "true": 80, "false": 10, "yes": 80, "no": 10,
 }
+
+
+_KT_ALT_DIM_MAP = {"what": "identity", "where": "location", "when": "timing", "extent": "magnitude"}
+
+
+def _normalize_kt_structure(data: dict) -> dict:
+    """
+    Pre-process alternative LLM response structures into the expected flat format.
+
+    Handles two common deviations:
+    1. Response wrapped under a "kt_evaluation" key.
+    2. KT dimensions named what/where/when/extent instead of
+       identity/location/timing/magnitude, with qualitative sub-dicts.
+    """
+    # Unwrap a "kt_evaluation" wrapper when it contains the dimension keys
+    if "kt_evaluation" in data and isinstance(data.get("kt_evaluation"), dict):
+        inner = data["kt_evaluation"]
+        if any(k in inner for k in _KT_ALT_DIM_MAP):
+            merged = dict(inner)
+            for k, v in data.items():
+                if k != "kt_evaluation":
+                    merged.setdefault(k, v)
+            data = merged
+
+    if not any(k in data for k in _KT_ALT_DIM_MAP):
+        return data  # already in expected format
+
+    normalized: dict = {}
+    for alt_key, canonical in _KT_ALT_DIM_MAP.items():
+        val = data.get(alt_key)
+        if val is None:
+            continue
+        if isinstance(val, (int, float)) and 0 <= val <= 100:
+            normalized[f"{canonical}_score"] = int(val)
+        elif isinstance(val, str):
+            n = _parse_numeric_string(val)
+            if n is not None:
+                normalized[f"{canonical}_score"] = n
+            else:
+                mapped = _DESCRIPTION_QUALITY_LABEL_MAP.get(val.lower().strip())
+                if mapped is not None:
+                    normalized[f"{canonical}_score"] = mapped
+        elif isinstance(val, dict):
+            score = None
+            # 1. Explicit numeric score key
+            for sk in ("score", "score_value", "points", "rating", "value", "numeric_score"):
+                sv = val.get(sk)
+                if isinstance(sv, (int, float)) and 0 <= sv <= 100:
+                    score = int(sv)
+                    break
+                if isinstance(sv, str):
+                    n = _parse_numeric_string(sv)
+                    if n is not None:
+                        score = n
+                        break
+            # 2. Qualitative label from known sub-keys
+            if score is None:
+                for qk in ("quality", "clarity", "level", "assessment", "rating", "specificity"):
+                    qv = val.get(qk)
+                    if isinstance(qv, str):
+                        mapped = _DESCRIPTION_QUALITY_LABEL_MAP.get(qv.lower().strip())
+                        if mapped is not None:
+                            score = mapped
+                            break
+            # 3. Scan all string values in the sub-dict
+            if score is None:
+                for sv in val.values():
+                    if isinstance(sv, str):
+                        mapped = _DESCRIPTION_QUALITY_LABEL_MAP.get(sv.lower().strip())
+                        if mapped is not None:
+                            score = mapped
+                            break
+            if score is not None:
+                normalized[f"{canonical}_score"] = score
+            # Extract analysis text
+            for ak in ("analysis", "description", "details", "explanation", "reasoning", "notes"):
+                av = val.get(ak)
+                if isinstance(av, str) and av:
+                    normalized[f"{canonical}_analysis"] = av
+                    break
+
+    # Copy non-dimension keys (overall score, verdict, missing elements, etc.)
+    for k, v in data.items():
+        if k not in _KT_ALT_DIM_MAP:
+            normalized.setdefault(k, v)
+
+    return normalized if normalized else data
 
 
 @dataclass
@@ -323,6 +412,7 @@ class DescriptionQualityResult:
 
     @classmethod
     def from_dict(cls, data: dict) -> "DescriptionQualityResult":
+        data = _normalize_kt_structure(data)
         flat = _collect_all_values(data)
 
         identity_score = _extract_score(
