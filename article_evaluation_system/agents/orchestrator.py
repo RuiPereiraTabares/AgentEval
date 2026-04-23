@@ -58,7 +58,9 @@ class Orchestrator(BaseAgent):
         if client is None:
             from ..utils.mwai_client import MwaiClient, resolve_mwai_token
             token = resolve_mwai_token(mwai_token)
-            client = MwaiClient(token=token)
+            # _via_msal=True when no explicit token was passed, meaning MSAL
+            # acquired (and can silently refresh) the token.
+            client = MwaiClient(token=token, _via_msal=not bool(mwai_token))
 
         super().__init__(client, model, provider)
 
