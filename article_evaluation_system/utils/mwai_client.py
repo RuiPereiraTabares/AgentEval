@@ -30,7 +30,7 @@ ENDPOINT_WITHOUT_DATA = f"{BASE_API_URL}/ChatCompletionWithoutData"
 _CLIENT_ID = "fb189e14-af5d-4383-9ce6-1ea93749aa1e"
 _TENANT_ID = "72f988bf-86f1-41af-91ab-2d7cd011db47"
 _REDIRECT_URI = "http://localhost"
-_SCOPES = ["https://api.ppe.mwai.microsoft.net/Index.Read", "offline_access"]
+_SCOPES = ["https://api.ppe.mwai.microsoft.net/Index.Read"]
 _AUTHORITY = f"https://login.microsoftonline.com/{_TENANT_ID}"
 
 # MSAL persists tokens here so re-runs are silent (uses refresh token)
