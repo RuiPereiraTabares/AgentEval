@@ -8,6 +8,7 @@ compatible with the Agentic Insight Engine's BaseAgent.
 import json
 import logging
 import os
+import threading
 import time
 
 import msal
@@ -36,6 +37,9 @@ _AUTHORITY = f"https://login.microsoftonline.com/{_TENANT_ID}"
 # MSAL persists tokens here so re-runs are silent (uses refresh token)
 _MSAL_CACHE_FILE = os.path.join(os.path.expanduser("~"), ".mwai_msal_cache.json")
 
+# Serialises all token-acquisition calls so parallel threads don't race on the cache file
+_TOKEN_LOCK = threading.Lock()
+
 
 # ---------------------------------------------------------------------------
 # MSAL token helpers
@@ -55,33 +59,40 @@ def _save_msal_cache(cache: msal.SerializableTokenCache):
             f.write(cache.serialize())
 
 
-def acquire_msal_token() -> str:
+def acquire_msal_token(force_refresh: bool = False) -> str:
     """
-    Acquire an MWAI access token via MSAL.
+    Acquire an MWAI access token via MSAL (thread-safe).
 
     Tries silent acquisition first (using cached refresh token).
     Falls back to interactive browser auth on first run or after cache is cleared.
 
+    Args:
+        force_refresh: When True, bypass the cached access token and use the
+                       refresh token to get a new one (call after receiving a 401).
+
     Returns:
         Access token string
     """
-    cache = _load_msal_cache()
-    app = msal.PublicClientApplication(
-        client_id=_CLIENT_ID,
-        authority=_AUTHORITY,
-        token_cache=cache,
-    )
+    with _TOKEN_LOCK:
+        cache = _load_msal_cache()
+        app = msal.PublicClientApplication(
+            client_id=_CLIENT_ID,
+            authority=_AUTHORITY,
+            token_cache=cache,
+        )
 
-    result = None
-    accounts = app.get_accounts()
-    if accounts:
-        result = app.acquire_token_silent(_SCOPES, account=accounts[0])
+        result = None
+        accounts = app.get_accounts()
+        if accounts:
+            result = app.acquire_token_silent(
+                _SCOPES, account=accounts[0], force_refresh=force_refresh
+            )
 
-    if not result:
-        logger.info("No cached MSAL credentials — launching browser for authentication...")
-        result = app.acquire_token_interactive(scopes=_SCOPES)
+        if not result:
+            logger.info("No cached MSAL credentials — launching browser for authentication...")
+            result = app.acquire_token_interactive(scopes=_SCOPES)
 
-    _save_msal_cache(cache)
+        _save_msal_cache(cache)
 
     if "access_token" not in result:
         error = result.get("error_description", result.get("error", "Unknown MSAL error"))
@@ -200,6 +211,19 @@ class MwaiClient:
 
         logger.info(f"MWAI response status: {resp.status_code}")
         logger.debug(f"MWAI raw response (first 1000 chars): {resp.text[:1000]}")
+
+        # On 401, force-refresh the token and retry once
+        if resp.status_code == 401 and self._via_msal:
+            logger.warning("MWAI returned 401 — forcing token refresh and retrying...")
+            self.token = acquire_msal_token(force_refresh=True)
+            headers["Authorization"] = f"Bearer {self.token}"
+            resp = requests.post(
+                ENDPOINT_WITHOUT_DATA,
+                headers=headers,
+                json=payload,
+                timeout=self.timeout,
+            )
+            logger.info(f"MWAI retry response status: {resp.status_code}")
 
         # Sleep after each request to avoid rate limiting
         logger.debug(f"Sleeping {MWAI_REQUEST_DELAY}s between MWAI requests...")
