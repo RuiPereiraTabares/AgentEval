@@ -103,8 +103,18 @@ class BaseAgent(ABC):
             json_str = response
             logger.debug(f"[{agent_name}] No markdown code block found, using raw response")
 
+        def _strip_trailing_commas(s: str) -> str:
+            # Remove trailing commas before } or ]
+            return re.sub(r',\s*([}\]])', r'\1', s)
+
+        def _try_parse(s: str) -> dict:
+            try:
+                return json.loads(s)
+            except json.JSONDecodeError:
+                return json.loads(_strip_trailing_commas(s))
+
         try:
-            parsed = json.loads(json_str)
+            parsed = _try_parse(json_str)
             logger.info(f"[{agent_name}] JSON parsed successfully. Keys: {list(parsed.keys())}")
             logger.debug(f"[{agent_name}] Full parsed JSON: {json.dumps(parsed, indent=2)[:2000]}")
             return parsed
@@ -114,7 +124,7 @@ class BaseAgent(ABC):
             json_match = re.search(r'\{[\s\S]*\}', response)
             if json_match:
                 try:
-                    parsed = json.loads(json_match.group())
+                    parsed = _try_parse(json_match.group())
                     logger.info(
                         f"[{agent_name}] JSON extracted via regex fallback. Keys: {list(parsed.keys())}"
                     )
