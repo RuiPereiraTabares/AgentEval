@@ -94,14 +94,20 @@ class BaseAgent(ABC):
         """
         agent_name = self.__class__.__name__
 
-        # Try to extract JSON from markdown code blocks
+        # Try to extract JSON from markdown code blocks (closed fence first)
         json_match = re.search(r'```(?:json)?\s*([\s\S]*?)\s*```', response)
         if json_match:
             json_str = json_match.group(1)
             logger.debug(f"[{agent_name}] Extracted JSON from markdown code block")
         else:
-            json_str = response
-            logger.debug(f"[{agent_name}] No markdown code block found, using raw response")
+            # Handle unclosed fence (LLM started ``` but response was truncated before closing ```)
+            open_fence = re.search(r'```(?:json)?\s*([\s\S]+)', response)
+            if open_fence:
+                json_str = open_fence.group(1).strip()
+                logger.debug(f"[{agent_name}] Extracted JSON from unclosed markdown fence")
+            else:
+                json_str = response
+                logger.debug(f"[{agent_name}] No markdown code block found, using raw response")
 
         def _strip_trailing_commas(s: str) -> str:
             # Remove trailing commas before } or ]
@@ -112,6 +118,10 @@ class BaseAgent(ABC):
                 return json.loads(s)
             except json.JSONDecodeError:
                 return json.loads(_strip_trailing_commas(s))
+
+        def _repair_parse(s: str) -> dict:
+            from json_repair import repair_json
+            return repair_json(s, return_objects=True)
 
         try:
             parsed = _try_parse(json_str)
@@ -133,6 +143,16 @@ class BaseAgent(ABC):
                     logger.warning(
                         f"[{agent_name}] Regex fallback also failed: {e2}"
                     )
+            # Final fallback: json-repair handles missing colons, commas, and other LLM quirks
+            try:
+                parsed = _repair_parse(json_str or response)
+                if isinstance(parsed, dict):
+                    logger.info(
+                        f"[{agent_name}] JSON repaired successfully. Keys: {list(parsed.keys())}"
+                    )
+                    return parsed
+            except Exception as e3:
+                logger.warning(f"[{agent_name}] json-repair also failed: {e3}")
             logger.warning(
                 f"[{agent_name}] Could not parse JSON from response (will use fallback): {response[:300]}"
             )
