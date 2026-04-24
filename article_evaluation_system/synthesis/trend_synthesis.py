@@ -13,8 +13,9 @@ from ..utils.prompts import AgentPrompts
 
 logger = logging.getLogger(__name__)
 
-# Maximum cases per LLM chunk (to stay within token limits)
-_CHUNK_SIZE = 100
+# Maximum cases per LLM chunk (MWAI user-message limit is 50 000 chars)
+_CHUNK_SIZE = 40
+_MAX_USER_CHARS = 45_000  # Leave headroom for JSON overhead
 
 
 class TrendSynthesizer(BaseAgent):
@@ -108,6 +109,22 @@ class TrendSynthesizer(BaseAgent):
         """Call the LLM to cluster a chunk of case summaries."""
         try:
             user_message = json.dumps(case_summaries, indent=None, default=str)
+            if len(user_message) > _MAX_USER_CHARS:
+                # Trim verbose fields to fit within the MWAI 50 000-char limit
+                trimmed = [
+                    {
+                        **c,
+                        "issue_description": c.get("issue_description", "")[:100],
+                        "key_gap": c.get("key_gap", "")[:80],
+                        "pm_actions": [a[:80] for a in c.get("pm_actions", [])[:1]],
+                    }
+                    for c in case_summaries
+                ]
+                user_message = json.dumps(trimmed, indent=None, default=str)
+                logger.debug(
+                    f"[TrendSynthesizer] Trimmed summaries to {len(user_message)} chars "
+                    f"for {len(case_summaries)} cases"
+                )
             response = self._call_llm(AgentPrompts.TREND_SYNTHESIS, user_message)
             parsed = self._parse_json_response(response)
 
