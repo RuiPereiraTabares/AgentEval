@@ -709,7 +709,8 @@ function parseEval(text) {
     row._priorityOrder = row.synthesis_priority === 'red' ? 1 : row.synthesis_priority === 'yellow' ? 2 : row.synthesis_priority === 'green' ? 3 : 4;
     row._hasError = !!(row.error && String(row.error).trim());
     row._product = row.issue_product || (row.sap_path ? String(row.sap_path).split('/')[0].trim() : 'Unknown');
-    row._areaPath = (row.area_path || '').trim();
+    const _isExchange = row._product.toLowerCase().includes('exchange');
+    row._areaPath = (row.area_path || '').trim() || (_isExchange ? (row.sap_path || '').trim() : '');
     return row;
   });
 }
