@@ -720,6 +720,8 @@ function parseTrend(text) {
     row._priorityOrder = row.priority === 'red' ? 1 : row.priority === 'yellow' ? 2 : row.priority === 'green' ? 3 : 4;
     const m = String(row.estimated_impact || '').match(/~(\d+)/);
     row._impact = m ? parseInt(m[1]) : num(row.case_count);
+    const _isExchange = (row.products_affected || '').toLowerCase().includes('exchange');
+    row._areaPath = (row.area_path || '').trim() || (_isExchange ? (row.products_affected || '').trim() : '');
     return row;
   }).sort((a, b) => a._priorityOrder - b._priorityOrder || b.case_count - a.case_count);
 }
@@ -1342,11 +1344,11 @@ function renderTrends() {
   // Populate area filter (once)
   const tAreaEl = document.getElementById('trend-f-area');
   if (tAreaEl && tAreaEl.options.length <= 1) {
-    const areas = [...new Set(data.map(r => (r.area_path||'').trim()).filter(Boolean))].sort();
+    const areas = [...new Set(data.map(r => r._areaPath).filter(Boolean))].sort();
     areas.forEach(a => { const o = document.createElement('option'); o.value = a; o.textContent = a; tAreaEl.appendChild(o); });
   }
   const tAreaVal = (tAreaEl || {}).value || '';
-  const filtered = tAreaVal ? data.filter(r => (r.area_path||'').trim() === tAreaVal) : data;
+  const filtered = tAreaVal ? data.filter(r => r._areaPath === tAreaVal) : data;
 
   const n = data.length;
   const fn = filtered.length;
@@ -1391,7 +1393,7 @@ function renderTrends() {
     const products = (r.products_affected||'').split(';').map(s => s.trim()).filter(Boolean);
     const evidenceParts = (r.supporting_evidence||'').split(';').map(s => s.trim()).filter(Boolean);
     const caseNums = String(r.case_numbers||'').split(';').map(s => s.trim()).filter(Boolean);
-    const areaPath = (r.area_path||'').trim();
+    const areaPath = r._areaPath || '';
     const hasEval = !!state.evalData;
 
     // Case chips — clickable if eval data loaded
