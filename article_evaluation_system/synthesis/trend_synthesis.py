@@ -89,10 +89,14 @@ class TrendSynthesizer(BaseAgent):
                        pm_actions[0] if pm_actions else "")
 
             raw_desc = issue.get("raw_description", "")
+            area_path = issue.get("area_path", "")
+            if not area_path and "exchange" in issue.get("product", "").lower():
+                area_path = r.get("sap_path", "")
+
             summaries.append({
                 "case_number": r.get("case_number", ""),
                 "product": issue.get("product", "Unknown"),
-                "area_path": issue.get("area_path", ""),
+                "area_path": area_path,
                 "root_cause_category": ev.get("synthesis_root_cause_category", ""),
                 "priority": ev.get("synthesis_priority", ""),
                 "error_codes": issue.get("error_codes", []),
