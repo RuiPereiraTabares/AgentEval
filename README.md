@@ -1,206 +1,143 @@
 # Agentic Insight Engine
 
-A multi-agent AI system that evaluates whether Microsoft support articles adequately address customer issues. Built for automated quality assurance of support case article citations.
+A multi-agent AI system that evaluates whether Microsoft support articles adequately address customer support issues. Produces structured scores, gap analysis, trend clusters, and PM action recommendations.
 
-## How It Works
+## Overview
 
-The system reads support cases from a CSV file, parses each customer issue, fetches the cited article, and runs 10 specialized AI agents to evaluate relevance, completeness, validity, description quality (Kepner-Tregoe framework), citation quality, and AI response quality. Each case receives an overall score (0-100), a verdict, and an actionable recommendation.
+Each support case is processed through a pipeline of specialized agents:
 
-## Prerequisites
+1. **IssueParserAgent** — parses raw issue text into a structured `Issue` object
+2. **AreaClassificationAgent** — classifies the issue into a product area (e.g., "Teams Meetings")
+3. **DescriptionQualityAgent** — scores issue quality across three dimensions (product clarity, symptom specificity, operational context)
+4. **RelevanceAgent / CompletenessAgent / ValidityAgent** — evaluate the linked support article
+5. **SearchAgent / GapAnalysisAgent** — triggered when article score is low
+6. **CitationQualityAgent / ResponseQualityAgent** — used in `--mweaeval` mode for AI response analysis
+7. **TransferReasonAgent** — classifies why the case was transferred (8 categories)
+8. **TrendSynthesizer** — optional batch clustering with PM action recommendations and citation overlap detection
 
-- **Python 3.12** or later
-- **pip** (comes with Python)
-- An MWAI bearer token (Microsoft internal — JWT)
-- An input CSV file with support case data (see [Input Format](#input-csv-format))
+## Requirements
 
-## Installation
-
-### 1. Clone the Repository
-
-```bash
-git clone <repository-url>
-cd AgenticInsightEngine
-```
-
-### 2. Create a Virtual Environment
-
-```bash
-# Create
-python -m venv .venv
-
-# Activate (pick your shell):
-# Windows (Command Prompt)
-.venv\Scripts\activate
-# Windows (PowerShell)
-.venv\Scripts\Activate.ps1
-# Windows (Git Bash / MSYS2)
-source .venv/Scripts/activate
-# macOS / Linux
-source .venv/bin/activate
-```
-
-### 3. Install Dependencies
+- Python 3.12+
+- MWAI API access (Microsoft internal — gpt-4o)
 
 ```bash
 pip install -r requirements.txt
 ```
 
-### 4. Configure Environment Variables
+Dependencies: `requests`, `beautifulsoup4`, `python-dotenv`, `msal`, `json-repair`
 
-Create a `.env` file in the project root:
+## Setup
 
-```env
-MWAI_TOKEN=eyJ0eXAiOiJKV1QiLCJhbGciOi...
-```
+Copy `.env.example` to `.env` and add your MWAI credentials, or use `--token` / `--new-token` at runtime for interactive MSAL authentication.
 
-Alternatively, export the variable directly in your shell:
+## Usage
 
 ```bash
-# bash / zsh
-export MWAI_TOKEN="eyJ0eX..."
-
-# PowerShell
-$env:MWAI_TOKEN = "eyJ0eX..."
-
-# Command Prompt
-set MWAI_TOKEN=eyJ0eX...
-```
-
-### 5. Verify Installation
-
-```bash
-python -c "from article_evaluation_system import ArticleEvaluator; print('OK')"
-```
-
-## Quick Start
-
-```bash
-# Evaluate first 5 cases (quick test)
-python run_evaluation.py -n 5
+# Evaluate first 50 cases (default)
+python run_evaluation.py
 
 # Evaluate all cases
 python run_evaluation.py --all
 
-# Evaluate a specific case
+# Limit to N cases from a specific input file
+python run_evaluation.py -n 20 -i my_cases.csv
+
+# Evaluate a single case
 python run_evaluation.py --case 2508270010003948
 
-# Verbose output (shows per-agent score breakdowns)
-python run_evaluation.py -n 5 -v
+# Batch mode with resume support
+python run_evaluation.py --batch-size 50 -i input.csv
+python run_evaluation.py --batch-size 50 --continue -i input.csv
 
-# Provide token explicitly
-python run_evaluation.py --token eyJ0eX... -n 5
+# Citation quality evaluation mode (requires AiResponse + Citations columns)
+python run_evaluation.py --mweaeval -i mweaeval_format.csv
 
-# Output as CSV instead of JSON
-python run_evaluation.py -n 5 --format csv
+# Generate trend report
+python run_evaluation.py --all --trend-report
 
-# Evaluate AI response + citation quality (mweaeval mode)
-python run_evaluation.py -n 5 --mweaeval
+# Regenerate trends from existing results (no re-evaluation)
+python run_evaluation.py --trends-only --from-results evaluation_results_*.csv
 
-# Generate trend report + citation overlap analysis
-python run_evaluation.py -n 50 --trend-report
-
-# Batch mode: process 50 cases at a time
-python run_evaluation.py --batch-size 50 -i merged_output.csv
-
-# Continue from where the last batch left off
-python run_evaluation.py --batch-size 50 --continue -i merged_output.csv
+# Verbose / debug output
+python run_evaluation.py -v
+python run_evaluation.py --debug
 ```
 
-### Output
+### Key Arguments
 
-Each run produces two files (plus optional trend and overlap CSVs):
+| Argument | Description |
+|---|---|
+| `-i FILE` | Input CSV (default: `merged_output.csv`) |
+| `-n N` | Process at most N cases (default: 50) |
+| `--all` | Process all cases |
+| `--case ID` | Process a single case number |
+| `--skip N` | Skip first N cases |
+| `--mweaeval` | Citation quality + AI response evaluation mode |
+| `--trend-report` | Generate trend cluster report after evaluation |
+| `--trends-only` | Skip evaluation; regenerate trends from `--from-results` CSVs |
+| `--batch-size N` | Enable batch mode (use `--continue` to resume) |
+| `--model MODEL` | LLM model override (default: `gpt-4o`) |
+| `--token TOKEN` | MWAI bearer token |
+| `--new-token` | Force re-authentication |
+| `-v` / `--debug` | Verbose / debug logging |
 
-| File | Description |
-|------|-------------|
-| `evaluation_results_{timestamp}.csv` | Full evaluation results (default CSV; use `--format json` for JSON) |
-| `evaluation_summary_{timestamp}.csv` | Summary with key scores and reasons only |
-| `trend_report_{timestamp}.csv` | Trend clusters (opt-in: `--trend-report`) |
-| `citation_overlaps_{timestamp}.csv` | Citation overlap analysis (auto-generated alongside trend report when overlaps are detected) |
+## Output Files
 
-## Input CSV Format
-
-The input CSV needs at minimum these columns:
-
-| Column | Required | Description |
-|--------|----------|-------------|
-| `Case Number` | Yes | Unique case identifier |
-| `IssueDescription` | Yes | Customer issue text |
-| `Title_mwai` | No | Case title (prepended to description) |
-| `ContainsCitations` | No | `TRUE` / `FALSE` — whether URLs were cited |
-| `Urls` | No | Comma-separated article URLs |
-| `Transferred` | No | `TRUE` / `FALSE` — whether case was transferred |
-| `SRStatus` | No | Service request status |
-| `Reopened` | No | `TRUE` / `FALSE` — whether case was reopened |
-| `SapProductName` | No | Product name from SAP taxonomy |
-| `SapPath_mwai` (or `SapPath` or `SapPath1`) | No | SAP path (used to derive `issue_product`) |
-
-See [docs/api-reference.md](docs/api-reference.md#csv-input-format) for the full column list.
-
-### mweaeval Input CSV Format
-
-When using `--mweaeval` mode, the input CSV needs these columns:
-
-| Column | Required | Description |
-|--------|----------|-------------|
-| `AiResponse` | Yes | The AI-generated response text |
-| `Citations` | Yes | Comma-separated citation URLs |
-
-All standard columns listed above are also supported and used when present.
+| File | Contents |
+|---|---|
+| `evaluation_results_<ts>.csv` | Per-case detailed evaluation (all agent outputs) |
+| `evaluation_summary_<ts>.csv` | Summary with key metrics only |
+| `trend_report_<ts>.csv` | Clustered trend analysis with PM actions |
+| `citation_overlaps_<ts>.csv` | Duplicate and cross-coverage citation flags |
 
 ## Project Structure
 
 ```
-AgenticInsightEngine/
-  run_evaluation.py              # Main CLI runner
-  requirements.txt               # Python dependencies
-  .env                           # MWAI token (create this yourself)
-  article_evaluation_system/     # Main package
-    __init__.py                  #   ArticleEvaluator entry point
-    main.py                      #   CSV I/O and alternative CLI
-    agents/                      #   All 11 agents (incl. area_classification_agent.py, citation_quality_agent.py, response_quality_agent.py)
-    models/                      #   Data models (Issue, Article, EvaluationResult, TrendCluster, CitationOverlap)
-    config/                      #   Settings, thresholds, weights, area_definitions
-    utils/                       #   Article fetcher, scoring, prompts, citation_parser.py, MWAI client
-    synthesis/                   #   TrendSynthesizer (semantic clustering + citation overlap detection)
-  docs/                          #   Developer documentation
+AgentEval/
+├── run_evaluation.py                    # CLI entry point
+├── article_evaluation_system/
+│   ├── __init__.py                      # ArticleEvaluator public API
+│   ├── main.py                          # CSV I/O utilities
+│   ├── agents/                          # 11 specialized agents + Orchestrator
+│   ├── models/                          # Issue, EvaluationResult, TrendCluster, CitationOverlap
+│   ├── config/
+│   │   ├── settings.py                  # Thresholds and weights
+│   │   └── area_definitions.py          # Product area taxonomies
+│   ├── utils/                           # MWAI client, article fetcher, prompts, scoring
+│   └── synthesis/
+│       └── trend_synthesis.py           # Semantic clustering + citation overlap detection
+├── dashboard/
+│   └── index.html                       # Web UI for result visualization
+├── docs/                                # Full documentation (13 markdown files + HTML)
+└── requirements.txt
 ```
+
+## Scoring
+
+Article scores are computed as a weighted average:
+
+```
+score = Relevance × 0.4 + Completeness × 0.3 + Validity × 0.3
+```
+
+| Score | Verdict |
+|---|---|
+| ≥ 80 | Adequate |
+| 60–79 | Needs Improvement |
+| < 60 | Inadequate → triggers SearchAgent + GapAnalysisAgent |
+
+## Area Classification
+
+Issues are automatically classified into product-specific areas using taxonomies defined in `config/area_definitions.py`. Teams has 17 areas defined. To add a new product, add an entry to `PRODUCT_AREA_DEFINITIONS`.
 
 ## Documentation
 
-| Document | What's Inside |
-|----------|---------------|
-| [docs/index.md](docs/index.md) | Overview, architecture diagram, quick start, glossary |
-| [docs/architecture.md](docs/architecture.md) | System design, module tree, error handling |
-| [docs/agents.md](docs/agents.md) | All 11 agents + TrendSynthesizer — role, inputs, outputs, fallbacks |
-| [docs/pipeline.md](docs/pipeline.md) | Step-by-step evaluation workflow with flowchart |
-| [docs/data-models.md](docs/data-models.md) | All dataclasses, type aliases, label maps |
-| [docs/scoring.md](docs/scoring.md) | Score formula, verdict logic, threshold tables |
-| [docs/configuration.md](docs/configuration.md) | Env vars, Settings, CLI arguments |
-| [docs/api-reference.md](docs/api-reference.md) | Programmatic API, CLI usage, CSV/JSON formats |
-| [docs/kt-framework.md](docs/kt-framework.md) | Kepner-Tregoe description quality analysis |
-| [docs/transfer-analysis.md](docs/transfer-analysis.md) | Transfer reason classification decision tree |
-| [docs/providers.md](docs/providers.md) | MWAI provider setup |
-| [docs/contributing.md](docs/contributing.md) | Adding agents, models; testing patterns |
+Full documentation lives in [`docs/`](docs/):
 
-## Troubleshooting
-
-### `UnicodeDecodeError` when reading CSV
-
-The system auto-detects UTF-8 (with BOM) and CP1252 encoding. If your CSV uses a different encoding, convert it to UTF-8 first:
-
-```bash
-# PowerShell
-Get-Content input.csv -Encoding Default | Set-Content -Encoding UTF8 input_utf8.csv
-```
-
-### `Failed to fetch article: ...`
-
-The article URL may be behind authentication or no longer available. The system handles fetch failures gracefully — that article will receive a score of 0 and the other agents will still run.
-
-### MWAI token expired
-
-Re-run with `--new-token` to get a fresh token:
-
-```bash
-python run_evaluation.py --new-token
-```
+- [`docs/index.md`](docs/index.md) — Overview and quick start
+- [`docs/architecture.md`](docs/architecture.md) — System design and agent interaction
+- [`docs/agents.md`](docs/agents.md) — Agent reference
+- [`docs/pipeline.md`](docs/pipeline.md) — Step-by-step workflow
+- [`docs/scoring.md`](docs/scoring.md) — Score formulas and verdict logic
+- [`docs/configuration.md`](docs/configuration.md) — Settings reference
+- [`docs/api-reference.md`](docs/api-reference.md) — ArticleEvaluator API and CSV formats
