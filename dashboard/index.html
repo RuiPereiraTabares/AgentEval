@@ -267,6 +267,12 @@ canvas { cursor: pointer; }
       <select class="table-filter" id="spm-f-area" onchange="renderSPM()">
         <option value="">All Area Paths</option>
       </select>
+      <select class="table-filter" id="spm-f-dq" onchange="renderSPM()">
+        <option value="">All DQ</option>
+        <option value="agent_ready">🟢 Agent Ready</option>
+        <option value="workable">🟡 Workable</option>
+        <option value="insufficient">🔴 Insufficient</option>
+      </select>
     </div>
     <div class="action-table-wrap">
       <table class="action-table">
@@ -1145,9 +1151,11 @@ function renderSPM() {
   // Apply local filters
   const fpVal = (document.getElementById('spm-f-priority') || {}).value || '';
   const faVal = (areaSelectEl || {}).value || '';
+  const fdqVal = (document.getElementById('spm-f-dq') || {}).value || '';
   const filtered = data.filter(r =>
     (!fpVal || r.synthesis_priority === fpVal) &&
-    (!faVal || r._areaPath === faVal)
+    (!faVal || r._areaPath === faVal) &&
+    (!fdqVal || r.dq_description_quality_verdict === fdqVal)
   );
 
   const redN = countVal(data, 'synthesis_priority', 'red');
