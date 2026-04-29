@@ -485,6 +485,11 @@ function verdictBadge(v) {
   const cls = { adequate: 'b-green', needs_supplementation: 'b-yellow', inadequate: 'b-red', no_citation_provided: 'b-purple' }[v] || 'b-gray';
   return `<span class="badge ${cls}">${(v || '–').replace(/_/g, ' ')}</span>`;
 }
+function citationVerdictBadge(v) {
+  const map = { good: ['b-green', '✓ Good Article'], partial: ['b-yellow', '~ Partial'], bad: ['b-red', '✗ Poor Article'] };
+  const [cls, lbl] = map[v] || ['b-gray', (v || '–').replace(/_/g, ' ')];
+  return `<span class="badge ${cls}">${lbl}</span>`;
+}
 function actionBadge(v) {
   const cls = { none: 'b-green', add_context: 'b-yellow', find_better_article: 'b-yellow', create_content: 'b-red' }[v] || 'b-gray';
   const lbl = { none: 'None', add_context: 'Action Required', find_better_article: 'Find Better Article', create_content: 'Create Content' }[v] || (v || '–').replace(/_/g, ' ');
@@ -499,25 +504,25 @@ function descQualityBadge(score) {
   if (s >= 40) return `<span class="badge b-yellow">OK</span>`;
   return `<span class="badge b-red">Low</span>`;
 }
-// Area path chip — Exchange cases show full path (no truncation), others truncated
+// Strip "Exchange Online/" prefix (and anything before it) to get the leaf segment
+function exoLeaf(ap) {
+  const marker = 'exchange online/';
+  const idx = ap.toLowerCase().indexOf(marker);
+  return idx >= 0 ? ap.slice(idx + marker.length) : ap;
+}
+// Area path chip — Exchange cases show leaf after "Exchange Online/", others truncated
 function evalAreaChip(row, maxLen) {
   const ap = row._areaPath;
   if (!ap) return '<span style="color:#94a3b8;font-size:10px">–</span>';
   const isExo = (row._product || '').toLowerCase().includes('exchange');
-  if (isExo) {
-    const display = ap.toLowerCase().startsWith('exchange') ? ap : 'Exchange Online/' + ap;
-    return `<span class="area-chip" style="max-width:none">${display}</span>`;
-  }
+  if (isExo) return `<span class="area-chip">${exoLeaf(ap)}</span>`;
   return `<span class="area-chip">${trunc(ap, maxLen)}</span>`;
 }
 function trendAreaChip(row, maxLen) {
   const ap = row._areaPath;
   if (!ap) return '';
   const isExo = (row.products_affected || '').toLowerCase().includes('exchange');
-  if (isExo) {
-    const display = ap.toLowerCase().startsWith('exchange') ? ap : 'Exchange Online/' + ap;
-    return `<span class="area-chip" style="max-width:none">${display}</span>`;
-  }
+  if (isExo) return `<span class="area-chip">${exoLeaf(ap)}</span>`;
   return `<span class="area-chip">${trunc(ap, maxLen)}</span>`;
 }
 function kpiCard(label, value, sub, barPct, barColor) {
@@ -934,12 +939,12 @@ function buildDetailPanel(row, mweaMode, isSpmTab) {
       </div>`;
     }
 
-    // Area Path (Exchange: full, no truncation)
+    // Area Path
     if (row._areaPath) {
-      const apDisplay = isExo && !row._areaPath.toLowerCase().startsWith('exchange') ? 'Exchange Online/' + row._areaPath : row._areaPath;
+      const apDisplay = isExo ? exoLeaf(row._areaPath) : row._areaPath;
       html += `<div class="detail-block">
         <div class="detail-label">📍 Area Path</div>
-        <div class="detail-text"><span class="area-chip"${isExo ? ' style="max-width:none"' : ''}>${apDisplay}</span></div>
+        <div class="detail-text"><span class="area-chip">${apDisplay}</span></div>
       </div>`;
     }
 
@@ -977,7 +982,7 @@ function buildDetailPanel(row, mweaMode, isSpmTab) {
           <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
             <a href="${c.url}" target="_blank" class="detail-link" style="flex:1;min-width:0">${trunc(c.url, 80)}</a>
             <span class="score-chip" style="background:${scoreColor(c.score)}">${c.score.toFixed(0)}</span>
-            ${c.verdict ? `<span class="badge b-gray">${c.verdict.replace(/_/g,' ')}</span>` : ''}
+            ${c.verdict ? citationVerdictBadge(c.verdict) : ''}
           </div>
           ${c.coverage ? `<div style="font-size:11px;color:#64748b;margin-top:3px">Coverage: ${c.coverage.toFixed(0)}%</div>` : ''}
         </div>`).join('')}
@@ -1001,12 +1006,12 @@ function buildDetailPanel(row, mweaMode, isSpmTab) {
       <div class="detail-text">${bulletList(pmActions)}</div>
     </div>`;
 
-    // Area Path (Exchange: full, no truncation)
+    // Area Path
     if (row._areaPath) {
-      const apDisplay = isExo && !row._areaPath.toLowerCase().startsWith('exchange') ? 'Exchange Online/' + row._areaPath : row._areaPath;
+      const apDisplay = isExo ? exoLeaf(row._areaPath) : row._areaPath;
       html += `<div class="detail-block">
         <div class="detail-label">📍 Area Path</div>
-        <div class="detail-text"><span class="area-chip"${isExo ? ' style="max-width:none"' : ''}>${apDisplay}</span></div>
+        <div class="detail-text"><span class="area-chip">${apDisplay}</span></div>
       </div>`;
     }
 
