@@ -698,13 +698,13 @@ class Orchestrator(BaseAgent):
                 "addresses_root_cause": val.get("addresses_root_cause"),
             }
 
-        # Description quality (KT)
+        # Description quality (support-readiness)
         if description_quality_result:
             dq = description_quality_result.to_dict() if hasattr(description_quality_result, "to_dict") else description_quality_result
             context["description_quality"] = {
                 "score": dq.get("description_quality_score", 0),
                 "verdict": dq.get("description_quality_verdict", ""),
-                "missing_elements": dq.get("missing_kt_elements", [])[:3],
+                "missing_elements": dq.get("missing_elements", [])[:3],
             }
 
         # Citation quality — truncate per-citation reasoning
@@ -779,7 +779,7 @@ class Orchestrator(BaseAgent):
             # Validate required keys and enum values
             valid_priorities = {"red", "yellow", "green"}
             valid_root_causes = {
-                "content_gap", "wrong_citation", "poor_description",
+                "content_gap", "wrong_citation",
                 "article_outdated", "citation_quality_low", "response_quality_low",
                 "adequate", "no_content",
             }
