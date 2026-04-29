@@ -483,6 +483,33 @@ function actionBadge(v) {
 function scoreChip(s) {
   const sc = num(s); return `<span class="score-chip" style="background:${scoreColor(sc)}">${sc.toFixed(0)}</span>`;
 }
+function descQualityBadge(score) {
+  const s = num(score);
+  if (s >= 70) return `<span class="badge b-green">High</span>`;
+  if (s >= 40) return `<span class="badge b-yellow">OK</span>`;
+  return `<span class="badge b-red">Low</span>`;
+}
+// Area path chip — Exchange cases show full path (no truncation), others truncated
+function evalAreaChip(row, maxLen) {
+  const ap = row._areaPath;
+  if (!ap) return '<span style="color:#94a3b8;font-size:10px">–</span>';
+  const isExo = (row._product || '').toLowerCase().includes('exchange');
+  if (isExo) {
+    const display = ap.toLowerCase().startsWith('exchange') ? ap : 'Exchange Online/' + ap;
+    return `<span class="area-chip" style="max-width:none">${display}</span>`;
+  }
+  return `<span class="area-chip">${trunc(ap, maxLen)}</span>`;
+}
+function trendAreaChip(row, maxLen) {
+  const ap = row._areaPath;
+  if (!ap) return '';
+  const isExo = (row.products_affected || '').toLowerCase().includes('exchange');
+  if (isExo) {
+    const display = ap.toLowerCase().startsWith('exchange') ? ap : 'Exchange Online/' + ap;
+    return `<span class="area-chip" style="max-width:none">${display}</span>`;
+  }
+  return `<span class="area-chip">${trunc(ap, maxLen)}</span>`;
+}
 function kpiCard(label, value, sub, barPct, barColor) {
   const bar = barPct != null ? `<div class="kpi-bar"><div class="kpi-bar-fill" style="width:${Math.min(barPct,100)}%;background:${barColor}"></div></div>` : '';
   return `<div class="kpi-card">
@@ -838,7 +865,7 @@ function showTab(tab) {
 // ══════════════════════════════════════════════════════════
 // CASE DETAIL PANEL
 // ══════════════════════════════════════════════════════════
-function buildDetailPanel(row, mweaMode) {
+function buildDetailPanel(row, mweaMode, isSpmTab) {
   const pmActions = row.synthesis_pm_actions || '';
   const priReason = row.synthesis_priority_reason || '';
   const finalRec = row.final_recommendation || '';
@@ -853,109 +880,213 @@ function buildDetailPanel(row, mweaMode) {
   const artIssues = row.article_validity_potential_issues || '';
   const url = row.primary_article_url || '';
   const warn = isTrue(row.kt_evaluation_reliability_warning);
+  const isExo = (row._product || '').toLowerCase().includes('exchange');
 
   let html = `<div class="detail-panel">`;
-  if (warn) html += `<div class="detail-block detail-full-row"><div class="detail-warning">⚠️ Low KT confidence — description quality below 40. Evaluation reliability may be reduced.</div></div>`;
 
-  // PM Actions — full width, most important
-  html += `<div class="detail-block detail-full-row">
-    <div class="detail-label">💡 PM Actions</div>
-    <div class="detail-text">${bulletList(pmActions)}</div>
-  </div>`;
+  if (isSpmTab) {
+    // ── SPM tab: show case context at top ──────────────────────
+    // Customer description quality warning (replaces KT warning)
+    if (warn) html += `<div class="detail-block detail-full-row"><div class="detail-warning">⚠️ Customer description scored low — evaluation reliability may be reduced.</div></div>`;
 
-  // Area Path
-  if (row._areaPath) {
-    html += `<div class="detail-block">
-      <div class="detail-label">📍 Area Path</div>
-      <div class="detail-text"><span class="area-chip">${row._areaPath}</span></div>
-    </div>`;
-  }
-
-  // Priority Reason
-  html += `<div class="detail-block">
-    <div class="detail-label">🎯 Priority Reason</div>
-    <div class="detail-text">${textOrEmpty(priReason)}</div>
-  </div>`;
-
-  // Final Recommendation
-  html += `<div class="detail-block">
-    <div class="detail-label">📋 Final Recommendation</div>
-    <div class="detail-text">${textOrEmpty(finalRec)}</div>
-  </div>`;
-
-  if (mweaMode) {
-    // Response Quality Analysis
-    if (rqAnalysis.trim()) {
-      html += `<div class="detail-block">
-        <div class="detail-label">📝 Response Quality Analysis</div>
-        <div class="detail-text">${rqAnalysis}</div>
-      </div>`;
-    }
-    // Groundedness Analysis
-    if (gndAnalysis.trim()) {
-      html += `<div class="detail-block">
-        <div class="detail-label">🔗 Groundedness Analysis</div>
-        <div class="detail-text">${gndAnalysis}</div>
-      </div>`;
-    }
-    // Issue Resolution Analysis
-    if (resAnalysis.trim()) {
-      html += `<div class="detail-block">
-        <div class="detail-label">✅ Issue Resolution Analysis</div>
-        <div class="detail-text">${resAnalysis}</div>
-      </div>`;
-    }
-    // Weaknesses
-    if (weaknesses.trim()) {
-      html += `<div class="detail-block">
-        <div class="detail-label">⚠️ Quality Weaknesses</div>
-        <div class="detail-text">${bulletList(weaknesses)}</div>
-      </div>`;
-    }
-    // Improvement Suggestions
-    if (improvements.trim()) {
-      html += `<div class="detail-block">
-        <div class="detail-label">🔧 Response Improvement Suggestions</div>
-        <div class="detail-text">${bulletList(improvements)}</div>
-      </div>`;
-    }
-  }
-
-  // KT Missing Elements
-  if (ktMissing.trim()) {
-    html += `<div class="detail-block">
-      <div class="detail-label">❓ KT Missing Elements</div>
-      <div class="detail-text">${bulletList(ktMissing)}</div>
-    </div>`;
-  }
-  if (ktSuggestions.trim()) {
-    html += `<div class="detail-block">
-      <div class="detail-label">📌 KT Improvement Suggestions</div>
-      <div class="detail-text">${bulletList(ktSuggestions)}</div>
-    </div>`;
-  }
-
-  // Article gaps
-  if (artMissing.trim()) {
-    html += `<div class="detail-block">
-      <div class="detail-label">📄 Article Missing Elements</div>
-      <div class="detail-text">${bulletList(artMissing)}</div>
-    </div>`;
-  }
-  if (artIssues.trim()) {
-    html += `<div class="detail-block">
-      <div class="detail-label">🚨 Article Potential Issues</div>
-      <div class="detail-text">${bulletList(artIssues)}</div>
-    </div>`;
-  }
-
-  // Article URL
-  if (url.trim()) {
+    // PM Actions — full width, most important
     html += `<div class="detail-block detail-full-row">
-      <div class="detail-label">🔗 Cited Article</div>
-      <a href="${url}" target="_blank" class="detail-link">${url}</a>
+      <div class="detail-label">💡 PM Actions</div>
+      <div class="detail-text">${bulletList(pmActions)}</div>
     </div>`;
-  }
+
+    // Case title
+    if (row.case_number) {
+      html += `<div class="detail-block">
+        <div class="detail-label">🏷️ Case Title</div>
+        <div class="detail-text" style="font-family:monospace">${row.case_number}</div>
+      </div>`;
+    }
+
+    // Customer description quality badge
+    html += `<div class="detail-block">
+      <div class="detail-label">📊 Customer Description</div>
+      <div class="detail-text">${descQualityBadge(row.kt_description_quality_score)} <span style="color:#64748b;font-size:11px">(score: ${num(row.kt_description_quality_score).toFixed(0)})</span></div>
+    </div>`;
+
+    // Problem description
+    if ((row.issue_description || '').trim()) {
+      html += `<div class="detail-block detail-full-row">
+        <div class="detail-label">📝 Problem Description</div>
+        <div class="detail-text" style="white-space:pre-wrap">${(row.issue_description || '').trim()}</div>
+      </div>`;
+    }
+
+    // MWEA Response
+    if ((row.ai_response || '').trim()) {
+      html += `<div class="detail-block detail-full-row">
+        <div class="detail-label">🤖 MWEA Response</div>
+        <div class="detail-text" style="white-space:pre-wrap">${(row.ai_response || '').trim()}</div>
+      </div>`;
+    }
+
+    // Area Path (Exchange: full, no truncation)
+    if (row._areaPath) {
+      const apDisplay = isExo && !row._areaPath.toLowerCase().startsWith('exchange') ? 'Exchange Online/' + row._areaPath : row._areaPath;
+      html += `<div class="detail-block">
+        <div class="detail-label">📍 Area Path</div>
+        <div class="detail-text"><span class="area-chip"${isExo ? ' style="max-width:none"' : ''}>${apDisplay}</span></div>
+      </div>`;
+    }
+
+    // Priority Reason
+    html += `<div class="detail-block">
+      <div class="detail-label">🎯 Priority Reason</div>
+      <div class="detail-text">${textOrEmpty(priReason)}</div>
+    </div>`;
+
+    // Final Recommendation
+    html += `<div class="detail-block">
+      <div class="detail-label">📋 Final Recommendation</div>
+      <div class="detail-text">${textOrEmpty(finalRec)}</div>
+    </div>`;
+
+    if (mweaMode) {
+      if (rqAnalysis.trim()) html += `<div class="detail-block"><div class="detail-label">📝 Response Quality Analysis</div><div class="detail-text">${rqAnalysis}</div></div>`;
+      if (gndAnalysis.trim()) html += `<div class="detail-block"><div class="detail-label">🔗 Groundedness Analysis</div><div class="detail-text">${gndAnalysis}</div></div>`;
+      if (resAnalysis.trim()) html += `<div class="detail-block"><div class="detail-label">✅ Issue Resolution Analysis</div><div class="detail-text">${resAnalysis}</div></div>`;
+      if (weaknesses.trim()) html += `<div class="detail-block"><div class="detail-label">⚠️ Quality Weaknesses</div><div class="detail-text">${bulletList(weaknesses)}</div></div>`;
+      if (improvements.trim()) html += `<div class="detail-block"><div class="detail-label">🔧 Response Improvement Suggestions</div><div class="detail-text">${bulletList(improvements)}</div></div>`;
+    }
+
+    // Citations with weights
+    const citations = [];
+    for (let i = 1; i <= 10; i++) {
+      const cUrl = (row[`citation_${i}_url`] || '').trim();
+      if (!cUrl) break;
+      citations.push({ url: cUrl, score: num(row[`citation_${i}_score`]), verdict: (row[`citation_${i}_verdict`] || '').trim(), coverage: num(row[`citation_${i}_coverage`]) });
+    }
+    if (citations.length) {
+      html += `<div class="detail-block detail-full-row">
+        <div class="detail-label">🔗 Citations (${citations.length})</div>
+        ${citations.map(c => `<div style="background:#f8fafc;border-radius:6px;padding:7px 10px;margin-top:5px;border-left:3px solid ${scoreColor(c.score)}">
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+            <a href="${c.url}" target="_blank" class="detail-link" style="flex:1;min-width:0">${trunc(c.url, 80)}</a>
+            <span class="score-chip" style="background:${scoreColor(c.score)}">${c.score.toFixed(0)}</span>
+            ${c.verdict ? `<span class="badge b-gray">${c.verdict.replace(/_/g,' ')}</span>` : ''}
+          </div>
+          ${c.coverage ? `<div style="font-size:11px;color:#64748b;margin-top:3px">Coverage: ${c.coverage.toFixed(0)}%</div>` : ''}
+        </div>`).join('')}
+      </div>`;
+    }
+
+    // Article gaps
+    if (artMissing.trim()) html += `<div class="detail-block"><div class="detail-label">📄 Article Missing Elements</div><div class="detail-text">${bulletList(artMissing)}</div></div>`;
+    if (artIssues.trim()) html += `<div class="detail-block"><div class="detail-label">🚨 Article Potential Issues</div><div class="detail-text">${bulletList(artIssues)}</div></div>`;
+
+    // Article URL
+    if (url.trim()) html += `<div class="detail-block detail-full-row"><div class="detail-label">🔗 Cited Article</div><a href="${url}" target="_blank" class="detail-link">${url}</a></div>`;
+
+  } else {
+    // ── Eval tab: original full display with KT items ──────────
+    if (warn) html += `<div class="detail-block detail-full-row"><div class="detail-warning">⚠️ Low KT confidence — description quality below 40. Evaluation reliability may be reduced.</div></div>`;
+
+    // PM Actions — full width, most important
+    html += `<div class="detail-block detail-full-row">
+      <div class="detail-label">💡 PM Actions</div>
+      <div class="detail-text">${bulletList(pmActions)}</div>
+    </div>`;
+
+    // Area Path (Exchange: full, no truncation)
+    if (row._areaPath) {
+      const apDisplay = isExo && !row._areaPath.toLowerCase().startsWith('exchange') ? 'Exchange Online/' + row._areaPath : row._areaPath;
+      html += `<div class="detail-block">
+        <div class="detail-label">📍 Area Path</div>
+        <div class="detail-text"><span class="area-chip"${isExo ? ' style="max-width:none"' : ''}>${apDisplay}</span></div>
+      </div>`;
+    }
+
+    // Priority Reason
+    html += `<div class="detail-block">
+      <div class="detail-label">🎯 Priority Reason</div>
+      <div class="detail-text">${textOrEmpty(priReason)}</div>
+    </div>`;
+
+    // Final Recommendation
+    html += `<div class="detail-block">
+      <div class="detail-label">📋 Final Recommendation</div>
+      <div class="detail-text">${textOrEmpty(finalRec)}</div>
+    </div>`;
+
+    if (mweaMode) {
+      // Response Quality Analysis
+      if (rqAnalysis.trim()) {
+        html += `<div class="detail-block">
+          <div class="detail-label">📝 Response Quality Analysis</div>
+          <div class="detail-text">${rqAnalysis}</div>
+        </div>`;
+      }
+      // Groundedness Analysis
+      if (gndAnalysis.trim()) {
+        html += `<div class="detail-block">
+          <div class="detail-label">🔗 Groundedness Analysis</div>
+          <div class="detail-text">${gndAnalysis}</div>
+        </div>`;
+      }
+      // Issue Resolution Analysis
+      if (resAnalysis.trim()) {
+        html += `<div class="detail-block">
+          <div class="detail-label">✅ Issue Resolution Analysis</div>
+          <div class="detail-text">${resAnalysis}</div>
+        </div>`;
+      }
+      // Weaknesses
+      if (weaknesses.trim()) {
+        html += `<div class="detail-block">
+          <div class="detail-label">⚠️ Quality Weaknesses</div>
+          <div class="detail-text">${bulletList(weaknesses)}</div>
+        </div>`;
+      }
+      // Improvement Suggestions
+      if (improvements.trim()) {
+        html += `<div class="detail-block">
+          <div class="detail-label">🔧 Response Improvement Suggestions</div>
+          <div class="detail-text">${bulletList(improvements)}</div>
+        </div>`;
+      }
+    }
+
+    // KT Missing Elements
+    if (ktMissing.trim()) {
+      html += `<div class="detail-block">
+        <div class="detail-label">❓ KT Missing Elements</div>
+        <div class="detail-text">${bulletList(ktMissing)}</div>
+      </div>`;
+    }
+    if (ktSuggestions.trim()) {
+      html += `<div class="detail-block">
+        <div class="detail-label">📌 KT Improvement Suggestions</div>
+        <div class="detail-text">${bulletList(ktSuggestions)}</div>
+      </div>`;
+    }
+
+    // Article gaps
+    if (artMissing.trim()) {
+      html += `<div class="detail-block">
+        <div class="detail-label">📄 Article Missing Elements</div>
+        <div class="detail-text">${bulletList(artMissing)}</div>
+      </div>`;
+    }
+    if (artIssues.trim()) {
+      html += `<div class="detail-block">
+        <div class="detail-label">🚨 Article Potential Issues</div>
+        <div class="detail-text">${bulletList(artIssues)}</div>
+      </div>`;
+    }
+
+    // Article URL
+    if (url.trim()) {
+      html += `<div class="detail-block detail-full-row">
+        <div class="detail-label">🔗 Cited Article</div>
+        <a href="${url}" target="_blank" class="detail-link">${url}</a>
+      </div>`;
+    }
+  } // end else (eval tab)
 
   html += `</div>`;
   return html;
@@ -980,8 +1111,9 @@ function toggleDetail(btn, caseIdx, tableBodyId, mweaMode) {
     const detailTr = document.createElement('tr');
     detailTr.className = 'detail-row';
     detailTr.dataset.idx = caseIdx;
-    const cols = tableBodyId === 'spm-table-body' ? 8 : 9;
-    detailTr.innerHTML = `<td colspan="${cols}">${buildDetailPanel(row, mweaMode)}</td>`;
+    const isSpmTab = tableBodyId === 'spm-table-body';
+    const cols = isSpmTab ? 8 : 9;
+    detailTr.innerHTML = `<td colspan="${cols}">${buildDetailPanel(row, mweaMode, isSpmTab)}</td>`;
     dataRow.after(detailTr);
     dataRow.classList.add('expanded');
     btn.classList.add('open');
@@ -1046,7 +1178,7 @@ function renderSPM() {
     const idx = data.indexOf(row);
     const pm = row.synthesis_pm_actions || '';
     const preview = pm.trim() ? trunc(pm.replace(/;/g, ' ·'), 80) : null;
-    const areaHtml = row._areaPath ? `<span class="area-chip">${trunc(row._areaPath, 24)}</span>` : '<span style="color:#94a3b8;font-size:10px">–</span>';
+    const areaHtml = evalAreaChip(row, 24);
     return `<tr class="data-row" data-idx="${idx}">
       <td><button class="expand-btn" onclick="toggleDetail(this,${idx},'spm-table-body',${mwea})" title="Show detail">▶</button></td>
       <td>${priBadge(row.synthesis_priority)}</td>
@@ -1293,7 +1425,7 @@ function renderTablePage() {
   const rows = sorted.slice(start, start + pageSize);
   document.getElementById('case-tbody').innerHTML = rows.map(row => {
     const idx = state.evalData.indexOf(row);
-    const areaHtml = row._areaPath ? `<span class="area-chip">${trunc(row._areaPath, 20)}</span>` : '<span style="color:#94a3b8;font-size:10px">–</span>';
+    const areaHtml = evalAreaChip(row, 20);
     return `<tr class="data-row" data-idx="${idx}">
       <td><button class="expand-btn" onclick="toggleDetail(this,${idx},'case-tbody',${mwea})" title="Show detail">▶</button></td>
       <td style="font-family:monospace;font-size:11px">${row.case_number||'–'}</td>
@@ -1417,7 +1549,7 @@ function renderTrends() {
     const toggleLabel = `${caseNums.length || r.case_count} case${(caseNums.length||r.case_count)!==1?'s':''} · article details`;
 
     return `<div class="cluster-card ${r.priority||'gray'}" data-tidx="${idx}">
-      <div class="cluster-meta">${priBadge(r.priority)}<span class="badge b-blue">${r.case_count} cases</span>${r.root_cause_pattern ? `<span class="badge b-gray">${r.root_cause_pattern}</span>` : ''}${areaPath ? `<span class="area-chip">${trunc(areaPath, 24)}</span>` : ''}</div>
+      <div class="cluster-meta">${priBadge(r.priority)}<span class="badge b-blue">${r.case_count} cases</span>${r.root_cause_pattern ? `<span class="badge b-gray">${r.root_cause_pattern}</span>` : ''}${trendAreaChip(r, 24)}</div>
       <div class="cluster-name">${r.cluster_name||'Unnamed Cluster'}</div>
       ${products.length ? `<div style="margin-bottom:6px"><div class="cluster-fl">Products</div><div class="cluster-fv">${products.slice(0,5).join(', ')}${products.length>5?` <span style="color:#94a3b8">+${products.length-5} more</span>`:''}</div></div>` : ''}
       ${r.estimated_impact ? `<div style="margin-bottom:6px"><div class="cluster-fl">Estimated Impact</div><div class="cluster-fv">${r.estimated_impact}</div></div>` : ''}
