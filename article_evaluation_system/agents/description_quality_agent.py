@@ -1,6 +1,6 @@
 """
 Description Quality Agent - Evaluates customer issue descriptions using the
-Kepner-Tregoe (KT) Problem Statement framework.
+support-readiness framework (Product Clarity / Symptom Specificity / Operational Context).
 """
 
 import json
@@ -11,7 +11,7 @@ from . import BaseAgent
 from ..models.issue import Issue
 from ..models.evaluation import DescriptionQualityResult
 from ..utils.prompts import AgentPrompts
-from ..config.settings import KT_DIMENSION_WEIGHTS
+from ..config.settings import SUPPORT_READINESS_WEIGHTS
 
 
 logger = logging.getLogger(__name__)
@@ -20,7 +20,8 @@ logger = logging.getLogger(__name__)
 class DescriptionQualityAgent(BaseAgent):
     """
     Evaluates the quality of a customer's issue description using the
-    Kepner-Tregoe Problem Statement framework (Identity, Location, Timing, Magnitude).
+    support-readiness framework (3 dimensions: Product Clarity, Symptom
+    Specificity, Operational Context).
     """
 
     def __init__(self, client, model: str = "gpt-4o", provider: str = "mwai"):
@@ -35,7 +36,7 @@ class DescriptionQualityAgent(BaseAgent):
             issue: Parsed Issue object (uses raw_description primarily)
 
         Returns:
-            DescriptionQualityResult with per-dimension KT scores
+            DescriptionQualityResult with per-dimension support-readiness scores
         """
         description = (issue.raw_description or "").strip()
 
@@ -43,22 +44,19 @@ class DescriptionQualityAgent(BaseAgent):
         if not description:
             logger.warning("[DescriptionQualityAgent] Empty description — returning all-zero scores")
             return DescriptionQualityResult(
-                identity_score=0,
-                location_score=0,
-                timing_score=0,
-                magnitude_score=0,
-                identity_analysis="No description provided",
-                location_analysis="No description provided",
-                timing_analysis="No description provided",
-                magnitude_analysis="No description provided",
+                product_clarity_score=0,
+                symptom_specificity_score=0,
+                operational_context_score=0,
+                product_clarity_analysis="No description provided",
+                symptom_specificity_analysis="No description provided",
+                operational_context_analysis="No description provided",
                 description_quality_score=0,
-                description_quality_verdict="poorly_defined",
-                missing_kt_elements=[
+                description_quality_verdict="insufficient",
+                missing_elements=[
                     "Entire problem description is missing",
-                    "No identity (WHAT) information",
-                    "No location (WHERE) information",
-                    "No timing (WHEN) information",
-                    "No magnitude (EXTENT) information",
+                    "No product or service identified",
+                    "No symptom or error described",
+                    "No operational context provided",
                 ],
                 improvement_suggestions=[
                     "Provide a description of the customer's issue",
@@ -82,20 +80,19 @@ class DescriptionQualityAgent(BaseAgent):
 
         user_message = (
             f"Evaluate the quality of this customer issue description using the "
-            f"Kepner-Tregoe Problem Statement framework.\n\n"
+            f"support-readiness framework.\n\n"
             f"=== CUSTOMER ISSUE DESCRIPTION ===\n{description}\n\n"
             f"=== PARSED METADATA (for additional context) ===\n{context_str}\n\n"
-            f"Evaluate each KT dimension and respond with JSON only."
+            f"Evaluate each dimension and respond with JSON only."
         )
 
         try:
             response = self._call_llm(self.system_prompt, user_message)
             parsed_data = self._parse_json_response(response)
             result = DescriptionQualityResult.from_dict(parsed_data)
-            # If all dimension scores are 0 the LLM returned an unexpected format
-            # (e.g. wrapped in KT_Dimensions_Evaluation) — fall back to heuristic
-            if not any([result.identity_score, result.location_score,
-                        result.timing_score, result.magnitude_score]):
+            # If all dimension scores are 0 the LLM returned an unexpected format — fall back to heuristic
+            if not any([result.product_clarity_score, result.symptom_specificity_score,
+                        result.operational_context_score]):
                 logger.warning(
                     "[DescriptionQualityAgent] All dimension scores are 0 — "
                     "likely format mismatch, using heuristic fallback"
@@ -104,8 +101,9 @@ class DescriptionQualityAgent(BaseAgent):
             logger.info(
                 f"[DescriptionQualityAgent] Result: overall={result.description_quality_score}, "
                 f"verdict={result.description_quality_verdict}, "
-                f"identity={result.identity_score}, location={result.location_score}, "
-                f"timing={result.timing_score}, magnitude={result.magnitude_score}"
+                f"product_clarity={result.product_clarity_score}, "
+                f"symptom_specificity={result.symptom_specificity_score}, "
+                f"operational_context={result.operational_context_score}"
             )
             return result
         except Exception as e:
@@ -117,139 +115,140 @@ class DescriptionQualityAgent(BaseAgent):
     def _heuristic_evaluation(self, description: str, issue: Issue) -> DescriptionQualityResult:
         """
         Fallback heuristic scoring when the LLM call fails.
-        Scores each KT dimension via keyword detection.
+        Scores each support-readiness dimension via keyword detection.
         """
         desc_lower = description.lower()
 
-        # --- Identity (WHAT) ---
-        identity_score = 10  # base: some text exists
-        identity_clues = []
+        # --- Product/Service Clarity ---
+        product_clarity_score = 10  # base: some text exists
+        product_clues = []
+        # Known Microsoft products/services
+        ms_products = [
+            "teams", "exchange", "outlook", "sharepoint", "onedrive", "azure",
+            "entra", "intune", "defender", "office", "microsoft 365", "m365",
+            "windows", "sql", "power bi", "dynamics", "viva", "copilot",
+            "power apps", "power automate", "power platform", "fabric",
+        ]
+        found_products = [p for p in ms_products if p in desc_lower]
         if issue.product and issue.product != "Unknown":
-            identity_score += 25
-            identity_clues.append(f"Product: {issue.product}")
+            product_clarity_score += 40
+            product_clues.append(f"Product identified: {issue.product}")
+        elif found_products:
+            product_clarity_score += 30
+            product_clues.append(f"Product keywords: {', '.join(found_products[:3])}")
+        # Cloud/on-prem identifiers add clarity
+        if any(kw in desc_lower for kw in ["online", "cloud", "on-prem", "on premise", "hybrid", "tenant"]):
+            product_clarity_score += 10
+            product_clues.append("Deployment type mentioned")
+        product_clarity_score = min(product_clarity_score, 100)
+
+        # --- Symptom/Error Specificity ---
+        symptom_specificity_score = 5  # base
+        symptom_clues = []
         if issue.error_codes:
-            identity_score += 25
-            identity_clues.append(f"Error codes: {', '.join(issue.error_codes)}")
+            symptom_specificity_score += 40
+            symptom_clues.append(f"Error codes: {', '.join(issue.error_codes)}")
+        # Error code patterns: 0x..., HTTP codes, NNNN, letters+digits
+        elif re.search(r'\b(0x[0-9a-fA-F]+|[A-Z]{2,}\d{3,}|\d{3,})\b', description):
+            symptom_specificity_score += 30
+            symptom_clues.append("Error code pattern found")
         if issue.symptoms:
-            identity_score += 20
-            identity_clues.append("Symptoms described")
-        if any(kw in desc_lower for kw in ["error", "fail", "crash", "cannot", "unable", "broken", "issue"]):
-            identity_score += 10
-            identity_clues.append("Problem keywords present")
-        identity_score = min(identity_score, 100)
+            symptom_specificity_score += 25
+            symptom_clues.append("Symptoms described")
+        # Specific failure verbs
+        specific_verbs = ["fails", "failed", "failing", "crash", "blocked", "cannot", "unable to",
+                          "error", "exception", "timeout", "freeze", "hang", "not loading",
+                          "not syncing", "not sending", "not receiving", "not working"]
+        found_verbs = sum(1 for v in specific_verbs if v in desc_lower)
+        if found_verbs:
+            symptom_specificity_score += min(found_verbs * 5, 20)
+            symptom_clues.append(f"{found_verbs} specific failure verb(s) found")
+        symptom_specificity_score = min(symptom_specificity_score, 100)
 
-        # --- Location (WHERE) ---
-        location_score = 0
-        location_clues = []
-        location_keywords = [
-            "server", "region", "tenant", "site", "url", "http", "page",
-            "module", "portal", "admin center", "console", "client",
-            "desktop", "mobile", "browser", "web", "on-prem", "cloud",
-            "azure", "environment",
-        ]
-        found_location = sum(1 for kw in location_keywords if kw in desc_lower)
-        if found_location:
-            location_score = min(20 + found_location * 15, 85)
-            location_clues.append(f"{found_location} location keyword(s) found")
-        if issue.environment:
-            location_score = min(location_score + 20, 90)
-            location_clues.append("Environment metadata present")
-
-        # --- Timing (WHEN) ---
-        timing_score = 0
-        timing_clues = []
-        timing_keywords = [
-            "since", "started", "began", "after", "yesterday", "today",
-            "last week", "last month", "monday", "tuesday", "wednesday",
-            "thursday", "friday", "saturday", "sunday", "january", "february",
-            "march", "april", "may", "june", "july", "august", "september",
-            "october", "november", "december", "intermittent", "continuous",
-            "always", "sometimes", "randomly", "every time", "once",
-            "recurring", "pattern",
-        ]
+        # --- Operational Context ---
+        operational_context_score = 0
+        context_clues = []
+        # Scope / user count
+        scope_keywords = ["all users", "some users", "many", "several", "everyone",
+                          "multiple", "widespread", "isolated", "affecting", "impacted",
+                          "percent", "%", "hundreds", "thousands"]
+        found_scope = sum(1 for kw in scope_keywords if kw in desc_lower)
+        if found_scope:
+            operational_context_score += min(found_scope * 10, 30)
+            context_clues.append(f"{found_scope} scope keyword(s) found")
+        if re.search(r'\b\d{2,}\s*(user|people|employee|account|machine|device)', desc_lower):
+            operational_context_score += 20
+            context_clues.append("User count pattern found")
+        # Timing context
+        timing_keywords = ["since", "started", "began", "after", "yesterday", "today",
+                           "last week", "last month", "monday", "tuesday", "wednesday",
+                           "thursday", "friday", "intermittent", "continuous", "always",
+                           "sometimes", "randomly", "recurring"]
         found_timing = sum(1 for kw in timing_keywords if kw in desc_lower)
         if found_timing:
-            timing_score = min(20 + found_timing * 15, 85)
-            timing_clues.append(f"{found_timing} timing keyword(s) found")
-        # Check for date patterns (YYYY-MM-DD, MM/DD/YYYY, etc.)
+            operational_context_score += min(found_timing * 10, 25)
+            context_clues.append(f"{found_timing} timing keyword(s) found")
         if re.search(r'\d{4}[-/]\d{1,2}[-/]\d{1,2}|\d{1,2}[-/]\d{1,2}[-/]\d{2,4}', description):
-            timing_score = min(timing_score + 25, 90)
-            timing_clues.append("Date pattern found")
-
-        # --- Magnitude (EXTENT) ---
-        magnitude_score = 0
-        magnitude_clues = []
-        magnitude_keywords = [
-            "all users", "some users", "many", "several", "few",
-            "everyone", "nobody", "multiple", "widespread", "isolated",
-            "growing", "increasing", "declining", "stable", "affecting",
-            "impacted", "percent", "%", "hundreds", "thousands",
-        ]
-        found_magnitude = sum(1 for kw in magnitude_keywords if kw in desc_lower)
-        if found_magnitude:
-            magnitude_score = min(20 + found_magnitude * 15, 85)
-            magnitude_clues.append(f"{found_magnitude} magnitude keyword(s) found")
-        # Check for numbers that suggest user counts
-        if re.search(r'\b\d{2,}\s*(user|people|employee|account|machine|device)', desc_lower):
-            magnitude_score = min(magnitude_score + 25, 90)
-            magnitude_clues.append("User count pattern found")
+            operational_context_score += 15
+            context_clues.append("Date pattern found")
+        # Environment context
+        if issue.environment:
+            operational_context_score += 15
+            context_clues.append("Environment metadata present")
+        elif any(kw in desc_lower for kw in ["region", "server", "tenant", "environment", "browser",
+                                              "desktop", "mobile", "on-prem", "cloud"]):
+            operational_context_score += 10
+            context_clues.append("Environment keywords found")
+        operational_context_score = min(operational_context_score, 100)
 
         # Overall weighted score
         overall = round(
-            identity_score * KT_DIMENSION_WEIGHTS["identity"]
-            + location_score * KT_DIMENSION_WEIGHTS["location"]
-            + timing_score * KT_DIMENSION_WEIGHTS["timing"]
-            + magnitude_score * KT_DIMENSION_WEIGHTS["magnitude"]
+            product_clarity_score * SUPPORT_READINESS_WEIGHTS["product_clarity"]
+            + symptom_specificity_score * SUPPORT_READINESS_WEIGHTS["symptom_specificity"]
+            + operational_context_score * SUPPORT_READINESS_WEIGHTS["operational_context"]
         )
 
         # Derive verdict
-        if overall >= 80:
-            verdict = "well_defined"
-        elif overall >= 60:
-            verdict = "mostly_defined"
+        if overall >= 70:
+            verdict = "agent_ready"
         elif overall >= 40:
-            verdict = "partially_defined"
+            verdict = "workable"
         else:
-            verdict = "poorly_defined"
+            verdict = "insufficient"
 
         # Collect missing elements
         missing = []
-        if identity_score < 40:
-            missing.append("Specific product/feature identification (WHAT)")
-        if location_score < 40:
-            missing.append("Environment or location details (WHERE)")
-        if timing_score < 40:
-            missing.append("Timing information — when it started or pattern (WHEN)")
-        if magnitude_score < 40:
-            missing.append("Scope/magnitude — how many affected (EXTENT)")
+        if product_clarity_score < 40:
+            missing.append("Specific Microsoft product or service name")
+        if symptom_specificity_score < 40:
+            missing.append("Specific error message, code, or failure description")
+        if operational_context_score < 40:
+            missing.append("Operational context — scope, environment, or timing")
 
         suggestions = []
-        if identity_score < 60:
-            suggestions.append("Include the specific product, feature, and any error codes")
-        if location_score < 60:
-            suggestions.append("Specify the environment (cloud/on-prem, region, URL)")
-        if timing_score < 60:
-            suggestions.append("Note when the issue started and whether it is continuous or intermittent")
-        if magnitude_score < 60:
-            suggestions.append("Quantify how many users/systems are affected and the trend")
+        if product_clarity_score < 60:
+            suggestions.append("Name the specific Microsoft product or service affected")
+        if symptom_specificity_score < 60:
+            suggestions.append("Include error codes, messages, or describe exactly what fails")
+        if operational_context_score < 60:
+            suggestions.append("Add context: how many users affected, environment, and when it started")
 
         logger.info(
             f"[DescriptionQualityAgent] Heuristic result: overall={overall}, "
-            f"verdict={verdict}, identity={identity_score}, location={location_score}, "
-            f"timing={timing_score}, magnitude={magnitude_score}"
+            f"verdict={verdict}, product_clarity={product_clarity_score}, "
+            f"symptom_specificity={symptom_specificity_score}, "
+            f"operational_context={operational_context_score}"
         )
 
         return DescriptionQualityResult(
-            identity_score=identity_score,
-            location_score=location_score,
-            timing_score=timing_score,
-            magnitude_score=magnitude_score,
-            identity_analysis="; ".join(identity_clues) if identity_clues else "No identity clues found (heuristic)",
-            location_analysis="; ".join(location_clues) if location_clues else "No location clues found (heuristic)",
-            timing_analysis="; ".join(timing_clues) if timing_clues else "No timing clues found (heuristic)",
-            magnitude_analysis="; ".join(magnitude_clues) if magnitude_clues else "No magnitude clues found (heuristic)",
+            product_clarity_score=product_clarity_score,
+            symptom_specificity_score=symptom_specificity_score,
+            operational_context_score=operational_context_score,
+            product_clarity_analysis="; ".join(product_clues) if product_clues else "No product clarity clues found (heuristic)",
+            symptom_specificity_analysis="; ".join(symptom_clues) if symptom_clues else "No symptom specificity clues found (heuristic)",
+            operational_context_analysis="; ".join(context_clues) if context_clues else "No operational context clues found (heuristic)",
             description_quality_score=overall,
             description_quality_verdict=verdict,
-            missing_kt_elements=missing,
+            missing_elements=missing,
             improvement_suggestions=suggestions,
         )

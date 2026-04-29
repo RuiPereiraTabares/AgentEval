@@ -26,19 +26,17 @@ THRESHOLDS = {
     },
     "overall_adequate": 70,  # Minimum score to consider article adequate
     "description_quality": {
-        "well_defined": 80,
-        "mostly_defined": 60,
-        "partially_defined": 40
+        "agent_ready": 70,
+        "workable": 40,
     },
     "description_quality_reliability": 40  # Below this, evaluation is low-confidence
 }
 
-# Kepner-Tregoe dimension weights for description quality scoring
-KT_DIMENSION_WEIGHTS = {
-    "identity": 0.35,   # WHAT — most critical for article matching
-    "location": 0.25,   # WHERE
-    "timing": 0.20,     # WHEN
-    "magnitude": 0.20   # EXTENT
+# Support-readiness dimension weights for description quality scoring
+SUPPORT_READINESS_WEIGHTS = {
+    "product_clarity": 0.40,       # Is the product/service identifiable?
+    "symptom_specificity": 0.40,   # Is the symptom/error actionable?
+    "operational_context": 0.20,   # Is there enough scope/env context?
 }
 
 # Weights for AI response quality composite score

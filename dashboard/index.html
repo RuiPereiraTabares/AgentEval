@@ -326,7 +326,7 @@ canvas { cursor: pointer; }
     <div class="kpi-grid g4" id="kt-kpis"></div>
     <div style="margin-top:14px" class="chart-grid cg2">
       <div class="chart-card"><div class="chart-title">KT Dimension Averages</div><div id="kt-bars" style="padding:6px 0"></div></div>
-      <div class="chart-card"><div class="chart-title">KT Quality Verdicts</div><div class="chart-wrap h180"><canvas id="chart-kt"></canvas></div></div>
+      <div class="chart-card"><div class="chart-title">Description Quality Verdicts</div><div class="chart-wrap h180"><canvas id="chart-kt"></canvas></div></div>
     </div>
   </div>
 
@@ -374,6 +374,12 @@ canvas { cursor: pointer; }
         <option value="none">None</option><option value="add_context">Add Context</option>
         <option value="find_better_article">Find Better</option><option value="create_content">Create Content</option>
       </select>
+      <select class="table-filter" id="f-dq" onchange="filterTable()">
+        <option value="">All DQ</option>
+        <option value="agent_ready">🟢 Agent Ready</option>
+        <option value="workable">🟡 Workable</option>
+        <option value="insufficient">🔴 Insufficient</option>
+      </select>
       <select class="table-filter" id="f-area" onchange="filterTable()">
         <option value="">All Area Paths</option>
       </select>
@@ -389,7 +395,7 @@ canvas { cursor: pointer; }
           <th onclick="sortTable('primary_article_verdict')">Verdict ↕</th>
           <th onclick="sortTable('primary_article_action_required')">Action ↕</th>
           <th onclick="sortTable('synthesis_priority')">Priority ↕</th>
-          <th onclick="sortTable('kt_description_quality_score')">KT ↕</th>
+          <th onclick="sortTable('dq_description_quality_score')">DQ ↕</th>
         </tr></thead>
         <tbody id="case-tbody"></tbody>
       </table>
@@ -548,7 +554,7 @@ const MATCHERS = {
   relVerdict:   (r, v) => r.article_relevance_verdict === v,
   compVerdict:  (r, v) => r.article_completeness_verdict === v,
   valVerdict:   (r, v) => r.article_validity_verdict === v,
-  ktVerdict:    (r, v) => r.kt_description_quality_verdict === v,
+  dqVerdict:    (r, v) => r.dq_description_quality_verdict === v,
   groundVerdict:(r, v) => r.citation_grounding_verdict === v,
   rqVerdict:    (r, v) => r.rq_ai_response_quality_verdict === v,
   rootCause:    (r, v) => (r.synthesis_root_cause_category || 'Unknown') === v,
@@ -558,7 +564,7 @@ const MATCHERS = {
 const DIM_LABELS = {
   priority:'Priority', verdict:'Verdict', action:'Action Required',
   scoreBand:'Score Band', relVerdict:'Relevance', compVerdict:'Completeness',
-  valVerdict:'Validity', ktVerdict:'KT Quality', groundVerdict:'Grounding',
+  valVerdict:'Validity', dqVerdict:'DQ Verdict', groundVerdict:'Grounding',
   rqVerdict:'Response Quality', rootCause:'Root Cause', product:'Product',
   areaPath:'Area Path',
 };
@@ -874,12 +880,12 @@ function buildDetailPanel(row, mweaMode, isSpmTab) {
   const resAnalysis = row.rq_issue_resolution_analysis || '';
   const weaknesses = row.rq_quality_weaknesses || '';
   const improvements = row.rq_improvement_suggestions || '';
-  const ktMissing = row.kt_missing_elements || '';
-  const ktSuggestions = row.kt_improvement_suggestions || '';
+  const dqMissing = row.dq_missing_elements || '';
+  const dqSuggestions = row.dq_improvement_suggestions || '';
   const artMissing = row.article_completeness_missing_elements || '';
   const artIssues = row.article_validity_potential_issues || '';
   const url = row.primary_article_url || '';
-  const warn = isTrue(row.kt_evaluation_reliability_warning);
+  const warn = isTrue(row.dq_evaluation_reliability_warning);
   const isExo = (row._product || '').toLowerCase().includes('exchange');
 
   let html = `<div class="detail-panel">`;
@@ -906,7 +912,7 @@ function buildDetailPanel(row, mweaMode, isSpmTab) {
     // Customer description quality badge
     html += `<div class="detail-block">
       <div class="detail-label">📊 Customer Description</div>
-      <div class="detail-text">${descQualityBadge(row.kt_description_quality_score)} <span style="color:#64748b;font-size:11px">(score: ${num(row.kt_description_quality_score).toFixed(0)})</span></div>
+      <div class="detail-text">${descQualityBadge(row.dq_description_quality_score)} <span style="color:#64748b;font-size:11px">(score: ${num(row.dq_description_quality_score).toFixed(0)})</span></div>
     </div>`;
 
     // Problem description
@@ -1051,17 +1057,17 @@ function buildDetailPanel(row, mweaMode, isSpmTab) {
       }
     }
 
-    // KT Missing Elements
-    if (ktMissing.trim()) {
+    // DQ Missing Elements
+    if (dqMissing.trim()) {
       html += `<div class="detail-block">
-        <div class="detail-label">❓ KT Missing Elements</div>
-        <div class="detail-text">${bulletList(ktMissing)}</div>
+        <div class="detail-label">❓ Description Missing Elements</div>
+        <div class="detail-text">${bulletList(dqMissing)}</div>
       </div>`;
     }
-    if (ktSuggestions.trim()) {
+    if (dqSuggestions.trim()) {
       html += `<div class="detail-block">
-        <div class="detail-label">📌 KT Improvement Suggestions</div>
-        <div class="detail-text">${bulletList(ktSuggestions)}</div>
+        <div class="detail-label">📌 Description Improvement Suggestions</div>
+        <div class="detail-text">${bulletList(dqSuggestions)}</div>
       </div>`;
     }
 
@@ -1231,7 +1237,7 @@ function updateEvalView() {
   ].join('');
   document.getElementById('exec-kpis2').innerHTML = [
     `<div class="kpi-card"><div class="kpi-label">🔴 Red Priority</div><div class="kpi-value c-red">${redN}</div><div class="kpi-sub">${pct(redN,n)} — immediate action</div></div>`,
-    kpiCard('Low KT Confidence', data.filter(r => isTrue(r.kt_evaluation_reliability_warning)).length, 'reliability warnings', null, null),
+    kpiCard('Low DQ Confidence', data.filter(r => isTrue(r.dq_evaluation_reliability_warning)).length, 'reliability warnings', null, null),
     kpiCard('Avg Processing', n ? (avg(data.map(r => num(r.processing_time_ms)))/1000).toFixed(1) + 's' : '–', 'per case', null, null),
   ].join('');
 
@@ -1306,26 +1312,25 @@ function updateEvalView() {
     return `<div class="checklist-item"><span>${p>=70?'✅':p>=40?'⚠️':'❌'}</span><span class="checklist-label">${c.label}</span><span class="checklist-pct" style="color:${color}">${p}%</span></div>`;
   }).join('') + '</div>';
 
-  // KT KPIs
-  const avgKT = n ? avg(data.map(r => num(r.kt_description_quality_score))) : 0;
+  // Description Quality KPIs
+  const avgDQ = n ? avg(data.map(r => num(r.dq_description_quality_score))) : 0;
   document.getElementById('kt-kpis').innerHTML = [
-    kpiCard('Avg KT Quality', avgKT.toFixed(1), 'Identity 35% + Location 25% + Timing 20% + Magnitude 20%', avgKT, scoreColor(avgKT)),
-    kpiCard('Well Defined', pct(countVal(data,'kt_description_quality_verdict','well_defined'), n), 'well-described cases', null, null),
-    kpiCard('Poorly Defined', pct(countVal(data,'kt_description_quality_verdict','poorly_defined'), n), 'under-described cases', null, '#dc2626'),
-    kpiCard('KT Warnings', data.filter(r => isTrue(r.kt_evaluation_reliability_warning)).length, 'KT score < 40', null, null),
+    kpiCard('Avg DQ Score', avgDQ.toFixed(1), 'Product Clarity 40% + Symptom Specificity 40% + Context 20%', avgDQ, scoreColor(avgDQ)),
+    kpiCard('Agent Ready', pct(countVal(data,'dq_description_quality_verdict','agent_ready'), n), 'clear descriptions', null, '#16a34a'),
+    kpiCard('Insufficient', pct(countVal(data,'dq_description_quality_verdict','insufficient'), n), 'under-described cases', null, '#dc2626'),
+    kpiCard('DQ Warnings', data.filter(r => isTrue(r.dq_evaluation_reliability_warning)).length, 'DQ score < 40', null, null),
   ].join('');
   document.getElementById('kt-bars').innerHTML = [
-    { label: 'Identity (WHAT)', val: n ? avg(data.map(r=>num(r.kt_identity_score))) : 0 },
-    { label: 'Location (WHERE)', val: n ? avg(data.map(r=>num(r.kt_location_score))) : 0 },
-    { label: 'Timing (WHEN)', val: n ? avg(data.map(r=>num(r.kt_timing_score))) : 0 },
-    { label: 'Magnitude (EXTENT)', val: n ? avg(data.map(r=>num(r.kt_magnitude_score))) : 0 },
+    { label: 'Product Clarity', val: n ? avg(data.map(r=>num(r.product_clarity_score))) : 0 },
+    { label: 'Symptom Specificity', val: n ? avg(data.map(r=>num(r.symptom_specificity_score))) : 0 },
+    { label: 'Operational Context', val: n ? avg(data.map(r=>num(r.operational_context_score))) : 0 },
   ].map(d => scoreBandBar(d.label, d.val)).join('');
 
   makeDonut('chart-kt',
-    ['Well Defined','Mostly Defined','Partially Defined','Poorly Defined'],
-    ['well_defined','mostly_defined','partially_defined','poorly_defined'],
-    r => r.kt_description_quality_verdict,
-    ['#16a34a','#65a30d','#d97706','#dc2626'], 'ktVerdict');
+    ['Agent Ready','Workable','Insufficient'],
+    ['agent_ready','workable','insufficient'],
+    r => r.dq_description_quality_verdict,
+    ['#16a34a','#d97706','#dc2626'], 'dqVerdict');
 
   // Citation & Response (mweaeval only)
   if (mwea) {
@@ -1391,12 +1396,14 @@ function filterTable() {
   const fp = document.getElementById('f-priority').value;
   const fv = document.getElementById('f-verdict').value;
   const fa = document.getElementById('f-action').value;
+  const fdq = document.getElementById('f-dq').value;
   const farea = (document.getElementById('f-area') || {}).value || '';
   // Start from chart-filtered data, then apply text/dropdown filters on top
   tbl.filtered = getFilteredAll().filter(r => {
     if (fp && r.synthesis_priority !== fp) return false;
     if (fv && r.primary_article_verdict !== fv) return false;
     if (fa && r.primary_article_action_required !== fa) return false;
+    if (fdq && r.dq_description_quality_verdict !== fdq) return false;
     if (farea && r._areaPath !== farea) return false;
     if (q) {
       const hay = [r.case_number, r._product, r.primary_article_verdict, r.synthesis_priority, r.synthesis_root_cause_category, r.primary_article_action_required, r._areaPath].join(' ').toLowerCase();
@@ -1435,7 +1442,7 @@ function renderTablePage() {
       <td>${verdictBadge(row.primary_article_verdict)}</td>
       <td>${actionBadge(row.primary_article_action_required)}</td>
       <td>${priBadge(row.synthesis_priority)}</td>
-      <td>${scoreChip(row.kt_description_quality_score)}</td>
+      <td>${scoreChip(row.dq_description_quality_score)}</td>
     </tr>`;
   }).join('') || '<tr><td colspan="9" style="text-align:center;color:#94a3b8;padding:20px">No cases match</td></tr>';
 

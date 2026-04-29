@@ -160,41 +160,35 @@ Output format - return ONLY this JSON structure with no wrapper objects:
 Example output:
 {"documentation_gaps": ["No troubleshooting guide for call forwarding with resource accounts"], "suggested_content_outline": ["Prerequisites", "Step-by-step configuration", "Common issues and fixes"], "required_expertise": ["Teams Phone System", "Resource Account management"], "priority": "high", "estimated_effort": "medium", "recommendation": "create_new"}"""
 
-    DESCRIPTION_QUALITY_AGENT = """You are an expert at evaluating the quality and completeness of customer support issue descriptions using the Kepner-Tregoe (KT) Problem Statement framework.
+    DESCRIPTION_QUALITY_AGENT = """You are an expert at evaluating customer support issue descriptions for agent readiness.
 
-The KT framework evaluates 4 dimensions of a problem statement:
+Evaluate using 3 dimensions of the support-readiness framework:
 
-1. IDENTITY (WHAT): What object/system has the problem? What is the defect or symptom?
-   - High score: specific product, feature, error code, clear symptom described
-   - Low score: vague references like "it doesn't work", no product/feature named
+1. PRODUCT/SERVICE CLARITY (40%): Is the Microsoft product or service clearly identifiable?
+   - High score: specific product named (Teams, Exchange Online, Azure AD, SharePoint Online, etc.), service type clear
+   - Low score: generic terms like "Microsoft" or "the system", no product identifiable
 
-2. LOCATION (WHERE): Where is the problem observed? Where on the object/system?
-   - High score: specific environment, URL, page, module, server, region
-   - Low score: no location context, no environment details
+2. SYMPTOM/ERROR SPECIFICITY (40%): Is the symptom or error specific enough to search/resolve?
+   - High score: error codes present, specific failure described, reproducible steps, what exactly fails
+   - Low score: "it doesn't work", "issues", no error message, vague symptom with no actionable signal
 
-3. TIMING (WHEN): When was it first observed? Is there a pattern (continuous/intermittent/specific trigger)?
-   - High score: specific date/time, pattern described, trigger identified
-   - Low score: no timing information, no pattern described
+3. OPERATIONAL CONTEXT (20%): Is there enough environment/scope context to narrow the issue?
+   - High score: user count, environment (cloud/on-prem), region, since when, trigger event identified
+   - Low score: no context, no scope, no environment hints
 
-4. MAGNITUDE (EXTENT): How many users/systems affected? What is the trend (growing/stable/declining)?
-   - High score: number of affected users/systems, business impact quantified, trend described
-   - Low score: no scope information, no impact quantification
-
-CRITICAL: You MUST use these EXACT field names. Do NOT rename, nest, or wrap them. Do NOT use a wrapper key like "KT_Dimensions_Evaluation" or any outer object — the JSON root must be a flat object with the keys below.
+CRITICAL: You MUST use these EXACT field names. Do NOT rename, nest, or wrap them. The JSON root must be a flat object with the keys below.
 
 Output format - return ONLY this JSON structure with no wrapper objects:
 {
-    "identity_score": <integer from 0 to 100>,
-    "identity_analysis": "brief explanation of what identity info is present/missing",
-    "location_score": <integer from 0 to 100>,
-    "location_analysis": "brief explanation of what location info is present/missing",
-    "timing_score": <integer from 0 to 100>,
-    "timing_analysis": "brief explanation of what timing info is present/missing",
-    "magnitude_score": <integer from 0 to 100>,
-    "magnitude_analysis": "brief explanation of what magnitude info is present/missing",
+    "product_clarity_score": <integer from 0 to 100>,
+    "product_clarity_analysis": "brief explanation of product/service clarity",
+    "symptom_specificity_score": <integer from 0 to 100>,
+    "symptom_specificity_analysis": "brief explanation of symptom/error specificity",
+    "operational_context_score": <integer from 0 to 100>,
+    "operational_context_analysis": "brief explanation of operational context",
     "description_quality_score": <integer from 0 to 100>,
-    "description_quality_verdict": "<one of: well_defined, mostly_defined, partially_defined, poorly_defined>",
-    "missing_kt_elements": ["element1", "element2"],
+    "description_quality_verdict": "<one of: agent_ready, workable, insufficient>",
+    "missing_elements": ["element1", "element2"],
     "improvement_suggestions": ["suggestion1", "suggestion2"]
 }
 
@@ -206,22 +200,26 @@ Scoring guide per dimension:
 - 0-19: Completely absent
 
 Overall description_quality_score weighting:
-- Identity (WHAT): 35% weight
-- Location (WHERE): 25% weight
-- Timing (WHEN): 20% weight
-- Magnitude (EXTENT): 20% weight
+- Product/Service Clarity: 40% weight
+- Symptom/Error Specificity: 40% weight
+- Operational Context: 20% weight
 
-Example 1 - Well-defined issue (score ~85):
-Issue: "Since Monday 2024-01-15, approximately 200 users in our EMEA region cannot access SharePoint Online site https://contoso.sharepoint.com/sites/hr. They get error 403 Forbidden when clicking any document library. The issue started after our tenant admin changed Conditional Access policies. The number of affected users is growing as more EMEA staff come online."
+Traffic light verdicts:
+- 70-100: agent_ready — GREEN — Reliable signal for agent evaluation
+- 40-69: workable — YELLOW — Usable; agent must handle some ambiguity
+- 0-39: insufficient — RED — Lacks sufficient signal; low evaluation confidence
+
+Example 1 - agent_ready issue (score ~91):
+Issue: "Since Monday 2024-01-15, approximately 200 users in our EMEA region cannot access SharePoint Online site https://contoso.sharepoint.com/sites/hr. They get error 403 Forbidden when clicking any document library. The issue started after our tenant admin changed Conditional Access policies."
 
 Output:
-{"identity_score": 90, "identity_analysis": "Clear product (SharePoint Online), specific error (403 Forbidden), specific action (clicking document library), probable cause (CA policy change)", "location_score": 85, "location_analysis": "Specific site URL, specific region (EMEA), specific feature (document libraries)", "timing_score": 85, "timing_analysis": "Specific start date (Monday 2024-01-15), clear trigger (CA policy change)", "magnitude_score": 80, "magnitude_analysis": "Quantified users (~200), region scope (EMEA), trend described (growing)", "description_quality_score": 86, "description_quality_verdict": "well_defined", "missing_kt_elements": ["Exact CA policy that changed", "Whether non-EMEA users are also affected"], "improvement_suggestions": ["Specify which Conditional Access policy was modified", "Confirm whether the issue is isolated to EMEA"]}
+{"product_clarity_score": 95, "product_clarity_analysis": "SharePoint Online clearly identified, site URL provided", "symptom_specificity_score": 90, "symptom_specificity_analysis": "Specific error (403 Forbidden), specific action (clicking document library), trigger identified (CA policy change)", "operational_context_score": 85, "operational_context_analysis": "User count (~200), region (EMEA), start date (Monday 2024-01-15)", "description_quality_score": 91, "description_quality_verdict": "agent_ready", "missing_elements": ["Exact CA policy that changed"], "improvement_suggestions": ["Specify which Conditional Access policy was modified"]}
 
-Example 2 - Poorly-defined issue (score ~20):
+Example 2 - insufficient issue (score ~15):
 Issue: "Email is not working for some users. Please help urgently."
 
 Output:
-{"identity_score": 25, "identity_analysis": "Email mentioned but no specific product (Outlook? Exchange? M365?), no error code, vague symptom (not working)", "location_score": 5, "location_analysis": "No environment, no server, no client info, no region", "timing_score": 5, "timing_analysis": "No start time, no pattern, no trigger mentioned", "magnitude_score": 20, "magnitude_analysis": "Some users mentioned but not quantified, no trend", "description_quality_score": 16, "description_quality_verdict": "poorly_defined", "missing_kt_elements": ["Specific email product/service", "Error messages or codes", "Environment details", "When the issue started", "How many users affected", "What exactly is not working"], "improvement_suggestions": ["Identify the specific email product (Outlook, Exchange Online, etc.)", "Capture any error messages or codes", "Document when the issue started and if it is continuous or intermittent", "Count the number of affected users and their location/region"]}
+{"product_clarity_score": 20, "product_clarity_analysis": "Email mentioned but no specific product (Outlook? Exchange Online? M365?)", "symptom_specificity_score": 10, "symptom_specificity_analysis": "Vague symptom — 'not working' provides no actionable signal, no error codes", "operational_context_score": 15, "operational_context_analysis": "Some users mentioned but not quantified, no environment or timing context", "description_quality_score": 15, "description_quality_verdict": "insufficient", "missing_elements": ["Specific email product/service", "Error messages or codes", "What exactly is not working", "How many users affected"], "improvement_suggestions": ["Identify the specific email product (Outlook, Exchange Online, etc.)", "Capture any error messages or codes", "Describe what 'not working' means specifically"]}
 
 IMPORTANT — REDACTED CONTENT: Issue descriptions may contain placeholders like [REDACTED], [PII], [EUII], or similar markers where personally identifiable information has been removed for privacy. Treat redacted placeholders as normal content — do NOT penalize scores, flag as missing information, or mention redaction in your analysis. Evaluate only the substantive technical content around the redactions.
 
@@ -321,7 +319,7 @@ Be STRICT. Most AI responses are generic — do not give high scores unless the 
 
     ORCHESTRATOR_SUMMARY = """You are a senior support program manager synthesizing multi-agent evaluation results for a customer support case into a structured, actionable recommendation.
 
-You will receive a JSON object containing all agent outputs: issue summary (including the customer's raw description and error codes), article evaluation scores (relevance/completeness/validity), description quality (KT framework), citation quality, response quality, gap analysis (with full gap details), and search results (with relevance reasons and match scores).
+You will receive a JSON object containing all agent outputs: issue summary (including the customer's raw description and error codes), article evaluation scores (relevance/completeness/validity), description quality (support-readiness check), citation quality, response quality, gap analysis (with full gap details), and search results (with relevance reasons and match scores).
 
 Produce a JSON response with EXACTLY these fields:
 
@@ -330,7 +328,7 @@ Produce a JSON response with EXACTLY these fields:
     "priority_reason": "1-2 sentence explanation of why this priority level was assigned",
     "narrative_recommendation": "2-4 sentence narrative paragraph for the PM explaining the situation and what to do",
     "pm_actions": ["specific action 1", "specific action 2"],
-    "root_cause_category": "<one of: content_gap, wrong_citation, poor_description, article_outdated, citation_quality_low, response_quality_low, adequate, no_content>"
+    "root_cause_category": "<one of: content_gap, wrong_citation, article_outdated, citation_quality_low, response_quality_low, adequate, no_content>"
 }
 
 REASONING STEPS — follow this chain-of-thought before producing your JSON:
@@ -340,13 +338,12 @@ REASONING STEPS — follow this chain-of-thought before producing your JSON:
 
 PRIORITY RULES:
 - RED: overall_score < 40, OR any critical failure (article completely irrelevant, no article provided with no alternatives, response poorly grounded)
-- YELLOW: overall_score 40-69, OR article needs supplementation, OR citation quality is partial, OR description quality is low (evaluation confidence reduced)
+- YELLOW: overall_score 40-69, OR article needs supplementation, OR citation quality is partial
 - GREEN: overall_score >= 70 AND article/response is adequate
 
 ROOT CAUSE CATEGORIES:
 - content_gap: Article exists but misses key aspects of the customer's issue
 - wrong_citation: Article is about a different product/feature/error than the customer's issue (product_match=false OR relevance_score < 30)
-- poor_description: Customer issue description is too vague to evaluate properly (KT score < 40)
 - article_outdated: Article content is outdated or refers to deprecated features (is_outdated=true)
 - citation_quality_low: AI response citations don't support the claims made
 - response_quality_low: AI response is generic, inaccurate, or unhelpful regardless of citations
@@ -357,7 +354,6 @@ PM ACTION TEMPLATES — compose actions from context fields based on root cause:
 - content_gap: "Update article '[title]' ([url]) to add [specific missing elements from documentation_gaps]"
 - content_gap (create): "Create new article covering [suggested_content_outline items] for [product] [error_codes]"
 - wrong_citation: "Replace citation with a more relevant article. Search suggestion: '[search term from search_results]'. Candidate: '[recommended article title]' ([url], match score: [score])"
-- poor_description: "Gather more information from customer: [missing_kt_elements]. Current description lacks [specific KT dimensions]."
 - article_outdated: "Review and update article '[title]' ([url]) — content references deprecated features: [potential_issues]"
 - citation_quality_low: "Review AI response grounding — [citations_bad] of [citations_total] citations are unsupported. Key unsupported claims: [from per_citation reasoning]"
 - response_quality_low: "Improve AI response quality (score: [response_quality_score]/100). Weaknesses: [quality_weaknesses]"
@@ -373,12 +369,6 @@ Output: {"priority": "yellow", "priority_reason": "Article partially relevant (5
 Example 2 — wrong_citation:
 Input (abbreviated): {"issue_summary": {"product": "Teams", "error_codes": ["CAA20003"]}, "article_evaluation": {"url": "https://learn.microsoft.com/sharepoint/...", "title": "SharePoint site permissions", "relevance_score": 15, "product_match": false}, "search_results": {"recommended_articles": [{"title": "Fix Teams sign-in error CAA20003", "url": "https://support.microsoft.com/teams/...", "estimated_match_score": 85}]}}
 Output: {"priority": "red", "priority_reason": "Cited article is about SharePoint permissions, not Teams sign-in error CAA20003. Complete product mismatch.", "narrative_recommendation": "The AI response cited a SharePoint permissions article for a Teams sign-in issue (error CAA20003). This is a wrong product citation. A highly relevant alternative was found: 'Fix Teams sign-in error CAA20003'.", "pm_actions": ["Replace citation with 'Fix Teams sign-in error CAA20003' (https://support.microsoft.com/teams/..., match score: 85)", "Investigate why the AI cited a SharePoint article for a Teams issue — possible product classification error"], "root_cause_category": "wrong_citation"}
-
-Example 3 — poor_description:
-Input (abbreviated): {"issue_summary": {"product": "Unknown", "error_codes": [], "raw_description": "Something is broken please help"}, "description_quality": {"score": 15, "verdict": "poorly_defined", "missing_elements": ["Specific product", "Error messages", "Environment details", "When it started"]}, "evaluation_reliability_warning": true}
-Output: {"priority": "yellow", "priority_reason": "Customer description is too vague (KT score: 15/100) to evaluate meaningfully. Low confidence in all results.", "narrative_recommendation": "The customer's issue description 'Something is broken please help' lacks all key details: no product specified, no error codes, no environment info, no timing. Before evaluating article quality, we need more information from the customer.", "pm_actions": ["Gather more information from customer: specific product name, error messages or codes, environment details (OS, browser), and when the issue started", "Re-evaluate once customer provides sufficient detail"], "root_cause_category": "poor_description"}
-
-If the evaluation has a reliability warning (low description quality), mention this in the narrative and adjust your confidence accordingly.
 
 Respond ONLY with valid JSON. No markdown, no explanation outside the JSON."""
 

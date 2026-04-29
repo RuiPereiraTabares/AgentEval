@@ -234,7 +234,7 @@ ActionRequired = Literal["none", "add_context", "find_better_article", "create_c
 GapPriority = Literal["high", "medium", "low"]
 GapEffort = Literal["small", "medium", "large"]
 GapRecommendation = Literal["augment_existing", "create_new", "combine_multiple"]
-DescriptionQualityVerdict = Literal["well_defined", "mostly_defined", "partially_defined", "poorly_defined"]
+DescriptionQualityVerdict = Literal["agent_ready", "workable", "insufficient"]
 CitationSupportVerdict = Literal["good", "partial", "bad"]
 CitationGroundingVerdict = Literal["well_grounded", "partially_grounded", "poorly_grounded", "ungrounded"]
 ResponseQualityVerdict = Literal["excellent", "good", "fair", "poor"]
@@ -260,21 +260,21 @@ _RESPONSE_QUALITY_LABEL_MAP = {
 
 
 _DESCRIPTION_QUALITY_LABEL_MAP = {
-    # High tier (80-100)
-    "excellent": 95, "perfect": 95, "well defined": 90, "well_defined": 90,
+    # agent_ready tier (70-100)
+    "excellent": 95, "perfect": 95, "agent ready": 85, "agent_ready": 85,
+    "well defined": 90, "well_defined": 90,
     "very high": 90, "comprehensive": 90, "detailed": 85, "clear": 85,
     "thorough": 85, "complete": 85,
-    # Good tier (60-79)
+    # workable tier (40-69)
     "high": 80, "good": 75, "mostly defined": 70, "mostly_defined": 70,
-    "adequate": 70, "sufficient": 70, "above average": 75,
-    # Partial tier (40-59)
+    "workable": 55, "adequate": 70, "sufficient": 70, "above average": 75,
     "medium": 55, "moderate": 55, "average": 55, "fair": 55,
     "partial": 45, "partially defined": 45, "partially_defined": 45,
     "somewhat": 45, "mixed": 45, "limited": 40,
-    # Poor tier (0-39)
+    # insufficient tier (0-39)
     "low": 25, "poor": 20, "poorly defined": 15, "poorly_defined": 15,
-    "weak": 20, "below average": 25, "vague": 20, "unclear": 20,
-    "very low": 10, "minimal": 15, "insufficient": 20, "inadequate": 20,
+    "insufficient": 20, "weak": 20, "below average": 25, "vague": 20, "unclear": 20,
+    "very low": 10, "minimal": 15, "inadequate": 20,
     "none": 0, "missing": 0, "empty": 0, "n/a": 0,
     "absent": 0, "not present": 0, "not specified": 0, "not mentioned": 0,
     "not provided": 0, "unavailable": 0,
@@ -283,205 +283,156 @@ _DESCRIPTION_QUALITY_LABEL_MAP = {
 }
 
 
-_KT_ALT_DIM_MAP = {"what": "identity", "where": "location", "when": "timing", "extent": "magnitude"}
-
-
-def _normalize_kt_structure(data: dict) -> dict:
+def _normalize_sr_structure(data: dict) -> dict:
     """
-    Pre-process alternative LLM response structures into the expected flat format.
+    Pre-process alternative LLM response structures into the expected flat format
+    for the support-readiness description quality framework.
 
-    Handles two common deviations:
-    1. Response wrapped under a "kt_evaluation" key.
-    2. KT dimensions named what/where/when/extent instead of
-       identity/location/timing/magnitude, with qualitative sub-dicts.
+    Handles: response wrapped under an outer key, dimension sub-dicts instead of flat scores.
     """
-    # Unwrap a "kt_evaluation" wrapper when it contains the dimension keys
-    if "kt_evaluation" in data and isinstance(data.get("kt_evaluation"), dict):
-        inner = data["kt_evaluation"]
-        if any(k in inner for k in _KT_ALT_DIM_MAP):
+    # Unwrap known wrapper keys
+    for wrapper in ("sr_evaluation", "support_readiness", "dimensions"):
+        if wrapper in data and isinstance(data.get(wrapper), dict):
+            inner = data[wrapper]
             merged = dict(inner)
             for k, v in data.items():
-                if k != "kt_evaluation":
+                if k != wrapper:
                     merged.setdefault(k, v)
             data = merged
+            break
 
-    if not any(k in data for k in _KT_ALT_DIM_MAP):
-        return data  # already in expected format
+    _SR_DIM_KEYS = {
+        "product_clarity": ("product_clarity_score", "product_clarity_analysis"),
+        "symptom_specificity": ("symptom_specificity_score", "symptom_specificity_analysis"),
+        "operational_context": ("operational_context_score", "operational_context_analysis"),
+    }
 
-    normalized: dict = {}
-    for alt_key, canonical in _KT_ALT_DIM_MAP.items():
-        val = data.get(alt_key)
-        if val is None:
+    # If dimensions are present as sub-dicts, flatten them
+    normalized: dict = dict(data)
+    for dim, (score_key, analysis_key) in _SR_DIM_KEYS.items():
+        val = data.get(dim)
+        if not isinstance(val, dict):
             continue
-        if isinstance(val, (int, float)) and 0 <= val <= 100:
-            normalized[f"{canonical}_score"] = int(val)
-        elif isinstance(val, str):
-            n = _parse_numeric_string(val)
-            if n is not None:
-                normalized[f"{canonical}_score"] = n
-            else:
-                mapped = _DESCRIPTION_QUALITY_LABEL_MAP.get(val.lower().strip())
-                if mapped is not None:
-                    normalized[f"{canonical}_score"] = mapped
-        elif isinstance(val, dict):
-            score = None
-            # 1. Explicit numeric score key
-            for sk in ("score", "score_value", "points", "rating", "value", "numeric_score"):
-                sv = val.get(sk)
-                if isinstance(sv, (int, float)) and 0 <= sv <= 100:
-                    score = int(sv)
+        score = None
+        for sk in ("score", "score_value", "points", "rating", "value"):
+            sv = val.get(sk)
+            if isinstance(sv, (int, float)) and 0 <= sv <= 100:
+                score = int(sv)
+                break
+            if isinstance(sv, str):
+                n = _parse_numeric_string(sv)
+                if n is not None:
+                    score = n
                     break
-                if isinstance(sv, str):
-                    n = _parse_numeric_string(sv)
-                    if n is not None:
-                        score = n
-                        break
-            # 2. Qualitative label from known sub-keys
-            if score is None:
-                for qk in ("quality", "clarity", "level", "assessment", "rating", "specificity"):
-                    qv = val.get(qk)
-                    if isinstance(qv, str):
-                        mapped = _DESCRIPTION_QUALITY_LABEL_MAP.get(qv.lower().strip())
-                        if mapped is not None:
-                            score = mapped
-                            break
-            # 3. Scan all string values in the sub-dict
-            if score is None:
-                for sv in val.values():
-                    if isinstance(sv, str):
-                        mapped = _DESCRIPTION_QUALITY_LABEL_MAP.get(sv.lower().strip())
-                        if mapped is not None:
-                            score = mapped
-                            break
-            if score is not None:
-                normalized[f"{canonical}_score"] = score
-            # Extract analysis text
-            for ak in ("analysis", "description", "details", "explanation", "reasoning", "notes"):
-                av = val.get(ak)
-                if isinstance(av, str) and av:
-                    normalized[f"{canonical}_analysis"] = av
-                    break
+        if score is not None:
+            normalized.setdefault(score_key, score)
+        for ak in ("analysis", "description", "explanation", "reasoning"):
+            av = val.get(ak)
+            if isinstance(av, str) and av:
+                normalized.setdefault(analysis_key, av)
+                break
 
-    # Copy non-dimension keys (overall score, verdict, missing elements, etc.)
-    for k, v in data.items():
-        if k not in _KT_ALT_DIM_MAP:
-            normalized.setdefault(k, v)
-
-    return normalized if normalized else data
+    return normalized
 
 
 @dataclass
 class DescriptionQualityResult:
-    """Result from the Description Quality Agent (Kepner-Tregoe framework)."""
+    """Result from the Description Quality Agent (support-readiness framework)."""
 
     # Per-dimension scores (0-100)
-    identity_score: int = 0
-    location_score: int = 0
-    timing_score: int = 0
-    magnitude_score: int = 0
+    product_clarity_score: int = 0
+    symptom_specificity_score: int = 0
+    operational_context_score: int = 0
 
     # Per-dimension analysis strings
-    identity_analysis: str = ""
-    location_analysis: str = ""
-    timing_analysis: str = ""
-    magnitude_analysis: str = ""
+    product_clarity_analysis: str = ""
+    symptom_specificity_analysis: str = ""
+    operational_context_analysis: str = ""
 
     # Overall
     description_quality_score: int = 0
-    description_quality_verdict: DescriptionQualityVerdict = "poorly_defined"
+    description_quality_verdict: DescriptionQualityVerdict = "insufficient"
 
     # Missing info
-    missing_kt_elements: list[str] = field(default_factory=list)
+    missing_elements: list[str] = field(default_factory=list)
     improvement_suggestions: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         return {
-            "identity_score": self.identity_score,
-            "location_score": self.location_score,
-            "timing_score": self.timing_score,
-            "magnitude_score": self.magnitude_score,
-            "identity_analysis": self.identity_analysis,
-            "location_analysis": self.location_analysis,
-            "timing_analysis": self.timing_analysis,
-            "magnitude_analysis": self.magnitude_analysis,
+            "product_clarity_score": self.product_clarity_score,
+            "symptom_specificity_score": self.symptom_specificity_score,
+            "operational_context_score": self.operational_context_score,
+            "product_clarity_analysis": self.product_clarity_analysis,
+            "symptom_specificity_analysis": self.symptom_specificity_analysis,
+            "operational_context_analysis": self.operational_context_analysis,
             "description_quality_score": self.description_quality_score,
             "description_quality_verdict": self.description_quality_verdict,
-            "missing_kt_elements": self.missing_kt_elements,
+            "missing_elements": self.missing_elements,
             "improvement_suggestions": self.improvement_suggestions,
         }
 
     @classmethod
     def from_dict(cls, data: dict) -> "DescriptionQualityResult":
-        data = _normalize_kt_structure(data)
+        data = _normalize_sr_structure(data)
         flat = _collect_all_values(data)
 
-        identity_score = _extract_score(
-            flat, "identity_score",
-            ["identity_score", "identityscore", "identity", "what_score", "whatscore"],
+        product_clarity_score = _extract_score(
+            flat, "product_clarity_score",
+            ["product_clarity_score", "productclarityscore", "product_clarity", "productclarity"],
             _DESCRIPTION_QUALITY_LABEL_MAP,
         )
-        location_score = _extract_score(
-            flat, "location_score",
-            ["location_score", "locationscore", "location", "where_score", "wherescore"],
+        symptom_specificity_score = _extract_score(
+            flat, "symptom_specificity_score",
+            ["symptom_specificity_score", "symptomspecificityscore", "symptom_specificity", "symptomspecificity"],
             _DESCRIPTION_QUALITY_LABEL_MAP,
         )
-        timing_score = _extract_score(
-            flat, "timing_score",
-            ["timing_score", "timingscore", "timing", "when_score", "whenscore"],
-            _DESCRIPTION_QUALITY_LABEL_MAP,
-        )
-        magnitude_score = _extract_score(
-            flat, "magnitude_score",
-            ["magnitude_score", "magnitudescore", "magnitude", "extent_score", "extentscore"],
+        operational_context_score = _extract_score(
+            flat, "operational_context_score",
+            ["operational_context_score", "operationalcontextscore", "operational_context", "operationalcontext"],
             _DESCRIPTION_QUALITY_LABEL_MAP,
         )
 
         # Overall score — use provided value or compute from dimensions
-        from ..config.settings import KT_DIMENSION_WEIGHTS
+        from ..config.settings import SUPPORT_READINESS_WEIGHTS
         overall = _extract_score(
             flat, "description_quality_score",
             ["description_quality_score", "descriptionqualityscore", "overall_score", "overallscore"],
             _DESCRIPTION_QUALITY_LABEL_MAP,
         )
-        if overall == 0 and any([identity_score, location_score, timing_score, magnitude_score]):
+        if overall == 0 and any([product_clarity_score, symptom_specificity_score, operational_context_score]):
             overall = round(
-                identity_score * KT_DIMENSION_WEIGHTS["identity"]
-                + location_score * KT_DIMENSION_WEIGHTS["location"]
-                + timing_score * KT_DIMENSION_WEIGHTS["timing"]
-                + magnitude_score * KT_DIMENSION_WEIGHTS["magnitude"]
+                product_clarity_score * SUPPORT_READINESS_WEIGHTS["product_clarity"]
+                + symptom_specificity_score * SUPPORT_READINESS_WEIGHTS["symptom_specificity"]
+                + operational_context_score * SUPPORT_READINESS_WEIGHTS["operational_context"]
             )
 
         # Derive verdict from score
         verdict_map = {
-            (0, 40): "poorly_defined",
-            (40, 60): "partially_defined",
-            (60, 80): "mostly_defined",
-            (80, 101): "well_defined",
+            (0, 40): "insufficient",
+            (40, 70): "workable",
+            (70, 101): "agent_ready",
         }
         verdict = _extract_str(
             flat, "description_quality_verdict",
-            {"well_defined", "mostly_defined", "partially_defined", "poorly_defined"},
-            "poorly_defined",
+            {"agent_ready", "workable", "insufficient"},
+            "insufficient",
         )
-        if verdict == "poorly_defined" and overall > 0:
+        if verdict == "insufficient" and overall > 0:
             for (lo, hi), v in verdict_map.items():
                 if lo <= overall < hi:
                     verdict = v
                     break
 
         return cls(
-            identity_score=identity_score,
-            location_score=location_score,
-            timing_score=timing_score,
-            magnitude_score=magnitude_score,
-            identity_analysis=flat.get("identity_analysis", "") or "",
-            location_analysis=flat.get("location_analysis", "") or "",
-            timing_analysis=flat.get("timing_analysis", "") or "",
-            magnitude_analysis=flat.get("magnitude_analysis", "") or "",
+            product_clarity_score=product_clarity_score,
+            symptom_specificity_score=symptom_specificity_score,
+            operational_context_score=operational_context_score,
+            product_clarity_analysis=flat.get("product_clarity_analysis", "") or "",
+            symptom_specificity_analysis=flat.get("symptom_specificity_analysis", "") or "",
+            operational_context_analysis=flat.get("operational_context_analysis", "") or "",
             description_quality_score=overall,
             description_quality_verdict=verdict,
-            missing_kt_elements=_extract_list(flat, [
-                "missing_kt_elements", "missingktelements",
+            missing_elements=_extract_list(flat, [
                 "missing_elements", "missingelements",
                 "missing_information", "missinginformation",
             ]),

@@ -313,22 +313,20 @@ def main():
             print(f"  Time: {elapsed:.1f}s")
 
             if args.verbose or args.debug:
-                # Show description quality (KT framework)
+                # Show description quality (support-readiness framework)
                 dq = evaluation.get('description_quality', {})
                 if dq:
-                    print(f"  --- Description Quality (KT) ---")
+                    print(f"  --- Description Quality ---")
                     print(f"  Overall:   {dq.get('description_quality_score', '?'):>3}/100  "
                           f"({dq.get('description_quality_verdict', '?')})")
-                    print(f"    Identity (WHAT):    {dq.get('identity_score', '?'):>3}/100  "
-                          f"- {dq.get('identity_analysis', '')[:80]}")
-                    print(f"    Location (WHERE):   {dq.get('location_score', '?'):>3}/100  "
-                          f"- {dq.get('location_analysis', '')[:80]}")
-                    print(f"    Timing (WHEN):      {dq.get('timing_score', '?'):>3}/100  "
-                          f"- {dq.get('timing_analysis', '')[:80]}")
-                    print(f"    Magnitude (EXTENT): {dq.get('magnitude_score', '?'):>3}/100  "
-                          f"- {dq.get('magnitude_analysis', '')[:80]}")
-                    if dq.get('missing_kt_elements'):
-                        print(f"    Missing: {', '.join(dq['missing_kt_elements'][:4])}")
+                    print(f"    Product Clarity:      {dq.get('product_clarity_score', '?'):>3}/100  "
+                          f"- {dq.get('product_clarity_analysis', '')[:80]}")
+                    print(f"    Symptom Specificity:  {dq.get('symptom_specificity_score', '?'):>3}/100  "
+                          f"- {dq.get('symptom_specificity_analysis', '')[:80]}")
+                    print(f"    Operational Context:  {dq.get('operational_context_score', '?'):>3}/100  "
+                          f"- {dq.get('operational_context_analysis', '')[:80]}")
+                    if dq.get('missing_elements'):
+                        print(f"    Missing: {', '.join(dq['missing_elements'][:4])}")
                 if evaluation.get('evaluation_reliability_warning'):
                     print(f"  *** LOW CONFIDENCE: description quality below reliability threshold ***")
 
