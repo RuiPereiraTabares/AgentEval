@@ -129,21 +129,8 @@ class BaseAgent(ABC):
             logger.debug(f"[{agent_name}] Full parsed JSON: {json.dumps(parsed, indent=2)[:2000]}")
             return parsed
         except json.JSONDecodeError as e:
-            logger.warning(f"[{agent_name}] First JSON parse attempt failed: {e}")
-            # Try to find JSON object in the response
-            json_match = re.search(r'\{[\s\S]*\}', response)
-            if json_match:
-                try:
-                    parsed = _try_parse(json_match.group())
-                    logger.info(
-                        f"[{agent_name}] JSON extracted via regex fallback. Keys: {list(parsed.keys())}"
-                    )
-                    return parsed
-                except json.JSONDecodeError as e2:
-                    logger.warning(
-                        f"[{agent_name}] Regex fallback also failed: {e2}"
-                    )
-            # Final fallback: json-repair handles missing colons, commas, and other LLM quirks
+            logger.debug(f"[{agent_name}] First JSON parse attempt failed: {e}")
+            # Try json-repair first — handles truncation, trailing commas, missing quotes, etc.
             try:
                 parsed = _repair_parse(json_str or response)
                 if isinstance(parsed, dict):
@@ -151,8 +138,20 @@ class BaseAgent(ABC):
                         f"[{agent_name}] JSON repaired successfully. Keys: {list(parsed.keys())}"
                     )
                     return parsed
-            except Exception as e3:
-                logger.warning(f"[{agent_name}] json-repair also failed: {e3}")
+            except Exception:
+                pass
+            # Last resort: extract bare {...} block from raw response and repair
+            json_match = re.search(r'\{[\s\S]*\}', response)
+            if json_match:
+                try:
+                    parsed = _repair_parse(json_match.group())
+                    if isinstance(parsed, dict):
+                        logger.info(
+                            f"[{agent_name}] JSON extracted+repaired via regex fallback. Keys: {list(parsed.keys())}"
+                        )
+                        return parsed
+                except Exception:
+                    pass
             logger.warning(
                 f"[{agent_name}] Could not parse JSON from response (will use fallback): {response[:300]}"
             )
