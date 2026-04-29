@@ -978,13 +978,14 @@ function buildDetailPanel(row, mweaMode, isSpmTab) {
     if (citations.length) {
       html += `<div class="detail-block detail-full-row">
         <div class="detail-label">🔗 Citations (${citations.length})</div>
+        ${citations.length > 1 ? `<div style="font-size:10px;color:#94a3b8;margin:2px 0 4px">Coverage % shows how much of the AI response each article individually supports — citations can overlap, so numbers across articles do not need to add up to 100%.</div>` : ''}
         ${citations.map(c => `<div style="background:#f8fafc;border-radius:6px;padding:7px 10px;margin-top:5px;border-left:3px solid ${scoreColor(c.score)}">
           <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
             <a href="${c.url}" target="_blank" class="detail-link" style="flex:1;min-width:0">${trunc(c.url, 80)}</a>
             <span class="score-chip" style="background:${scoreColor(c.score)}">${c.score.toFixed(0)}</span>
             ${c.verdict ? citationVerdictBadge(c.verdict) : ''}
           </div>
-          ${c.coverage ? `<div style="font-size:11px;color:#64748b;margin-top:3px">Coverage: ${c.coverage.toFixed(0)}%</div>` : ''}
+          ${c.coverage ? `<div style="font-size:11px;color:#64748b;margin-top:3px" title="How much of the AI response this article covers. Each citation is scored independently — totals across citations can exceed 100%.">Coverage: ${c.coverage.toFixed(0)}%</div>` : ''}
         </div>`).join('')}
       </div>`;
     }
