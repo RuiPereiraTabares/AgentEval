@@ -268,7 +268,7 @@ canvas { cursor: pointer; }
         <option value="">All Area Paths</option>
       </select>
       <select class="table-filter" id="spm-f-dq" onchange="renderSPM()">
-        <option value="">All DQ</option>
+        <option value="">All Description Quality</option>
         <option value="agent_ready">🟢 Agent Ready</option>
         <option value="workable">🟡 Workable</option>
         <option value="insufficient">🔴 Insufficient</option>
@@ -284,7 +284,6 @@ canvas { cursor: pointer; }
             <th>Product</th>
             <th>Area Path</th>
             <th>Score</th>
-            <th>Action Required</th>
             <th>PM Actions (preview)</th>
           </tr>
         </thead>
@@ -308,7 +307,6 @@ canvas { cursor: pointer; }
       <div class="chart-card"><div class="chart-title">Priority Breakdown</div><div class="chart-wrap h180"><canvas id="chart-priority"></canvas></div></div>
     </div>
     <div style="margin-top:14px" class="chart-grid cg2">
-      <div class="chart-card"><div class="chart-title">Action Required</div><div class="chart-wrap h220"><canvas id="chart-action"></canvas></div></div>
       <div class="chart-card"><div class="chart-title">Score Band Distribution</div><div class="chart-wrap h220"><canvas id="chart-scorebands"></canvas></div></div>
     </div>
   </div>
@@ -338,6 +336,12 @@ canvas { cursor: pointer; }
 
   <div class="section" id="sec-citation" style="display:none">
     <div class="section-header"><div class="section-title">Citation &amp; AI Response Quality</div><div class="section-badge mwea">mweaeval mode</div></div>
+    <p style="font-size:12px;color:#64748b;margin-bottom:14px;line-height:1.6">
+      <strong>Grounding</strong> measures how well the AI's response is backed by the cited article.
+      A <em>cited</em> statement can be traced to specific content in the article; an <em>uncited</em> statement is an AI assertion with no article support — a potential hallucination risk.
+      The <strong>Good Citation Rate</strong> shows what percentage of all evaluated citations were considered accurate and grounded in the source material.
+      <strong>Grounding Verdicts</strong> classify each case: <em>Well Grounded</em> (most claims supported) → <em>Partially</em> → <em>Poorly</em> → <em>Ungrounded</em> (response not traceable to the article).
+    </p>
     <div class="kpi-grid g4" id="citation-kpis"></div>
     <div style="margin-top:14px" class="chart-grid cg2">
       <div class="chart-card"><div class="chart-title">Grounding Verdicts</div><div class="chart-wrap h180"><canvas id="chart-ground"></canvas></div></div>
@@ -375,13 +379,8 @@ canvas { cursor: pointer; }
         <option value="adequate">Adequate</option><option value="needs_supplementation">Needs Supplement</option>
         <option value="inadequate">Inadequate</option><option value="no_citation_provided">No Citation</option>
       </select>
-      <select class="table-filter" id="f-action" onchange="filterTable()">
-        <option value="">All Actions</option>
-        <option value="none">None</option><option value="add_context">Add Context</option>
-        <option value="find_better_article">Find Better</option><option value="create_content">Create Content</option>
-      </select>
       <select class="table-filter" id="f-dq" onchange="filterTable()">
-        <option value="">All DQ</option>
+        <option value="">All Description Quality</option>
         <option value="agent_ready">🟢 Agent Ready</option>
         <option value="workable">🟡 Workable</option>
         <option value="insufficient">🔴 Insufficient</option>
@@ -399,9 +398,8 @@ canvas { cursor: pointer; }
           <th onclick="sortTable('area_path')">Area Path ↕</th>
           <th onclick="sortTable('primary_article_score')">Score ↕</th>
           <th onclick="sortTable('primary_article_verdict')">Verdict ↕</th>
-          <th onclick="sortTable('primary_article_action_required')">Action ↕</th>
           <th onclick="sortTable('synthesis_priority')">Priority ↕</th>
-          <th onclick="sortTable('dq_description_quality_score')">DQ ↕</th>
+          <th onclick="sortTable('dq_description_quality_score')">Description Quality ↕</th>
         </tr></thead>
         <tbody id="case-tbody"></tbody>
       </table>
@@ -480,9 +478,8 @@ function priColor(p) {
   return { red: '#dc2626', yellow: '#d97706', green: '#16a34a' }[p] || '#94a3b8';
 }
 function priBadge(p) {
-  const cls = { red: 'b-red', yellow: 'b-yellow', green: 'b-green' }[p] || 'b-gray';
   const lbl = { red: '🔴 Red', yellow: '🟡 Yellow', green: '🟢 Green' }[p] || (p || '–');
-  return `<span class="badge ${cls}">${lbl}</span>`;
+  return `<span class="badge b-gray">${lbl}</span>`;
 }
 function verdictBadge(v) {
   const cls = { adequate: 'b-green', needs_supplementation: 'b-yellow', inadequate: 'b-red', no_citation_provided: 'b-purple' }[v] || 'b-gray';
@@ -490,10 +487,11 @@ function verdictBadge(v) {
 }
 function actionBadge(v) {
   const cls = { none: 'b-green', add_context: 'b-yellow', find_better_article: 'b-yellow', create_content: 'b-red' }[v] || 'b-gray';
-  return `<span class="badge ${cls}">${(v || '–').replace(/_/g, ' ')}</span>`;
+  const lbl = { none: 'None', add_context: 'Action Required', find_better_article: 'Find Better Article', create_content: 'Create Content' }[v] || (v || '–').replace(/_/g, ' ');
+  return `<span class="badge ${cls}">${lbl}</span>`;
 }
 function scoreChip(s) {
-  const sc = num(s); return `<span class="score-chip" style="background:${scoreColor(sc)}">${sc.toFixed(0)}</span>`;
+  const sc = num(s); return `<span class="score-chip" style="background:#3b82f6">${sc.toFixed(0)}</span>`;
 }
 function descQualityBadge(score) {
   const s = num(score);
@@ -555,7 +553,6 @@ const filterState = {};
 const MATCHERS = {
   priority:     (r, v) => r.synthesis_priority === v,
   verdict:      (r, v) => r.primary_article_verdict === v,
-  action:       (r, v) => r.primary_article_action_required === v,
   scoreBand:    (r, v) => r._scoreBand === v,
   relVerdict:   (r, v) => r.article_relevance_verdict === v,
   compVerdict:  (r, v) => r.article_completeness_verdict === v,
@@ -568,9 +565,9 @@ const MATCHERS = {
   areaPath:     (r, v) => (r._areaPath || '') === v,
 };
 const DIM_LABELS = {
-  priority:'Priority', verdict:'Verdict', action:'Action Required',
+  priority:'Priority', verdict:'Verdict',
   scoreBand:'Score Band', relVerdict:'Relevance', compVerdict:'Completeness',
-  valVerdict:'Validity', dqVerdict:'DQ Verdict', groundVerdict:'Grounding',
+  valVerdict:'Validity', dqVerdict:'Description Quality Verdict', groundVerdict:'Grounding',
   rqVerdict:'Response Quality', rootCause:'Root Cause', product:'Product',
   areaPath:'Area Path',
 };
@@ -1161,8 +1158,6 @@ function renderSPM() {
   const redN = countVal(data, 'synthesis_priority', 'red');
   const yelN = countVal(data, 'synthesis_priority', 'yellow');
   const grnN = countVal(data, 'synthesis_priority', 'green');
-  const actionN = n - countVal(data, 'primary_article_action_required', 'none');
-
   // Alert
   const alertEl = document.getElementById('spm-alert');
   if (redN > 0) {
@@ -1177,9 +1172,7 @@ function renderSPM() {
   document.getElementById('spm-kpis').innerHTML = [
     `<div class="kpi-card"><div class="kpi-label">🔴 Immediate Action</div><div class="kpi-value c-red">${redN}</div><div class="kpi-sub">${pct(redN,n)} — critical article gaps</div></div>`,
     `<div class="kpi-card"><div class="kpi-label">🟡 Needs Review</div><div class="kpi-value c-yellow">${yelN}</div><div class="kpi-sub">${pct(yelN,n)} — supplementation needed</div></div>`,
-    `<div class="kpi-card"><div class="kpi-label">📋 Total Actions Required</div><div class="kpi-value c-blue">${actionN}</div><div class="kpi-sub">${pct(actionN,n)} of cases — any action needed</div></div>`,
   ].join('');
-
   // Sort filtered: red first, then yellow, then green; within priority sort by score asc
   const sorted = [...filtered].sort((a, b) => {
     if (a._priorityOrder !== b._priorityOrder) return a._priorityOrder - b._priorityOrder;
@@ -1200,11 +1193,10 @@ function renderSPM() {
       <td>${trunc(row._product || '–', 22)}</td>
       <td>${areaHtml}</td>
       <td>${scoreChip(row.primary_article_score)}</td>
-      <td>${actionBadge(row.primary_article_action_required)}</td>
       <td class="${preview ? 'pm-preview' : 'pm-empty'}">${preview || 'No PM actions recorded'}</td>
     </tr>`;
   }).join('');
-  document.getElementById('spm-table-body').innerHTML = rows || '<tr><td colspan="8" style="text-align:center;color:#94a3b8;padding:20px">No cases</td></tr>';
+  document.getElementById('spm-table-body').innerHTML = rows || '<tr><td colspan="7" style="text-align:center;color:#94a3b8;padding:20px">No cases</td></tr>';
 }
 
 // ══════════════════════════════════════════════════════════
@@ -1216,7 +1208,6 @@ function renderEval() {
   document.getElementById('table-search').value = '';
   document.getElementById('f-priority').value = '';
   document.getElementById('f-verdict').value = '';
-  document.getElementById('f-action').value = '';
   // Setup citation section visibility once
   document.getElementById('sec-citation').style.display = isMwea(state.evalData) ? '' : 'none';
   updateEvalView();
@@ -1234,18 +1225,16 @@ function updateEvalView() {
 
   // KPI cards (respond to filters)
   const adequate = countVal(data, 'primary_article_verdict', 'adequate');
-  const actionNone = countVal(data, 'primary_article_action_required', 'none');
   const avgScore = n ? avg(data.map(r => num(r.primary_article_score))) : 0;
   const redN = countVal(data, 'synthesis_priority', 'red');
   document.getElementById('exec-kpis').innerHTML = [
     kpiCard('Cases (filtered)', n, 'of ' + allData.length + ' total', null, null),
     kpiCard('Avg Overall Score', avgScore.toFixed(1), 'out of 100', avgScore, scoreColor(avgScore)),
     kpiCard('Adequacy Rate', pct(adequate, n), adequate + ' adequate', (adequate/n)*100, '#16a34a'),
-    kpiCard('Action Required Rate', pct(n-actionNone, n), (n-actionNone) + ' cases need action', ((n-actionNone)/n)*100, '#d97706'),
   ].join('');
   document.getElementById('exec-kpis2').innerHTML = [
     `<div class="kpi-card"><div class="kpi-label">🔴 Red Priority</div><div class="kpi-value c-red">${redN}</div><div class="kpi-sub">${pct(redN,n)} — immediate action</div></div>`,
-    kpiCard('Low DQ Confidence', data.filter(r => isTrue(r.dq_evaluation_reliability_warning)).length, 'reliability warnings', null, null),
+    kpiCard('Low Desc. Quality Confidence', data.filter(r => isTrue(r.dq_evaluation_reliability_warning)).length, 'reliability warnings', null, null),
     kpiCard('Avg Processing', n ? (avg(data.map(r => num(r.processing_time_ms)))/1000).toFixed(1) + 's' : '–', 'per case', null, null),
   ].join('');
 
@@ -1262,12 +1251,6 @@ function updateEvalView() {
     r => r.synthesis_priority,
     ['#dc2626','#d97706','#16a34a'], 'priority');
 
-  makeHBar('chart-action',
-    ['None','Add Context','Find Better Article','Create Content'],
-    ['none','add_context','find_better_article','create_content'],
-    r => r.primary_article_action_required,
-    ['#16a34a','#d97706','#f59e0b','#dc2626'], 'action');
-
   makeVBar('chart-scorebands',
     ['90-100 Excellent','70-89 Good','50-69 Needs Work','0-49 Critical'],
     ['90-100','70-89','50-69','0-49'],
@@ -1279,9 +1262,9 @@ function updateEvalView() {
   const avgC = n ? avg(data.map(r => num(r.article_completeness_score))) : 0;
   const avgV = n ? avg(data.map(r => num(r.article_validity_score))) : 0;
   document.getElementById('article-kpis').innerHTML = [
-    kpiCard('Avg Relevance', avgR.toFixed(1), '40% weight', avgR, scoreColor(avgR)),
-    kpiCard('Avg Completeness', avgC.toFixed(1), '30% weight', avgC, scoreColor(avgC)),
-    kpiCard('Avg Validity', avgV.toFixed(1), '30% weight', avgV, scoreColor(avgV)),
+    kpiCard('Avg Relevance', avgR.toFixed(1), '40% weight', avgR, '#3b82f6'),
+    kpiCard('Avg Completeness', avgC.toFixed(1), '30% weight', avgC, '#3b82f6'),
+    kpiCard('Avg Validity', avgV.toFixed(1), '30% weight', avgV, '#3b82f6'),
   ].join('');
 
   makeDonut('chart-rel',
@@ -1323,10 +1306,10 @@ function updateEvalView() {
   // Description Quality KPIs
   const avgDQ = n ? avg(data.map(r => num(r.dq_description_quality_score))) : 0;
   document.getElementById('kt-kpis').innerHTML = [
-    kpiCard('Avg DQ Score', avgDQ.toFixed(1), 'Product Clarity 40% + Symptom Specificity 40% + Context 20%', avgDQ, scoreColor(avgDQ)),
+    kpiCard('Avg Description Quality Score', avgDQ.toFixed(1), 'Product Clarity 40% + Symptom Specificity 40% + Context 20%', avgDQ, scoreColor(avgDQ)),
     kpiCard('Agent Ready', pct(countVal(data,'dq_description_quality_verdict','agent_ready'), n), 'clear descriptions', null, '#16a34a'),
     kpiCard('Insufficient', pct(countVal(data,'dq_description_quality_verdict','insufficient'), n), 'under-described cases', null, '#dc2626'),
-    kpiCard('DQ Warnings', data.filter(r => isTrue(r.dq_evaluation_reliability_warning)).length, 'DQ score < 40', null, null),
+    kpiCard('Description Quality Warnings', data.filter(r => isTrue(r.dq_evaluation_reliability_warning)).length, 'DQ score < 40', null, null),
   ].join('');
   document.getElementById('kt-bars').innerHTML = [
     { label: 'Product Clarity', val: n ? avg(data.map(r=>num(r.product_clarity_score))) : 0 },
@@ -1348,9 +1331,9 @@ function updateEvalView() {
     const totalCit = data.reduce((a,r) => a+num(r.citations_total), 0);
     const goodCit = data.reduce((a,r) => a+num(r.citations_good), 0);
     document.getElementById('citation-kpis').innerHTML = [
-      kpiCard('Avg Grounding Score', avgGround.toFixed(1), 'citation grounding quality', avgGround, scoreColor(avgGround)),
+      kpiCard('Avg Grounding Score', avgGround.toFixed(1), 'how well responses are backed by the article', avgGround, scoreColor(avgGround)),
       kpiCard('Avg Response Quality', avgRQ.toFixed(1), 'composite AI response score', avgRQ, scoreColor(avgRQ)),
-      kpiCard('Good Citation Rate', pct(goodCit, totalCit), goodCit + ' of ' + totalCit + ' citations', null, null),
+      kpiCard('Good Citation Rate', pct(goodCit, totalCit), goodCit + ' cited · ' + (totalCit - goodCit) + ' uncited of ' + totalCit, null, null),
       kpiCard('Zero Citation Cases', data.filter(r => num(r.citations_total) === 0).length, 'no citations evaluated', null, null),
     ].join('');
     makeDonut('chart-ground',
@@ -1403,18 +1386,16 @@ function filterTable() {
   const q = (document.getElementById('table-search').value||'').toLowerCase();
   const fp = document.getElementById('f-priority').value;
   const fv = document.getElementById('f-verdict').value;
-  const fa = document.getElementById('f-action').value;
   const fdq = document.getElementById('f-dq').value;
   const farea = (document.getElementById('f-area') || {}).value || '';
   // Start from chart-filtered data, then apply text/dropdown filters on top
   tbl.filtered = getFilteredAll().filter(r => {
     if (fp && r.synthesis_priority !== fp) return false;
     if (fv && r.primary_article_verdict !== fv) return false;
-    if (fa && r.primary_article_action_required !== fa) return false;
     if (fdq && r.dq_description_quality_verdict !== fdq) return false;
     if (farea && r._areaPath !== farea) return false;
     if (q) {
-      const hay = [r.case_number, r._product, r.primary_article_verdict, r.synthesis_priority, r.synthesis_root_cause_category, r.primary_article_action_required, r._areaPath].join(' ').toLowerCase();
+      const hay = [r.case_number, r._product, r.primary_article_verdict, r.synthesis_priority, r.synthesis_root_cause_category, r._areaPath].join(' ').toLowerCase();
       if (!hay.includes(q)) return false;
     }
     return true;
@@ -1448,11 +1429,10 @@ function renderTablePage() {
       <td>${areaHtml}</td>
       <td>${scoreChip(row.primary_article_score)}</td>
       <td>${verdictBadge(row.primary_article_verdict)}</td>
-      <td>${actionBadge(row.primary_article_action_required)}</td>
       <td>${priBadge(row.synthesis_priority)}</td>
-      <td>${scoreChip(row.dq_description_quality_score)}</td>
+      <td><span class="score-chip" style="background:#64748b">${num(row.dq_description_quality_score).toFixed(0)}</span></td>
     </tr>`;
-  }).join('') || '<tr><td colspan="9" style="text-align:center;color:#94a3b8;padding:20px">No cases match</td></tr>';
+  }).join('') || '<tr><td colspan="8" style="text-align:center;color:#94a3b8;padding:20px">No cases match</td></tr>';
 
   const totalPages = Math.ceil(filtered.length / pageSize);
   const btns = Array.from({ length: Math.min(totalPages, 10) }, (_, i) =>
