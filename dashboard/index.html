@@ -262,7 +262,14 @@ canvas { cursor: pointer; }
     <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap">
       <select class="table-filter" id="spm-f-priority" onchange="renderSPM()">
         <option value="">All Priorities</option>
-        <option value="red">🔴 Red</option><option value="yellow">🟡 Yellow</option><option value="green">🟢 Green</option>
+        <option value="red">🔴 Red</option><option value="yellow">🟡 Yellow</option><option value="green">🟢 Green</option><option value="gray">⚪ Gray</option>
+      </select>
+      <select class="table-filter" id="spm-f-score" onchange="renderSPM()">
+        <option value="">All Scores</option>
+        <option value="0-20">0-20</option>
+        <option value="21-40">21-40</option>
+        <option value="41-60">41-60</option>
+        <option value="60-100">60-100</option>
       </select>
       <select class="table-filter" id="spm-f-area" onchange="renderSPM()">
         <option value="">All Area Paths</option>
@@ -355,7 +362,7 @@ canvas { cursor: pointer; }
 
   <div class="section">
     <div class="section-header"><div class="section-title">Synthesis &amp; Root Cause</div></div>
-    <div class="kpi-grid g3" id="synth-kpis"></div>
+    <div class="kpi-grid g4" id="synth-kpis"></div>
     <div style="margin-top:14px" class="chart-grid cg2">
       <div class="chart-card"><div class="chart-title">Root Cause Categories</div><div class="chart-wrap h260"><canvas id="chart-rc"></canvas></div></div>
       <div class="chart-card"><div class="chart-title">Avg Score by Product (top 12)</div><div class="chart-wrap h260"><canvas id="chart-product"></canvas></div></div>
@@ -372,7 +379,7 @@ canvas { cursor: pointer; }
       <input type="text" class="table-search" id="table-search" placeholder="Search case #, product, verdict…" oninput="filterTable()">
       <select class="table-filter" id="f-priority" onchange="filterTable()">
         <option value="">All Priorities</option>
-        <option value="red">🔴 Red</option><option value="yellow">🟡 Yellow</option><option value="green">🟢 Green</option>
+        <option value="red">🔴 Red</option><option value="yellow">🟡 Yellow</option><option value="green">🟢 Green</option><option value="gray">⚪ Gray</option>
       </select>
       <select class="table-filter" id="f-verdict" onchange="filterTable()">
         <option value="">All Verdicts</option>
@@ -475,11 +482,22 @@ function scoreColor(s) {
   if (s >= 50) return '#d97706'; return '#dc2626';
 }
 function priColor(p) {
-  return { red: '#dc2626', yellow: '#d97706', green: '#16a34a' }[p] || '#94a3b8';
+  return { red: '#dc2626', yellow: '#d97706', green: '#16a34a', gray: '#94a3b8' }[p] || '#94a3b8';
 }
 function priBadge(p) {
-  const lbl = { red: '🔴 Red', yellow: '🟡 Yellow', green: '🟢 Green' }[p] || (p || '–');
-  return `<span class="badge b-gray">${lbl}</span>`;
+  const cls = { red: 'b-red', yellow: 'b-yellow', green: 'b-green', gray: 'b-gray' }[p] || 'b-gray';
+  const lbl = { red: '🔴 Red', yellow: '🟡 Yellow', green: '🟢 Green', gray: '⚪ Gray' }[p] || (p || '–');
+  return `<span class="badge ${cls}">${lbl}</span>`;
+}
+function hasNoAiResponse(row) {
+  return String(row?.rq_quality_weaknesses || '').trim().toLowerCase() === 'no ai response provided';
+}
+function spmPriority(row) {
+  return hasNoAiResponse(row) ? 'gray' : (row.synthesis_priority || 'gray');
+}
+function spmPriorityOrder(row) {
+  const p = spmPriority(row);
+  return p === 'red' ? 1 : p === 'yellow' ? 2 : p === 'green' ? 3 : 4;
 }
 function verdictBadge(v) {
   const cls = { adequate: 'b-green', needs_supplementation: 'b-yellow', inadequate: 'b-red', no_citation_provided: 'b-purple' }[v] || 'b-gray';
@@ -556,7 +574,7 @@ function textOrEmpty(text) {
 // ══════════════════════════════════════════════════════════
 const filterState = {};
 const MATCHERS = {
-  priority:     (r, v) => r.synthesis_priority === v,
+  priority:     (r, v) => spmPriority(r) === v,
   verdict:      (r, v) => r.primary_article_verdict === v,
   scoreBand:    (r, v) => r._scoreBand === v,
   relVerdict:   (r, v) => r.article_relevance_verdict === v,
@@ -747,7 +765,7 @@ function parseEval(text) {
   return r.data.map(row => {
     const s = num(row.primary_article_score);
     row._scoreBand = s >= 90 ? '90-100' : s >= 70 ? '70-89' : s >= 50 ? '50-69' : '0-49';
-    row._priorityOrder = row.synthesis_priority === 'red' ? 1 : row.synthesis_priority === 'yellow' ? 2 : row.synthesis_priority === 'green' ? 3 : 4;
+    row._priorityOrder = spmPriorityOrder(row);
     row._hasError = !!(row.error && String(row.error).trim());
     row._product = row.issue_product || (row.sap_path ? String(row.sap_path).split('/')[0].trim() : 'Unknown');
     const _isExchange = row._product.toLowerCase().includes('exchange');
@@ -1144,6 +1162,16 @@ function renderSPM() {
   const n = data.length; // always full count for alert/KPIs
   const mwea = isMwea(data);
 
+  function matchesSpmScoreRange(row, range) {
+    if (!range) return true;
+    const score = num(row.primary_article_score);
+    if (range === '0-20') return score >= 0 && score <= 20;
+    if (range === '21-40') return score >= 21 && score <= 40;
+    if (range === '41-60') return score >= 41 && score <= 60;
+    if (range === '60-100') return score >= 60 && score <= 100;
+    return true;
+  }
+
   // Populate area filter (once, on first render)
   const areaSelectEl = document.getElementById('spm-f-area');
   if (areaSelectEl && areaSelectEl.options.length <= 1) {
@@ -1153,10 +1181,12 @@ function renderSPM() {
 
   // Apply local filters
   const fpVal = (document.getElementById('spm-f-priority') || {}).value || '';
+  const fsVal = (document.getElementById('spm-f-score') || {}).value || '';
   const faVal = (areaSelectEl || {}).value || '';
   const fdqVal = (document.getElementById('spm-f-dq') || {}).value || '';
   const filtered = data.filter(r =>
-    (!fpVal || r.synthesis_priority === fpVal) &&
+    (!fpVal || spmPriority(r) === fpVal) &&
+    matchesSpmScoreRange(r, fsVal) &&
     (!faVal || r._areaPath === faVal) &&
     (!fdqVal || r.dq_description_quality_verdict === fdqVal)
   );
@@ -1181,7 +1211,9 @@ function renderSPM() {
   ].join('');
   // Sort filtered: red first, then yellow, then green; within priority sort by score asc
   const sorted = [...filtered].sort((a, b) => {
-    if (a._priorityOrder !== b._priorityOrder) return a._priorityOrder - b._priorityOrder;
+    const aOrder = spmPriorityOrder(a);
+    const bOrder = spmPriorityOrder(b);
+    if (aOrder !== bOrder) return aOrder - bOrder;
     return num(a.primary_article_score) - num(b.primary_article_score);
   });
 
@@ -1191,15 +1223,16 @@ function renderSPM() {
     const idx = data.indexOf(row);
     const pm = row.synthesis_pm_actions || '';
     const preview = pm.trim() ? trunc(pm.replace(/;/g, ' ·'), 80) : null;
+    const pmTitle = (pm.trim() || 'No PM actions recorded').replace(/"/g, '&quot;');
     const areaHtml = evalAreaChip(row, 24);
     return `<tr class="data-row" data-idx="${idx}">
       <td><button class="expand-btn" onclick="toggleDetail(this,${idx},'spm-table-body',${mwea})" title="Show detail">▶</button></td>
-      <td>${priBadge(row.synthesis_priority)}</td>
+      <td>${priBadge(spmPriority(row))}</td>
       <td style="font-family:monospace;font-size:11px">${row.case_number || '–'}</td>
       <td>${trunc(row._product || '–', 22)}</td>
       <td>${areaHtml}</td>
       <td>${scoreChip(row.primary_article_score)}</td>
-      <td class="${preview ? 'pm-preview' : 'pm-empty'}">${preview || 'No PM actions recorded'}</td>
+      <td class="${preview ? 'pm-preview' : 'pm-empty'}" title="${pmTitle}">${preview || 'No PM actions recorded'}</td>
     </tr>`;
   }).join('');
   document.getElementById('spm-table-body').innerHTML = rows || '<tr><td colspan="7" style="text-align:center;color:#94a3b8;padding:20px">No cases</td></tr>';
@@ -1232,7 +1265,8 @@ function updateEvalView() {
   // KPI cards (respond to filters)
   const adequate = countVal(data, 'primary_article_verdict', 'adequate');
   const avgScore = n ? avg(data.map(r => num(r.primary_article_score))) : 0;
-  const redN = countVal(data, 'synthesis_priority', 'red');
+  const redN = data.filter(r => spmPriority(r) === 'red').length;
+  const grayN = data.filter(r => spmPriority(r) === 'gray').length;
   document.getElementById('exec-kpis').innerHTML = [
     kpiCard('Cases (filtered)', n, 'of ' + allData.length + ' total', null, null),
     kpiCard('Avg Overall Score', avgScore.toFixed(1), 'out of 100', avgScore, scoreColor(avgScore)),
@@ -1240,6 +1274,7 @@ function updateEvalView() {
   ].join('');
   document.getElementById('exec-kpis2').innerHTML = [
     `<div class="kpi-card"><div class="kpi-label">🔴 Red Priority</div><div class="kpi-value c-red">${redN}</div><div class="kpi-sub">${pct(redN,n)} — immediate action</div></div>`,
+    `<div class="kpi-card"><div class="kpi-label">⚪ Gray Priority</div><div class="kpi-value c-gray">${grayN}</div><div class="kpi-sub">${pct(grayN,n)} — no AI response provided</div></div>`,
     kpiCard('Low Desc. Quality Confidence', data.filter(r => isTrue(r.dq_evaluation_reliability_warning)).length, 'reliability warnings', null, null),
     kpiCard('Avg Processing', n ? (avg(data.map(r => num(r.processing_time_ms)))/1000).toFixed(1) + 's' : '–', 'per case', null, null),
   ].join('');
@@ -1252,10 +1287,10 @@ function updateEvalView() {
     ['#16a34a','#d97706','#dc2626','#7c3aed'], 'verdict');
 
   makeDonut('chart-priority',
-    ['🔴 Red','🟡 Yellow','🟢 Green'],
-    ['red','yellow','green'],
-    r => r.synthesis_priority,
-    ['#dc2626','#d97706','#16a34a'], 'priority');
+    ['🔴 Red','🟡 Yellow','🟢 Green','⚪ Gray'],
+    ['red','yellow','green','gray'],
+    r => spmPriority(r),
+    ['#dc2626','#d97706','#16a34a','#94a3b8'], 'priority');
 
   makeVBar('chart-scorebands',
     ['90-100 Excellent','70-89 Good','50-69 Needs Work','0-49 Critical'],
@@ -1360,16 +1395,20 @@ function updateEvalView() {
   }
 
   // Synthesis KPIs
-  const sRed = countVal(data,'synthesis_priority','red'), sYel = countVal(data,'synthesis_priority','yellow'), sGrn = countVal(data,'synthesis_priority','green');
+  const sRed = data.filter(r => spmPriority(r) === 'red').length;
+  const sYel = data.filter(r => spmPriority(r) === 'yellow').length;
+  const sGrn = data.filter(r => spmPriority(r) === 'green').length;
+  const sGray = data.filter(r => spmPriority(r) === 'gray').length;
   document.getElementById('synth-kpis').innerHTML = [
     `<div class="kpi-card"><div class="kpi-label">🔴 Red</div><div class="kpi-value c-red">${sRed}</div><div class="kpi-sub">${pct(sRed,n)}</div></div>`,
     `<div class="kpi-card"><div class="kpi-label">🟡 Yellow</div><div class="kpi-value c-yellow">${sYel}</div><div class="kpi-sub">${pct(sYel,n)}</div></div>`,
     `<div class="kpi-card"><div class="kpi-label">🟢 Green</div><div class="kpi-value c-green">${sGrn}</div><div class="kpi-sub">${pct(sGrn,n)}</div></div>`,
+    `<div class="kpi-card"><div class="kpi-label">⚪ Gray</div><div class="kpi-value c-gray">${sGray}</div><div class="kpi-sub">${pct(sGray,n)} — no AI response provided</div></div>`,
   ].join('');
 
   // Dynamic charts
   makeDynHBar('chart-rc', r => r.synthesis_root_cause_category || 'Unknown',
-    k => { const ex = getFiltered('rootCause').find(r => (r.synthesis_root_cause_category||'Unknown')===k); return priColor(ex?.synthesis_priority); },
+    k => { const ex = getFiltered('rootCause').find(r => (r.synthesis_root_cause_category||'Unknown')===k); return priColor(spmPriority(ex)); },
     'rootCause');
   makeProdBar('chart-product', 'product');
   makeDynHBar('chart-area', r => r._areaPath || 'Unclassified', () => '#0369a1', 'areaPath');
@@ -1396,12 +1435,12 @@ function filterTable() {
   const farea = (document.getElementById('f-area') || {}).value || '';
   // Start from chart-filtered data, then apply text/dropdown filters on top
   tbl.filtered = getFilteredAll().filter(r => {
-    if (fp && r.synthesis_priority !== fp) return false;
+    if (fp && spmPriority(r) !== fp) return false;
     if (fv && r.primary_article_verdict !== fv) return false;
     if (fdq && r.dq_description_quality_verdict !== fdq) return false;
     if (farea && r._areaPath !== farea) return false;
     if (q) {
-      const hay = [r.case_number, r._product, r.primary_article_verdict, r.synthesis_priority, r.synthesis_root_cause_category, r._areaPath].join(' ').toLowerCase();
+      const hay = [r.case_number, r._product, r.primary_article_verdict, spmPriority(r), r.synthesis_root_cause_category, r._areaPath].join(' ').toLowerCase();
       if (!hay.includes(q)) return false;
     }
     return true;
@@ -1419,6 +1458,7 @@ function renderTablePage() {
   const { filtered, page, pageSize, sortKey, sortDir } = tbl;
   const mwea = isMwea(state.evalData);
   const sorted = [...filtered].sort((a, b) => {
+    if (sortKey === 'synthesis_priority') return (spmPriorityOrder(a) - spmPriorityOrder(b)) * sortDir;
     const av = a[sortKey], bv = b[sortKey];
     if (typeof av === 'number') return (av - bv) * sortDir;
     return String(av||'').localeCompare(String(bv||'')) * sortDir;
@@ -1435,7 +1475,7 @@ function renderTablePage() {
       <td>${areaHtml}</td>
       <td>${scoreChip(row.primary_article_score)}</td>
       <td>${verdictBadge(row.primary_article_verdict)}</td>
-      <td>${priBadge(row.synthesis_priority)}</td>
+      <td>${priBadge(spmPriority(row))}</td>
       <td><span class="score-chip" style="background:#64748b">${num(row.dq_description_quality_score).toFixed(0)}</span></td>
     </tr>`;
   }).join('') || '<tr><td colspan="8" style="text-align:center;color:#94a3b8;padding:20px">No cases match</td></tr>';

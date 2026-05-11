@@ -180,6 +180,7 @@ class MwaiClient:
         headers = {
             "Authorization": f"Bearer {self.token}",
             "Content-Type": "application/json",
+            "Accept": "application/json",
             "User-Agent": "AgenticInsightEngine/1.0",
         }
         payload = {
