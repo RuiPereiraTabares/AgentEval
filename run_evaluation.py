@@ -248,7 +248,8 @@ def main():
     evaluator = ArticleEvaluator(
         model=args.model,
         provider='mwai',
-        mwai_token=mwai_token
+        mwai_token=mwai_token,
+        mwai_token_is_explicit=bool(args.token),
     )
 
     # Process cases
