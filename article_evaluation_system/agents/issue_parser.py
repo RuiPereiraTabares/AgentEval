@@ -4,26 +4,11 @@ Issue Parser Agent - Extracts structured information from customer issue descrip
 
 import logging
 
-from . import BaseAgent
+from . import BaseAgent, _REFUSAL_PATTERNS, _log_refusal
 from ..models.issue import Issue
 from ..utils.prompts import AgentPrompts
 
 logger = logging.getLogger(__name__)
-
-# Patterns that indicate the LLM refused to answer
-_REFUSAL_PATTERNS = (
-    "sorry, i can't help",
-    "sorry, i cannot help",
-    "i can't assist",
-    "i cannot assist",
-    "i'm unable to",
-    "i am unable to",
-    "i'm not able to",
-    "i can't provide",
-    "i cannot provide",
-    "as an ai",
-    "i don't have the ability",
-)
 
 
 class IssueParserAgent(BaseAgent):
@@ -85,8 +70,9 @@ Extract all relevant information and respond with JSON only."""
 
             # Detect LLM refusal (e.g. "Sorry, I can't help with that.")
             if any(p in response.lower() for p in _REFUSAL_PATTERNS):
+                _log_refusal("IssueParserAgent", response, self._refusal_context)
                 logger.warning(
-                    f"[IssueParserAgent] LLM refused to parse issue (using fallback): {response[:100]}"
+                    f"[IssueParserAgent] LLM refused to parse issue (using fallback): {response[:150]}"
                 )
                 raise ValueError("LLM refused to process the request")
 

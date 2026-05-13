@@ -161,6 +161,7 @@ class CitationQualityAgent(BaseAgent):
         )
 
         try:
+            self._refusal_context = {"article_url": url}
             response = self._call_llm(self.system_prompt, user_message)
             parsed = self._parse_json_response(response)
             result = PerCitationResult.from_dict(
