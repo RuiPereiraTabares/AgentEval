@@ -65,7 +65,7 @@ class Orchestrator(BaseAgent):
             token = resolve_mwai_token(mwai_token)
             if mwai_token_is_explicit is None:
                 mwai_token_is_explicit = bool(mwai_token)
-            client = MwaiClient(token=token, _via_msal=not mwai_token_is_explicit)
+            client = MwaiClient(token=token, _via_msal=not mwai_token_is_explicit, model=model)
 
         super().__init__(client, model, provider)
 

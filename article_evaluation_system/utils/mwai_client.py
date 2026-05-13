@@ -135,7 +135,7 @@ class MwaiClient:
     within the Agentic Insight Engine's agent framework.
     """
 
-    def __init__(self, token: str, timeout: int = 120, _via_msal: bool = False):
+    def __init__(self, token: str, timeout: int = 120, _via_msal: bool = False, model: str = "gpt-4o"):
         """
         Initialize the MWAI client.
 
@@ -144,10 +144,12 @@ class MwaiClient:
             timeout: Request timeout in seconds
             _via_msal: True when token came from MSAL — enables silent refresh
                        before each request via acquire_token_silent.
+            model: Deployment/model name sent in the API payload.
         """
         self.token = token
         self.timeout = timeout
         self._via_msal = _via_msal
+        self.model = model
 
     def _ensure_token_fresh(self) -> None:
         """
@@ -188,6 +190,7 @@ class MwaiClient:
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_message},
             ],
+            "model": self.model,
             "temperature": 0.1,
             "max_tokens": 4096,
             "response_format": {"type": "json_object"},
