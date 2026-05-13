@@ -44,7 +44,8 @@ class Orchestrator(BaseAgent):
         client=None,
         model: str = "gpt-4o",
         provider: str = "mwai",
-        mwai_token: str = None
+        mwai_token: str = None,
+        mwai_token_is_explicit: bool | None = None,
     ):
         """
         Initialize the orchestrator.
@@ -54,11 +55,17 @@ class Orchestrator(BaseAgent):
             model: Model to use for all agents
             provider: API provider ("mwai")
             mwai_token: MWAI bearer token (resolved automatically if not provided)
+            mwai_token_is_explicit:
+                Whether the provided token should be treated as a user-supplied
+                static token (no MSAL refresh). When None, inferred from whether
+                mwai_token was provided.
         """
         if client is None:
             from ..utils.mwai_client import MwaiClient, resolve_mwai_token
             token = resolve_mwai_token(mwai_token)
-            client = MwaiClient(token=token, _via_msal=not bool(mwai_token))
+            if mwai_token_is_explicit is None:
+                mwai_token_is_explicit = bool(mwai_token)
+            client = MwaiClient(token=token, _via_msal=not mwai_token_is_explicit)
 
         super().__init__(client, model, provider)
 

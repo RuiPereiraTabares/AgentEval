@@ -17,7 +17,8 @@ class ArticleEvaluator:
         self,
         model: str = "gpt-4o",
         provider: str = "mwai",
-        mwai_token: str = None
+        mwai_token: str = None,
+        mwai_token_is_explicit: bool | None = None,
     ):
         """
         Initialize the ArticleEvaluator.
@@ -26,11 +27,15 @@ class ArticleEvaluator:
             model: Model to use for evaluations
             provider: API provider ("mwai")
             mwai_token: MWAI bearer token (resolved automatically if not provided)
+            mwai_token_is_explicit:
+                Whether mwai_token is a user-supplied static token. When None,
+                behavior is inferred from whether mwai_token is provided.
         """
         self.orchestrator = Orchestrator(
             model=model,
             provider=provider,
-            mwai_token=mwai_token
+            mwai_token=mwai_token,
+            mwai_token_is_explicit=mwai_token_is_explicit,
         )
 
     def evaluate(

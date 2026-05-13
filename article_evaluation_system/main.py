@@ -679,7 +679,11 @@ def main():
 
     # Initialize evaluator
     logger.info("Initializing Article Evaluator...")
-    evaluator = ArticleEvaluator(model=args.model, mwai_token=mwai_token)
+    evaluator = ArticleEvaluator(
+        model=args.model,
+        mwai_token=mwai_token,
+        mwai_token_is_explicit=bool(getattr(args, 'token', None)),
+    )
 
     # Read cases
     logger.info(f"Reading cases from {args.input_file}...")
