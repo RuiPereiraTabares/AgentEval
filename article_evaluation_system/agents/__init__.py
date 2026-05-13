@@ -9,6 +9,30 @@ import re
 
 logger = logging.getLogger(__name__)
 
+# Patterns that indicate the LLM refused to answer (shared across all agents)
+_REFUSAL_PATTERNS = (
+    "sorry, i can't help",
+    "sorry, i cannot help",
+    "i can't assist",
+    "i cannot assist",
+    "i'm unable to",
+    "i am unable to",
+    "i'm not able to",
+    "i can't provide",
+    "i cannot provide",
+    "as an ai",
+    "i don't have the ability",
+)
+
+
+def _log_refusal(agent_name: str, response: str, context: dict) -> None:
+    """Log a refusal to the refusal CSV via refusal_logger."""
+    try:
+        from ..utils.refusal_logger import log_refusal
+        log_refusal(agent_name, response, context)
+    except Exception as e:
+        logger.debug(f"[_log_refusal] Could not write to refusal log: {e}")
+
 
 class BaseAgent(ABC):
     """Base class for all evaluation agents."""
@@ -26,6 +50,7 @@ class BaseAgent(ABC):
         self.model = model
         self.provider = provider
         self._llm_callable = None  # Optional injectable LLM callable
+        self._refusal_context: dict = {}  # Populated by agents before _call_llm for refusal logging
 
     def set_llm_callable(self, callable_fn):
         """
@@ -93,6 +118,13 @@ class BaseAgent(ABC):
             Parsed JSON dictionary
         """
         agent_name = self.__class__.__name__
+
+        # Detect LLM content refusal before attempting JSON parse
+        response_lower = response.lower().strip()
+        if any(p in response_lower for p in _REFUSAL_PATTERNS):
+            _log_refusal(agent_name, response, self._refusal_context)
+            logger.warning(f"[{agent_name}] LLM refused to process request: {response[:150]}")
+            raise ValueError(f"LLM refused: {response[:200]}")
 
         # Try to extract JSON from markdown code blocks (closed fence first)
         json_match = re.search(r'```(?:json)?\s*([\s\S]*?)\s*```', response)

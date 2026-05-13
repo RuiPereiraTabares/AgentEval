@@ -220,6 +220,10 @@ def main():
     # Summary CSV always sits alongside the main output
     output_summary = f'evaluation_summary_{timestamp}.csv'
 
+    # Configure refusal logger to write alongside other output files
+    from article_evaluation_system.utils import refusal_logger
+    refusal_logger.set_output_path(os.path.dirname(os.path.abspath(output_file)) or '.')
+
     # Read cases
     print(f"Reading cases from {args.input}...")
     if args.mweaeval:
