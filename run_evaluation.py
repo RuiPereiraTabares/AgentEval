@@ -604,6 +604,22 @@ def main():
         print(f"  - Average grounding score: {avg_cq}/100")
         print(f"  - Citations: {total_good} good, {total_partial} partial, {total_bad} bad")
 
+    # RAI refusal summary
+    from article_evaluation_system.utils.refusal_logger import get_output_path as _refusal_path
+    _rlog = _refusal_path()
+    if _rlog and os.path.exists(_rlog):
+        import csv as _csv
+        with open(_rlog, newline="", encoding="utf-8") as _f:
+            _rows = list(_csv.DictReader(_f))
+        _penalties = sum(1 for r in _rows if r.get("rai_penalty") == "True")
+        _recovered = sum(1 for r in _rows if r.get("rai_penalty") == "False")
+        _total = len(_rows)
+        print(f"\nRAI Refusal Summary:")
+        print(f"  Total logged:              {_total}")
+        print(f"  RAI penalties (permanent): {_penalties}")
+        print(f"  Recovered via retry:       {_recovered}")
+        print(f"  Cases left on the table:   {_penalties}")
+
     print(f"\nResults saved to:")
     print(f"  Detailed: {output_file}")
     print(f"  Summary:  {output_summary}")

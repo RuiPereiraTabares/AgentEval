@@ -18,7 +18,8 @@ _lock = threading.Lock()
 _output_path: str | None = None
 _header_written: bool = False
 
-_FIELDNAMES = ["timestamp", "agent", "refusal_text", "case_id", "article_url", "extra"]
+_FIELDNAMES = ["timestamp", "agent", "refusal_text", "case_id", "article_url",
+               "retry_count", "rai_penalty", "extra"]
 
 
 def set_output_path(directory: str) -> None:
@@ -47,13 +48,21 @@ def _get_output_path() -> str:
     return _output_path
 
 
-def log_refusal(agent: str, refusal_text: str, context: dict) -> None:
+def get_output_path() -> str | None:
+    """Return the current refusal log path (None if not yet initialised)."""
+    return _output_path
+
+
+def log_refusal(agent: str, refusal_text: str, context: dict,
+                retry_count: int = 0, rai_penalty: bool = False) -> None:
     """Append one refusal row to the CSV log.
 
     Args:
         agent: Agent class name (e.g. "RelevanceAgent").
         refusal_text: First 200 chars of the LLM refusal response.
         context: Dict with optional keys case_id, article_url, plus any extras.
+        retry_count: Number of retry attempts made before this log entry.
+        rai_penalty: True if all retries were exhausted (permanent failure).
     """
     global _header_written
 
@@ -68,6 +77,8 @@ def log_refusal(agent: str, refusal_text: str, context: dict) -> None:
         "refusal_text": refusal_text[:200],
         "case_id": case_id,
         "article_url": article_url,
+        "retry_count": retry_count,
+        "rai_penalty": str(rai_penalty),
         "extra": extra,
     }
 

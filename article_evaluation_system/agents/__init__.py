@@ -6,30 +6,51 @@ from abc import ABC, abstractmethod
 import json
 import logging
 import re
+import time
 
 logger = logging.getLogger(__name__)
 
+
+class LLMRefusalError(ValueError):
+    """Raised when the LLM refuses to process a request (RAI guardrail)."""
+    pass
+
+
+_RAI_MAX_RETRIES = 2        # extra attempts after first refusal
+_RAI_RETRY_DELAY = 2.0      # seconds between retries
+
 # Patterns that indicate the LLM refused to answer (shared across all agents)
 _REFUSAL_PATTERNS = (
-    "sorry, i can't help",
-    "sorry, i cannot help",
-    "i can't assist",
-    "i cannot assist",
-    "i'm unable to",
-    "i am unable to",
-    "i'm not able to",
-    "i can't provide",
-    "i cannot provide",
+    "sorry, i can't help",    "sorry, i cannot help",
+    "sorry, we can't",        "sorry, we cannot",
+    "sorry we can't",         "sorry we cannot",
+    "i can't assist",         "i cannot assist",
+    "we can't assist",        "we cannot assist",
+    "i'm unable to",          "i am unable to",
+    "we're unable to",        "we are unable to",
+    "i'm not able to",        "i am not able to",
+    "i can't provide",        "i cannot provide",
+    "we can't provide",       "we cannot provide",
     "as an ai",
     "i don't have the ability",
+    "cannot process this",
+    "this request cannot be processed",
 )
 
 
-def _log_refusal(agent_name: str, response: str, context: dict) -> None:
+def _is_refusal(text: str) -> bool:
+    """Return True if the text matches a known LLM refusal pattern."""
+    lower = text.lower().strip()
+    return any(p in lower for p in _REFUSAL_PATTERNS)
+
+
+def _log_refusal(agent_name: str, response: str, context: dict,
+                 retry_count: int = 0, rai_penalty: bool = False) -> None:
     """Log a refusal to the refusal CSV via refusal_logger."""
     try:
         from ..utils.refusal_logger import log_refusal
-        log_refusal(agent_name, response, context)
+        log_refusal(agent_name, response, context,
+                    retry_count=retry_count, rai_penalty=rai_penalty)
     except Exception as e:
         logger.debug(f"[_log_refusal] Could not write to refusal log: {e}")
 
@@ -76,7 +97,7 @@ class BaseAgent(ABC):
 
     def _call_llm(self, system_prompt: str, user_message: str) -> str:
         """
-        Make a call to the MWAI LLM API.
+        Make a call to the MWAI LLM API, with RAI refusal retry logic.
 
         Args:
             system_prompt: The system prompt
@@ -84,6 +105,9 @@ class BaseAgent(ABC):
 
         Returns:
             LLM response text
+
+        Raises:
+            LLMRefusalError: If all retry attempts are refused by RAI guardrails.
         """
         agent_name = self.__class__.__name__
         logger.info(f"[{agent_name}] Calling LLM (provider={self.provider}, model={self.model})")
@@ -94,18 +118,34 @@ class BaseAgent(ABC):
             f"[{agent_name}] User message (first 500 chars): {user_message[:500]}"
         )
 
-        # Use injected callable if available
-        if self._llm_callable is not None:
-            response = self._llm_callable(system_prompt, user_message)
-            logger.info(f"[{agent_name}] Got response via injected callable ({len(response)} chars)")
-            logger.debug(f"[{agent_name}] Raw response (first 500 chars): {response[:500]}")
-            return response
+        for attempt in range(1 + _RAI_MAX_RETRIES):
+            if self._llm_callable is not None:
+                response = self._llm_callable(system_prompt, user_message)
+            else:
+                response = self.client.chat_completion(system_prompt, user_message)
 
-        # MWAI ChatCompletionWithoutData API
-        response = self.client.chat_completion(system_prompt, user_message)
-        logger.info(f"[{agent_name}] Got MWAI response ({len(response)} chars)")
-        logger.debug(f"[{agent_name}] Raw response (first 500 chars): {response[:500]}")
-        return response
+            if not _is_refusal(response):
+                if attempt > 0:
+                    logger.info(f"[{agent_name}] Recovered from RAI refusal on attempt {attempt + 1}")
+                    _log_refusal(agent_name, response, self._refusal_context,
+                                 retry_count=attempt, rai_penalty=False)
+                else:
+                    logger.info(f"[{agent_name}] Got response ({len(response)} chars)")
+                logger.debug(f"[{agent_name}] Raw response (first 500 chars): {response[:500]}")
+                return response
+
+            logger.warning(f"[{agent_name}] RAI refusal (attempt {attempt + 1}): {response[:120]}")
+
+            if attempt < _RAI_MAX_RETRIES:
+                logger.info(f"[{agent_name}] Retrying in {_RAI_RETRY_DELAY}s...")
+                time.sleep(_RAI_RETRY_DELAY)
+
+        # All retries exhausted
+        _log_refusal(agent_name, response, self._refusal_context,
+                     retry_count=_RAI_MAX_RETRIES + 1, rai_penalty=True)
+        raise LLMRefusalError(
+            f"RAI penalty after {_RAI_MAX_RETRIES + 1} attempts: {response[:200]}"
+        )
 
     def _parse_json_response(self, response: str) -> dict:
         """
@@ -119,12 +159,13 @@ class BaseAgent(ABC):
         """
         agent_name = self.__class__.__name__
 
-        # Detect LLM content refusal before attempting JSON parse
-        response_lower = response.lower().strip()
-        if any(p in response_lower for p in _REFUSAL_PATTERNS):
-            _log_refusal(agent_name, response, self._refusal_context)
+        # Detect LLM content refusal before attempting JSON parse (safety net for
+        # refusals that slipped past _call_llm, e.g. via injected callables)
+        if _is_refusal(response):
+            _log_refusal(agent_name, response, self._refusal_context,
+                         retry_count=0, rai_penalty=True)
             logger.warning(f"[{agent_name}] LLM refused to process request: {response[:150]}")
-            raise ValueError(f"LLM refused: {response[:200]}")
+            raise LLMRefusalError(f"LLM refused: {response[:200]}")
 
         # Try to extract JSON from markdown code blocks (closed fence first)
         json_match = re.search(r'```(?:json)?\s*([\s\S]*?)\s*```', response)
@@ -203,6 +244,7 @@ from .area_classification_agent import AreaClassificationAgent
 from .orchestrator import Orchestrator
 
 __all__ = [
+    'LLMRefusalError',
     'BaseAgent',
     'IssueParserAgent',
     'RelevanceAgent',
