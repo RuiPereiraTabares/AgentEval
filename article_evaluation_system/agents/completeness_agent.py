@@ -69,7 +69,7 @@ class CompletenessAgent(BaseAgent):
 Evaluate completeness and respond with JSON only."""
 
         try:
-            self._refusal_context = {"case_id": getattr(issue, "case_id", ""), "article_url": article.url}
+            self._refusal_context = {"case_id": getattr(issue, "case_number", ""), "article_url": article.url}
             response = self._call_llm(self.system_prompt, user_message)
             parsed_data = self._parse_json_response(response)
 

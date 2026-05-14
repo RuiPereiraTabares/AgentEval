@@ -72,7 +72,7 @@ class AreaClassificationAgent(BaseAgent):
         )
 
         try:
-            self._refusal_context = {"case_id": getattr(issue, "case_id", "")}
+            self._refusal_context = {"case_id": getattr(issue, "case_number", "")}
             response = self._call_llm(system_prompt, user_message)
             parsed = self._parse_json_response(response)
 

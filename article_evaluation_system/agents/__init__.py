@@ -119,10 +119,19 @@ class BaseAgent(ABC):
         )
 
         for attempt in range(1 + _RAI_MAX_RETRIES):
-            if self._llm_callable is not None:
-                response = self._llm_callable(system_prompt, user_message)
+            if attempt > 0:
+                effective_message = (
+                    "Please provide a technical quality evaluation of the following "
+                    "Microsoft support content:\n\n" + user_message
+                )
             else:
-                response = self.client.chat_completion(system_prompt, user_message)
+                effective_message = user_message
+
+            response = (
+                self._llm_callable(system_prompt, effective_message)
+                if self._llm_callable is not None
+                else self.client.chat_completion(system_prompt, effective_message)
+            )
 
             if not _is_refusal(response):
                 if attempt > 0:

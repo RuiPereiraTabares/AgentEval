@@ -90,6 +90,7 @@ class Orchestrator(BaseAgent):
         article_url: str | None = None,
         article_urls: list[str] | None = None,
         product_info: dict | None = None,
+        case_number: str = "",
     ) -> dict:
         """
         Perform comprehensive evaluation of article(s) for a customer issue.
@@ -106,7 +107,9 @@ class Orchestrator(BaseAgent):
 
         # Step 1: Parse the customer issue
         logger.info("Parsing customer issue...")
+        self.issue_parser._refusal_context = {"case_id": case_number}
         issue = self.issue_parser.evaluate(customer_issue, product_info=product_info)
+        issue.case_number = case_number
         logger.info(f"Issue parsed: product={issue.product}, type={issue.issue_type}")
 
         # Step 1a+1b: Classify area path and evaluate description quality (parallel)
@@ -207,6 +210,7 @@ class Orchestrator(BaseAgent):
         ai_response: str,
         citation_urls: list[str],
         product_info: dict | None = None,
+        case_number: str = "",
     ) -> dict:
         """
         Evaluate an AI response with inline citations.
@@ -229,7 +233,9 @@ class Orchestrator(BaseAgent):
 
         # Step 1: Parse the customer issue
         logger.info("Parsing customer issue...")
+        self.issue_parser._refusal_context = {"case_id": case_number}
         issue = self.issue_parser.evaluate(customer_issue, product_info=product_info)
+        issue.case_number = case_number
         logger.info(f"Issue parsed: product={issue.product}, type={issue.issue_type}")
 
         # Step 1a+1b: Classify area path and evaluate description quality (parallel)
@@ -260,6 +266,7 @@ class Orchestrator(BaseAgent):
 
         # Step 3: Citation quality evaluation
         logger.info("--- Running CitationQualityAgent ---")
+        self.citation_quality_agent._refusal_context = {"case_id": issue.case_number}
         citation_quality_result = self.citation_quality_agent.evaluate(
             ai_response=ai_response,
             citation_urls=citation_urls,

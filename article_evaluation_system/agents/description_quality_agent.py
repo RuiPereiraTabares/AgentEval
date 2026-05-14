@@ -87,7 +87,7 @@ class DescriptionQualityAgent(BaseAgent):
         )
 
         try:
-            self._refusal_context = {"case_id": getattr(issue, "case_id", "")}
+            self._refusal_context = {"case_id": getattr(issue, "case_number", "")}
             response = self._call_llm(self.system_prompt, user_message)
             parsed_data = self._parse_json_response(response)
             result = DescriptionQualityResult.from_dict(parsed_data)

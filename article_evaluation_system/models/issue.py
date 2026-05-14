@@ -23,6 +23,8 @@ class Issue:
     environment: dict = field(default_factory=dict)
     severity: Severity = "medium"
     raw_description: str = ""
+    # Case number from source CSV (used for refusal log traceability)
+    case_number: str = ""
     # Area path classification (populated by AreaClassificationAgent)
     area_path: str | None = None
     area_path_confidence: int = 0

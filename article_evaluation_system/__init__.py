@@ -43,6 +43,7 @@ class ArticleEvaluator:
         customer_issue: str,
         recommended_article: str | None = None,
         product_info: dict | None = None,
+        case_number: str = "",
     ) -> dict:
         """
         Evaluate whether an article adequately addresses a customer issue.
@@ -51,6 +52,7 @@ class ArticleEvaluator:
             customer_issue: The customer's issue description
             recommended_article: URL of the recommended article (optional)
             product_info: SAP product metadata from CSV (optional)
+            case_number: Source case identifier for refusal log traceability
 
         Returns:
             Comprehensive evaluation result dictionary
@@ -59,6 +61,7 @@ class ArticleEvaluator:
             customer_issue=customer_issue,
             article_url=recommended_article,
             product_info=product_info,
+            case_number=case_number,
         )
 
     def evaluate_with_citations(

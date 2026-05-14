@@ -573,6 +573,7 @@ def process_cases(
                 evaluation = evaluator.evaluate(
                     customer_issue=full_issue,
                     recommended_article=urls[0] if len(urls) == 1 else None,
+                    case_number=case['case_number'],
                 )
                 # Handle multiple URLs if needed
                 if len(urls) > 1:
@@ -581,6 +582,7 @@ def process_cases(
                 evaluation = evaluator.evaluate(
                     customer_issue=full_issue,
                     recommended_article=None,
+                    case_number=case['case_number'],
                 )
 
             processing_time = (datetime.now() - start_time).total_seconds() * 1000
