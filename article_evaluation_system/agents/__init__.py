@@ -45,12 +45,14 @@ def _is_refusal(text: str) -> bool:
 
 
 def _log_refusal(agent_name: str, response: str, context: dict,
-                 retry_count: int = 0, rai_penalty: bool = False) -> None:
+                 retry_count: int = 0, rai_penalty: bool = False,
+                 system_prompt: str = "", user_message: str = "") -> None:
     """Log a refusal to the refusal CSV via refusal_logger."""
     try:
         from ..utils.refusal_logger import log_refusal
         log_refusal(agent_name, response, context,
-                    retry_count=retry_count, rai_penalty=rai_penalty)
+                    retry_count=retry_count, rai_penalty=rai_penalty,
+                    system_prompt=system_prompt, user_message=user_message)
     except Exception as e:
         logger.debug(f"[_log_refusal] Could not write to refusal log: {e}")
 
@@ -72,6 +74,8 @@ class BaseAgent(ABC):
         self.provider = provider
         self._llm_callable = None  # Optional injectable LLM callable
         self._refusal_context: dict = {}  # Populated by agents before _call_llm for refusal logging
+        self._last_system_prompt: str = ""  # Last system prompt sent (for refusal logging)
+        self._last_user_message: str = ""   # Last user message sent (for refusal logging)
 
     def set_llm_callable(self, callable_fn):
         """
@@ -118,6 +122,9 @@ class BaseAgent(ABC):
             f"[{agent_name}] User message (first 500 chars): {user_message[:500]}"
         )
 
+        self._last_system_prompt = system_prompt
+        self._last_user_message = user_message
+
         for attempt in range(1 + _RAI_MAX_RETRIES):
             if attempt > 0:
                 effective_message = (
@@ -126,6 +133,8 @@ class BaseAgent(ABC):
                 )
             else:
                 effective_message = user_message
+
+            self._last_user_message = effective_message
 
             response = (
                 self._llm_callable(system_prompt, effective_message)
@@ -137,7 +146,8 @@ class BaseAgent(ABC):
                 if attempt > 0:
                     logger.info(f"[{agent_name}] Recovered from RAI refusal on attempt {attempt + 1}")
                     _log_refusal(agent_name, response, self._refusal_context,
-                                 retry_count=attempt, rai_penalty=False)
+                                 retry_count=attempt, rai_penalty=False,
+                                 system_prompt=system_prompt, user_message=effective_message)
                 else:
                     logger.info(f"[{agent_name}] Got response ({len(response)} chars)")
                 logger.debug(f"[{agent_name}] Raw response (first 500 chars): {response[:500]}")
@@ -151,7 +161,8 @@ class BaseAgent(ABC):
 
         # All retries exhausted
         _log_refusal(agent_name, response, self._refusal_context,
-                     retry_count=_RAI_MAX_RETRIES + 1, rai_penalty=True)
+                     retry_count=_RAI_MAX_RETRIES + 1, rai_penalty=True,
+                     system_prompt=system_prompt, user_message=effective_message)
         raise LLMRefusalError(
             f"RAI penalty after {_RAI_MAX_RETRIES + 1} attempts: {response[:200]}"
         )
@@ -172,7 +183,9 @@ class BaseAgent(ABC):
         # refusals that slipped past _call_llm, e.g. via injected callables)
         if _is_refusal(response):
             _log_refusal(agent_name, response, self._refusal_context,
-                         retry_count=0, rai_penalty=True)
+                         retry_count=0, rai_penalty=True,
+                         system_prompt=self._last_system_prompt,
+                         user_message=self._last_user_message)
             logger.warning(f"[{agent_name}] LLM refused to process request: {response[:150]}")
             raise LLMRefusalError(f"LLM refused: {response[:200]}")
 

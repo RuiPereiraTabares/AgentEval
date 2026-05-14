@@ -19,7 +19,7 @@ _output_path: str | None = None
 _header_written: bool = False
 
 _FIELDNAMES = ["timestamp", "agent", "refusal_text", "case_id", "article_url",
-               "retry_count", "rai_penalty", "extra"]
+               "retry_count", "rai_penalty", "system_prompt", "user_message", "extra"]
 
 
 def set_output_path(directory: str) -> None:
@@ -54,7 +54,8 @@ def get_output_path() -> str | None:
 
 
 def log_refusal(agent: str, refusal_text: str, context: dict,
-                retry_count: int = 0, rai_penalty: bool = False) -> None:
+                retry_count: int = 0, rai_penalty: bool = False,
+                system_prompt: str = "", user_message: str = "") -> None:
     """Append one refusal row to the CSV log.
 
     Args:
@@ -63,6 +64,8 @@ def log_refusal(agent: str, refusal_text: str, context: dict,
         context: Dict with optional keys case_id, article_url, plus any extras.
         retry_count: Number of retry attempts made before this log entry.
         rai_penalty: True if all retries were exhausted (permanent failure).
+        system_prompt: System prompt sent to the LLM (truncated to 1000 chars).
+        user_message: User message sent to the LLM (truncated to 3000 chars).
     """
     global _header_written
 
@@ -79,6 +82,8 @@ def log_refusal(agent: str, refusal_text: str, context: dict,
         "article_url": article_url,
         "retry_count": retry_count,
         "rai_penalty": str(rai_penalty),
+        "system_prompt": system_prompt[:1000] if system_prompt else "",
+        "user_message": user_message[:3000] if user_message else "",
         "extra": extra,
     }
 
