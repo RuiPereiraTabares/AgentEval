@@ -260,6 +260,7 @@ canvas { cursor: pointer; }
     </div>
     <p style="font-size:12px;color:#64748b;margin-bottom:10px">Click any row to expand the full PM action details, quality analysis, and recommendations.</p>
     <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap">
+      <input type="text" id="spm-search" class="table-filter" placeholder="Search case # or area path…" oninput="renderSPM()" style="min-width:200px">
       <select class="table-filter" id="spm-f-priority" onchange="renderSPM()">
         <option value="">All Priorities</option>
         <option value="red">🔴 Red</option><option value="yellow">🟡 Yellow</option><option value="green">🟢 Green</option><option value="gray">⚪ Gray</option>
@@ -286,11 +287,12 @@ canvas { cursor: pointer; }
         <thead>
           <tr>
             <th style="width:28px"></th>
-            <th>Priority</th>
-            <th>Case #</th>
-            <th>Product</th>
-            <th>Area Path</th>
-            <th>Score</th>
+            <th onclick="sortSpm('_priorityOrder')" style="cursor:pointer">Priority ↕</th>
+            <th onclick="sortSpm('case_number')" style="cursor:pointer">Case # ↕</th>
+            <th onclick="sortSpm('_product')" style="cursor:pointer">Product ↕</th>
+            <th onclick="sortSpm('_areaPath')" style="cursor:pointer">Area Path ↕</th>
+            <th onclick="sortSpm('primary_article_score')" style="cursor:pointer">Score ↕</th>
+            <th>Cited Article</th>
             <th>PM Actions (preview)</th>
           </tr>
         </thead>
@@ -469,6 +471,7 @@ canvas { cursor: pointer; }
 const state = { evalData: null, trendData: null, overlapData: null, activeTab: null };
 const charts = {};
 let tbl = { filtered: [], page: 0, pageSize: 30, sortKey: '_priorityOrder', sortDir: 1 };
+let spm = { sortKey: null, sortDir: 1 };
 
 const num = v => parseFloat(v) || 0;
 const pct = (n, t) => t ? ((n / t) * 100).toFixed(1) + '%' : '0%';
@@ -489,11 +492,13 @@ function priBadge(p) {
   const lbl = { red: '🔴 Red', yellow: '🟡 Yellow', green: '🟢 Green', gray: '⚪ Gray' }[p] || (p || '–');
   return `<span class="badge ${cls}">${lbl}</span>`;
 }
-function hasNoAiResponse(row) {
-  return String(row?.rq_quality_weaknesses || '').trim().toLowerCase() === 'no ai response provided';
+function hasAiError(row) {
+  return !String(row?.ai_response || '').trim() &&
+         !String(row?.primary_article_url || '').trim() &&
+         !String(row?.citation_1_url || '').trim();
 }
 function spmPriority(row) {
-  return hasNoAiResponse(row) ? 'gray' : (row.synthesis_priority || 'gray');
+  return hasAiError(row) ? 'gray' : (row.synthesis_priority || 'gray');
 }
 function spmPriorityOrder(row) {
   const p = spmPriority(row);
@@ -514,7 +519,7 @@ function actionBadge(v) {
   return `<span class="badge ${cls}">${lbl}</span>`;
 }
 function scoreChip(s) {
-  const sc = num(s); return `<span class="score-chip" style="background:#3b82f6">${sc.toFixed(0)}</span>`;
+  const sc = num(s); return `<span class="score-chip" style="background:${scoreColor(sc)}">${sc.toFixed(0)}</span>`;
 }
 function descQualityBadge(score) {
   const s = num(score);
@@ -567,6 +572,18 @@ function bulletList(text) {
 }
 function textOrEmpty(text) {
   return (text && text.trim()) ? text.trim() : '<em>Not provided</em>';
+}
+function renderMweaResponse(text) {
+  if (!text || !text.trim()) return '<em>Not provided</em>';
+  const body = text.trim()
+    .replace(/\[(\d+)\]/g, '<sup><a href="#cit-$1" style="color:#3b82f6;text-decoration:none;font-weight:700">[$1]</a></sup>')
+    .split(/\n\n+/)
+    .map(p => `<p style="margin-bottom:10px">${p.replace(/\n/g, '<br>')}</p>`)
+    .join('');
+  return `<div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:16px 18px;font-size:13px;line-height:1.6;color:#1e293b">
+    <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.07em;color:#64748b;margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid #f1f5f9">📧 MWEA Response</div>
+    ${body}
+  </div>`;
 }
 
 // ══════════════════════════════════════════════════════════
@@ -953,7 +970,7 @@ function buildDetailPanel(row, mweaMode, isSpmTab) {
     if ((row.ai_response || '').trim()) {
       html += `<div class="detail-block detail-full-row">
         <div class="detail-label">🤖 MWEA Response</div>
-        <div class="detail-text" style="white-space:pre-wrap">${(row.ai_response || '').trim()}</div>
+        <div class="detail-text">${renderMweaResponse(row.ai_response)}</div>
       </div>`;
     }
 
@@ -986,19 +1003,22 @@ function buildDetailPanel(row, mweaMode, isSpmTab) {
       if (improvements.trim()) html += `<div class="detail-block"><div class="detail-label">🔧 Response Improvement Suggestions</div><div class="detail-text">${bulletList(improvements)}</div></div>`;
     }
 
-    // Citations with weights
+    // Citations with weights — sorted by score, numbered with [N] reference
     const citations = [];
     for (let i = 1; i <= 10; i++) {
       const cUrl = (row[`citation_${i}_url`] || '').trim();
       if (!cUrl) break;
-      citations.push({ url: cUrl, score: num(row[`citation_${i}_score`]), verdict: (row[`citation_${i}_verdict`] || '').trim(), coverage: num(row[`citation_${i}_coverage`]) });
+      citations.push({ refNum: i, url: cUrl, score: num(row[`citation_${i}_score`]), verdict: (row[`citation_${i}_verdict`] || '').trim(), coverage: num(row[`citation_${i}_coverage`]), isPrimary: !!(url && cUrl === url) });
     }
-    if (citations.length) {
+    const sortedCitations = [...citations].sort((a, b) => b.score - a.score);
+    if (sortedCitations.length) {
       html += `<div class="detail-block detail-full-row">
-        <div class="detail-label">🔗 Citations (${citations.length})</div>
-        ${citations.length > 1 ? `<div style="font-size:10px;color:#94a3b8;margin:2px 0 4px">Coverage % shows how much of the AI response each article individually supports — citations can overlap, so numbers across articles do not need to add up to 100%.</div>` : ''}
-        ${citations.map(c => `<div style="background:#f8fafc;border-radius:6px;padding:7px 10px;margin-top:5px;border-left:3px solid ${scoreColor(c.score)}">
+        <div class="detail-label">🔗 Citations (${sortedCitations.length})</div>
+        <div style="font-size:10px;color:#94a3b8;margin:2px 0 6px">Sorted by relevance score. Reference numbers [N] correspond to citations in the MWEA response above.${sortedCitations.length > 1 ? ' Coverage % shows how much of the AI response each article supports — citations can overlap.' : ''}</div>
+        ${sortedCitations.map(c => `<div id="cit-${c.refNum}" style="background:#f8fafc;border-radius:6px;padding:7px 10px;margin-top:5px;border-left:3px solid ${scoreColor(c.score)}">
           <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+            <span style="background:#e0f2fe;color:#0369a1;border-radius:4px;padding:1px 6px;font-size:10px;font-weight:800;font-family:monospace;flex-shrink:0">[${c.refNum}]</span>
+            ${c.isPrimary ? `<span class="badge b-yellow" style="flex-shrink:0">⭐ Primary</span>` : ''}
             <a href="${c.url}" target="_blank" class="detail-link" style="flex:1;min-width:0">${trunc(c.url, 80)}</a>
             <span class="score-chip" style="background:${scoreColor(c.score)}">${c.score.toFixed(0)}</span>
             ${c.verdict ? citationVerdictBadge(c.verdict) : ''}
@@ -1009,11 +1029,8 @@ function buildDetailPanel(row, mweaMode, isSpmTab) {
     }
 
     // Article gaps
-    if (artMissing.trim()) html += `<div class="detail-block"><div class="detail-label">📄 Article Missing Elements</div><div class="detail-text">${bulletList(artMissing)}</div></div>`;
+    if (artMissing.trim()) html += `<div class="detail-block"><div class="detail-label">📄 Primary Article — Missing Elements</div><div class="detail-text"><div style="font-size:10px;color:#94a3b8;margin-bottom:4px">(applies to the ⭐ primary article above)</div>${bulletList(artMissing)}</div></div>`;
     if (artIssues.trim()) html += `<div class="detail-block"><div class="detail-label">🚨 Article Potential Issues</div><div class="detail-text">${bulletList(artIssues)}</div></div>`;
-
-    // Article URL
-    if (url.trim()) html += `<div class="detail-block detail-full-row"><div class="detail-label">🔗 Cited Article</div><a href="${url}" target="_blank" class="detail-link">${url}</a></div>`;
 
   } else {
     // ── Eval tab: original full display with KT items ──────────
@@ -1101,7 +1118,7 @@ function buildDetailPanel(row, mweaMode, isSpmTab) {
     // Article gaps
     if (artMissing.trim()) {
       html += `<div class="detail-block">
-        <div class="detail-label">📄 Article Missing Elements</div>
+        <div class="detail-label">📄 Primary Article — Missing Elements</div>
         <div class="detail-text">${bulletList(artMissing)}</div>
       </div>`;
     }
@@ -1145,7 +1162,7 @@ function toggleDetail(btn, caseIdx, tableBodyId, mweaMode) {
     detailTr.className = 'detail-row';
     detailTr.dataset.idx = caseIdx;
     const isSpmTab = tableBodyId === 'spm-table-body';
-    const cols = isSpmTab ? 8 : 9;
+    const cols = isSpmTab ? 9 : 9;
     detailTr.innerHTML = `<td colspan="${cols}">${buildDetailPanel(row, mweaMode, isSpmTab)}</td>`;
     dataRow.after(detailTr);
     dataRow.classList.add('expanded');
@@ -1180,6 +1197,7 @@ function renderSPM() {
   }
 
   // Apply local filters
+  const searchVal = (document.getElementById('spm-search') || {}).value || '';
   const fpVal = (document.getElementById('spm-f-priority') || {}).value || '';
   const fsVal = (document.getElementById('spm-f-score') || {}).value || '';
   const faVal = (areaSelectEl || {}).value || '';
@@ -1188,29 +1206,39 @@ function renderSPM() {
     (!fpVal || spmPriority(r) === fpVal) &&
     matchesSpmScoreRange(r, fsVal) &&
     (!faVal || r._areaPath === faVal) &&
-    (!fdqVal || r.dq_description_quality_verdict === fdqVal)
+    (!fdqVal || r.dq_description_quality_verdict === fdqVal) &&
+    (!searchVal || String(r.case_number || '').includes(searchVal) || (r._areaPath || '').toLowerCase().includes(searchVal.toLowerCase()))
   );
 
-  const redN = countVal(data, 'synthesis_priority', 'red');
-  const yelN = countVal(data, 'synthesis_priority', 'yellow');
-  const grnN = countVal(data, 'synthesis_priority', 'green');
+  const redN = data.filter(r => spmPriority(r) === 'red').length;
+  const yelN = data.filter(r => spmPriority(r) === 'yellow').length;
+  const grnN = data.filter(r => spmPriority(r) === 'green').length;
+  const errN = data.filter(r => hasAiError(r)).length;
   // Alert
   const alertEl = document.getElementById('spm-alert');
   if (redN > 0) {
-    alertEl.innerHTML = `<div class="alert-banner alert-red">🚨 <strong>${redN} red-priority case${redN > 1 ? 's' : ''}</strong> require immediate PM action — articles need replacement or new content must be created.</div>`;
+    alertEl.innerHTML = `<div class="alert-banner alert-red">🚨 <strong>${redN} red-priority case${redN > 1 ? 's' : ''}</strong> require immediate PM action${errN > 0 ? ` (${errN} AI-error case${errN > 1 ? 's' : ''} excluded — no MWEA response received)` : ''} — articles need replacement or new content must be created.</div>`;
   } else if (yelN > 0) {
-    alertEl.innerHTML = `<div class="alert-banner alert-yellow">⚠️ <strong>${yelN} yellow-priority case${yelN > 1 ? 's' : ''}</strong> need PM review.</div>`;
+    alertEl.innerHTML = `<div class="alert-banner alert-yellow">⚠️ <strong>${yelN} yellow-priority case${yelN > 1 ? 's' : ''}</strong> need PM review${errN > 0 ? ` (${errN} AI-error case${errN > 1 ? 's' : ''} excluded)` : ''}.</div>`;
   } else {
-    alertEl.innerHTML = `<div class="alert-banner alert-green">✅ No red-priority cases. All ${n} cases are green or yellow.</div>`;
+    alertEl.innerHTML = `<div class="alert-banner alert-green">✅ No red-priority cases. All ${n - errN} evaluated cases are green or yellow${errN > 0 ? ` (${errN} AI-error case${errN > 1 ? 's' : ''} excluded from priority counts)` : ''}.</div>`;
   }
 
   // KPIs
   document.getElementById('spm-kpis').innerHTML = [
     `<div class="kpi-card"><div class="kpi-label">🔴 Immediate Action</div><div class="kpi-value c-red">${redN}</div><div class="kpi-sub">${pct(redN,n)} — critical article gaps</div></div>`,
     `<div class="kpi-card"><div class="kpi-label">🟡 Needs Review</div><div class="kpi-value c-yellow">${yelN}</div><div class="kpi-sub">${pct(yelN,n)} — supplementation needed</div></div>`,
+    `<div class="kpi-card" title="Cases with no MWEA response, article URL or citations — excluded from priority counts"><div class="kpi-label">⚠️ AI Errors</div><div class="kpi-value c-gray">${errN}</div><div class="kpi-sub">excluded from priority counts</div></div>`,
   ].join('');
-  // Sort filtered: red first, then yellow, then green; within priority sort by score asc
+  // Sort filtered: by spm.sortKey if set, otherwise by priority then score asc
   const sorted = [...filtered].sort((a, b) => {
+    if (spm.sortKey) {
+      const sk = spm.sortKey;
+      if (sk === '_priorityOrder') return (spmPriorityOrder(a) - spmPriorityOrder(b)) * spm.sortDir;
+      const av = a[sk], bv = b[sk];
+      if (typeof av === 'number') return (av - bv) * spm.sortDir;
+      return String(av||'').localeCompare(String(bv||'')) * spm.sortDir;
+    }
     const aOrder = spmPriorityOrder(a);
     const bOrder = spmPriorityOrder(b);
     if (aOrder !== bOrder) return aOrder - bOrder;
@@ -1225,6 +1253,7 @@ function renderSPM() {
     const preview = pm.trim() ? trunc(pm.replace(/;/g, ' ·'), 80) : null;
     const pmTitle = (pm.trim() || 'No PM actions recorded').replace(/"/g, '&quot;');
     const areaHtml = evalAreaChip(row, 24);
+    const citedUrl = (row.primary_article_url || '').trim();
     return `<tr class="data-row" data-idx="${idx}">
       <td><button class="expand-btn" onclick="toggleDetail(this,${idx},'spm-table-body',${mwea})" title="Show detail">▶</button></td>
       <td>${priBadge(spmPriority(row))}</td>
@@ -1232,10 +1261,11 @@ function renderSPM() {
       <td>${trunc(row._product || '–', 22)}</td>
       <td>${areaHtml}</td>
       <td>${scoreChip(row.primary_article_score)}</td>
+      <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${citedUrl ? `<a href="${citedUrl}" target="_blank" class="detail-link" style="font-size:11px">${trunc(citedUrl, 40)}</a>` : '<span style="color:#94a3b8">—</span>'}</td>
       <td class="${preview ? 'pm-preview' : 'pm-empty'}" title="${pmTitle}">${preview || 'No PM actions recorded'}</td>
     </tr>`;
   }).join('');
-  document.getElementById('spm-table-body').innerHTML = rows || '<tr><td colspan="7" style="text-align:center;color:#94a3b8;padding:20px">No cases</td></tr>';
+  document.getElementById('spm-table-body').innerHTML = rows || '<tr><td colspan="8" style="text-align:center;color:#94a3b8;padding:20px">No cases</td></tr>';
 }
 
 // ══════════════════════════════════════════════════════════
@@ -1454,6 +1484,11 @@ function sortTable(key) {
   else { tbl.sortKey = key; tbl.sortDir = 1; }
   tbl.page = 0; renderTablePage();
 }
+function sortSpm(key) {
+  if (spm.sortKey === key) spm.sortDir = -spm.sortDir;
+  else { spm.sortKey = key; spm.sortDir = 1; }
+  renderSPM();
+}
 function renderTablePage() {
   const { filtered, page, pageSize, sortKey, sortDir } = tbl;
   const mwea = isMwea(state.evalData);
@@ -1547,7 +1582,7 @@ function renderTrends() {
   if (trcCtx) charts['chart-trc'] = new Chart(trcCtx.getContext('2d'), {
     type: 'bar',
     data: { labels: rcSorted.map(([k])=>k), datasets: [{ data: rcSorted.map(([,v])=>v), backgroundColor: '#3b82f6', borderRadius: 3, barThickness: 18 }] },
-    options: { indexAxis:'y', responsive:true, maintainAspectRatio:false, plugins:{ legend:{display:false}, tooltip:{callbacks:{label:c=>` ${c.raw} cases`}} }, scales:{ x:{beginAtZero:true,grid:{color:'#f1f5f9'},ticks:{font:{size:10}}}, y:{grid:{display:false},ticks:{font:{size:10}}} } }
+    options: { indexAxis:'y', responsive:true, maintainAspectRatio:false, plugins:{ legend:{display:false}, tooltip:{callbacks:{label:c=>` ${c.raw} cases`}} }, scales:{ x:{beginAtZero:true,grid:{color:'#f1f5f9'},ticks:{font:{size:10}}}, y:{grid:{display:false},ticks:{font:{size:10},callback:v=>v.length>28?v.slice(0,27)+'…':v}} } }
   });
   destroyChart('chart-tpri');
   const tpriCtx = document.getElementById('chart-tpri');
