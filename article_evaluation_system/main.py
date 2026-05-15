@@ -217,6 +217,7 @@ def write_results_csv(results: list[dict], output_path: str):
             # Relevance details (primary article)
             'article_relevance_score': rel.get('relevance_score', 0),
             'article_relevance_verdict': rel.get('relevance_verdict', ''),
+            'article_relevance_fallback': rel.get('relevance_fallback', False),
             'article_relevance_matched_aspects': _join(rel.get('matched_aspects', [])),
             'article_relevance_unmatched_aspects': _join(rel.get('unmatched_aspects', [])),
             'article_relevance_product_match': rel.get('product_match', ''),
@@ -328,6 +329,7 @@ def write_results_csv_summary(results: list[dict], output_path: str):
             # Relevance — score + reasons (primary article)
             'article_relevance_score': rel.get('relevance_score', 0),
             'article_relevance_verdict': rel.get('relevance_verdict', ''),
+            'article_relevance_fallback': rel.get('relevance_fallback', False),
             'article_relevance_matched': _join(rel.get('matched_aspects', [])),
             'article_relevance_unmatched': _join(rel.get('unmatched_aspects', [])),
             # Completeness — score + reasons (primary article)

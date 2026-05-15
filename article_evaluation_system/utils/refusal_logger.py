@@ -19,7 +19,7 @@ _output_path: str | None = None
 _header_written: bool = False
 
 _FIELDNAMES = ["timestamp", "agent", "refusal_text", "case_id", "article_url",
-               "retry_count", "rai_penalty", "system_prompt", "user_message", "extra"]
+               "article_title", "retry_count", "rai_penalty", "system_prompt", "user_message", "extra"]
 
 
 def set_output_path(directory: str) -> None:
@@ -71,7 +71,9 @@ def log_refusal(agent: str, refusal_text: str, context: dict,
 
     case_id = context.get("case_id", "")
     article_url = context.get("article_url", "")
-    extra_keys = {k: v for k, v in context.items() if k not in ("case_id", "article_url")}
+    article_title = context.get("article_title", "")
+    extra_keys = {k: v for k, v in context.items()
+                  if k not in ("case_id", "article_url", "article_title")}
     extra = json.dumps(extra_keys) if extra_keys else ""
 
     row = {
@@ -80,6 +82,7 @@ def log_refusal(agent: str, refusal_text: str, context: dict,
         "refusal_text": refusal_text[:200],
         "case_id": case_id,
         "article_url": article_url,
+        "article_title": article_title[:200] if article_title else "",
         "retry_count": retry_count,
         "rai_penalty": str(rai_penalty),
         "system_prompt": system_prompt[:1000] if system_prompt else "",

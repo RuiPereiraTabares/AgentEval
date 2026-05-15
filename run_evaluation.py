@@ -609,6 +609,7 @@ def main():
     _rlog = _refusal_path()
     if _rlog and os.path.exists(_rlog):
         import csv as _csv
+        from collections import defaultdict as _dd
         with open(_rlog, newline="", encoding="utf-8") as _f:
             _rows = list(_csv.DictReader(_f))
         _penalties = sum(1 for r in _rows if r.get("rai_penalty") == "True")
@@ -618,7 +619,24 @@ def main():
         print(f"  Total logged:              {_total}")
         print(f"  RAI penalties (permanent): {_penalties}")
         print(f"  Recovered via retry:       {_recovered}")
-        print(f"  Cases left on the table:   {_penalties}")
+        # Per-agent breakdown (only if there were any events)
+        if _total > 0:
+            _agent_penalties = _dd(int)
+            _agent_recovered = _dd(int)
+            for _r in _rows:
+                _a = _r.get("agent", "unknown")
+                if _r.get("rai_penalty") == "True":
+                    _agent_penalties[_a] += 1
+                else:
+                    _agent_recovered[_a] += 1
+            _all_agents = sorted(set(list(_agent_penalties) + list(_agent_recovered)))
+            print(f"  Per-agent breakdown:")
+            for _a in _all_agents:
+                _p = _agent_penalties.get(_a, 0)
+                _rv = _agent_recovered.get(_a, 0)
+                _flag = " *** CONSISTENT FAILURES — CHECK PROMPTS" if _p >= 3 else ""
+                print(f"    {_a:<35} penalties={_p}  recovered={_rv}{_flag}")
+        print(f"  Refusal log: {_rlog}")
 
     print(f"\nResults saved to:")
     print(f"  Detailed: {output_file}")

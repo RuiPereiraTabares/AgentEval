@@ -454,6 +454,7 @@ class RelevanceResult:
     product_match: bool = True
     is_outdated: bool = False
     relevance_verdict: RelevanceVerdict = "partial"
+    relevance_fallback: bool = False  # True when score came from keyword heuristic (LLM refused)
 
     def to_dict(self) -> dict:
         return {
@@ -463,7 +464,8 @@ class RelevanceResult:
             "version_match": self.version_match,
             "product_match": self.product_match,
             "is_outdated": self.is_outdated,
-            "relevance_verdict": self.relevance_verdict
+            "relevance_verdict": self.relevance_verdict,
+            "relevance_fallback": self.relevance_fallback,
         }
 
     @classmethod

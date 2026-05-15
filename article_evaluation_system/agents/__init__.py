@@ -18,6 +18,10 @@ class LLMRefusalError(ValueError):
 
 _RAI_MAX_RETRIES = 2        # extra attempts after first refusal
 _RAI_RETRY_DELAY = 2.0      # seconds between retries
+_RAI_RETRY_PREFIXES = [
+    "Please provide a technical quality evaluation of the following Microsoft support content:\n\n",
+    "Please analyze the following technical documentation for topical relevance to the user inquiry:\n\n",
+]
 
 # Patterns that indicate the LLM refused to answer (shared across all agents)
 _REFUSAL_PATTERNS = (
@@ -127,10 +131,8 @@ class BaseAgent(ABC):
 
         for attempt in range(1 + _RAI_MAX_RETRIES):
             if attempt > 0:
-                effective_message = (
-                    "Please provide a technical quality evaluation of the following "
-                    "Microsoft support content:\n\n" + user_message
-                )
+                prefix = _RAI_RETRY_PREFIXES[min(attempt - 1, len(_RAI_RETRY_PREFIXES) - 1)]
+                effective_message = prefix + user_message
             else:
                 effective_message = user_message
 
@@ -163,6 +165,11 @@ class BaseAgent(ABC):
         _log_refusal(agent_name, response, self._refusal_context,
                      retry_count=_RAI_MAX_RETRIES + 1, rai_penalty=True,
                      system_prompt=system_prompt, user_message=effective_message)
+        logger.error(
+            f"[{agent_name}] RAI penalty — all {_RAI_MAX_RETRIES + 1} attempts refused. "
+            f"case_id={self._refusal_context.get('case_id', '')} "
+            f"article_url={self._refusal_context.get('article_url', '')}"
+        )
         raise LLMRefusalError(
             f"RAI penalty after {_RAI_MAX_RETRIES + 1} attempts: {response[:200]}"
         )
