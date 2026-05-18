@@ -156,13 +156,50 @@ class TrendSynthesizer(BaseAgent):
                 "Merge them into 3-7 final clusters by combining similar ones. "
                 "Keep the same JSON output format."
             )
-            user_message = json.dumps({"clusters": clusters}, indent=None, default=str)
+            # Build a slim representation for merging — the LLM only needs semantics, not case lists
+            def _slim_for_merge(c: dict, include_evidence: bool = True) -> dict:
+                s = {
+                    "cluster_name": c.get("cluster_name", ""),
+                    "case_count": c.get("case_count", 0),
+                    "area_path": c.get("area_path", ""),
+                    "root_cause_pattern": c.get("root_cause_pattern", ""),
+                    "unified_pm_action": c.get("unified_pm_action", "")[:120],
+                    "priority": c.get("priority", ""),
+                    "products_affected": c.get("products_affected", []),
+                }
+                if include_evidence:
+                    s["supporting_evidence"] = [e[:80] for e in c.get("supporting_evidence", [])[:1]]
+                return s
+
+            slim = [_slim_for_merge(c) for c in clusters]
+            user_message = json.dumps({"clusters": slim}, indent=None, default=str)
+            if len(user_message) > _MAX_USER_CHARS:
+                slim = [_slim_for_merge(c, include_evidence=False) for c in clusters]
+                user_message = json.dumps({"clusters": slim}, indent=None, default=str)
+                logger.debug(
+                    f"[TrendSynthesizer] Trimmed merge payload to {len(user_message)} chars "
+                    f"for {len(clusters)} clusters"
+                )
             response = self._call_llm(
                 AgentPrompts.TREND_SYNTHESIS + "\n\n" + merge_prompt,
                 user_message,
             )
             parsed = self._parse_json_response(response)
             merged = [TrendCluster.from_dict(c).to_dict() for c in parsed.get("clusters", [])]
+
+            # Restore case_numbers: pool all case_numbers from input clusters,
+            # then re-distribute proportionally by case_count
+            all_case_numbers: list[str] = []
+            for c in clusters:
+                all_case_numbers.extend(c.get("case_numbers", []))
+
+            if all_case_numbers and merged:
+                idx = 0
+                for mc in merged:
+                    count = mc.get("case_count", 0)
+                    mc["case_numbers"] = all_case_numbers[idx: idx + count]
+                    idx += count
+
             executive_summary = parsed.get("executive_summary", "")
             return {"clusters": merged, "executive_summary": executive_summary}
         except Exception:
