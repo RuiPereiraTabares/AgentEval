@@ -174,11 +174,41 @@ class TrendSynthesizer(BaseAgent):
             slim = [_slim_for_merge(c) for c in clusters]
             user_message = json.dumps({"clusters": slim}, indent=None, default=str)
             if len(user_message) > _MAX_USER_CHARS:
+                # Tier 2: drop evidence
                 slim = [_slim_for_merge(c, include_evidence=False) for c in clusters]
                 user_message = json.dumps({"clusters": slim}, indent=None, default=str)
                 logger.debug(
-                    f"[TrendSynthesizer] Trimmed merge payload to {len(user_message)} chars "
+                    f"[TrendSynthesizer] Tier-2 merge payload: {len(user_message)} chars "
                     f"for {len(clusters)} clusters"
+                )
+            if len(user_message) > _MAX_USER_CHARS:
+                # Tier 3: aggressively truncate all text fields (root_cause_pattern was uncapped)
+                slim = [
+                    {
+                        "cluster_name": c.get("cluster_name", "")[:40],
+                        "case_count": c.get("case_count", 0),
+                        "area_path": c.get("area_path", ""),
+                        "root_cause_pattern": c.get("root_cause_pattern", "")[:80],
+                        "unified_pm_action": c.get("unified_pm_action", "")[:60],
+                        "priority": c.get("priority", ""),
+                        "products_affected": c.get("products_affected", [])[:2],
+                    }
+                    for c in clusters
+                ]
+                user_message = json.dumps({"clusters": slim}, indent=None, default=str)
+                logger.debug(
+                    f"[TrendSynthesizer] Tier-3 merge payload: {len(user_message)} chars "
+                    f"for {len(clusters)} clusters"
+                )
+            if len(user_message) > _MAX_USER_CHARS and slim:
+                # Hard safety: cap cluster count to fit within limit
+                chars_per = max(len(user_message) // len(slim), 1)
+                max_n = max(_MAX_USER_CHARS // chars_per, 10)
+                slim = sorted(slim, key=lambda c: c.get("case_count", 0), reverse=True)[:max_n]
+                user_message = json.dumps({"clusters": slim}, indent=None, default=str)
+                logger.warning(
+                    f"[TrendSynthesizer] Capped merge input to {max_n}/{len(clusters)} clusters "
+                    f"to fit MWAI 50k limit ({len(user_message)} chars)"
                 )
             response = self._call_llm(
                 AgentPrompts.TREND_SYNTHESIS + "\n\n" + merge_prompt,
