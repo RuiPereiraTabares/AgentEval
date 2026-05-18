@@ -225,6 +225,10 @@ def main():
     from article_evaluation_system.utils import refusal_logger
     refusal_logger.set_output_path(os.path.dirname(os.path.abspath(output_file)) or '.')
 
+    # Configure HTTP error logger to write alongside other output files
+    from article_evaluation_system.utils import http_error_logger
+    http_error_logger.set_output_path(os.path.dirname(os.path.abspath(output_file)) or '.')
+
     # Read cases
     print(f"Reading cases from {args.input}...")
     if args.mweaeval:
@@ -651,6 +655,26 @@ def main():
                 _flag = " *** CONSISTENT FAILURES — CHECK PROMPTS" if _p >= 3 else ""
                 print(f"    {_a:<35} penalties={_p}  recovered={_rv}{_flag}")
         print(f"  Refusal log: {_rlog}")
+
+    # HTTP error summary
+    from article_evaluation_system.utils.http_error_logger import get_output_path as _http_error_path
+    _hlog = _http_error_path()
+    if _hlog and os.path.exists(_hlog):
+        import csv as _csv2
+        with open(_hlog, newline="", encoding="utf-8") as _f2:
+            _hrows = list(_csv2.DictReader(_f2))
+        _helped = sum(1 for r in _hrows if r.get("retry_helped") == "True")
+        _failed = sum(1 for r in _hrows if r.get("retry_helped") == "False")
+        _total_h = len(_hrows)
+        if _total_h > 0:
+            print(f"\nHTTP Error Summary (non-200 responses):")
+            print(f"  Total error attempts logged: {_total_h}")
+            print(f"  Retry helped (recovered):    {_helped}")
+            print(f"  Retry did not help (failed): {_failed}")
+            from collections import Counter as _Counter
+            _codes = _Counter(r.get("status_code", "?") for r in _hrows)
+            print(f"  Status codes: {dict(_codes)}")
+            print(f"  HTTP error log: {_hlog}")
 
     print(f"\nResults saved to:")
     print(f"  Detailed: {output_file}")

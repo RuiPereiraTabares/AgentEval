@@ -19,6 +19,11 @@ logger = logging.getLogger(__name__)
 # Delay between MWAI API requests to avoid rate limiting
 MWAI_REQUEST_DELAY = 0.3  # seconds — increase if 429 rate-limit errors appear
 
+# Retry settings for transient server errors (throttle / 5xx)
+MWAI_THROTTLE_RETRY_CODES = {429, 500, 502, 503, 504}
+MWAI_THROTTLE_MAX_RETRIES = 3   # number of extra attempts after the first failure
+MWAI_THROTTLE_RETRY_DELAY = 5   # seconds to wait between retries
+
 # ---------------------------------------------------------------------------
 # MWAI API Configuration
 # ---------------------------------------------------------------------------
@@ -164,20 +169,28 @@ class MwaiClient:
             return
         self.token = acquire_msal_token()
 
-    def chat_completion(self, system_prompt: str, user_message: str) -> str:
+    def chat_completion(self, system_prompt: str, user_message: str, _case_id: str = "") -> str:
         """
         Call ChatCompletionWithoutData and return the response text.
+
+        Retries up to MWAI_THROTTLE_MAX_RETRIES times on throttle / transient
+        server errors (status codes in MWAI_THROTTLE_RETRY_CODES), waiting
+        MWAI_THROTTLE_RETRY_DELAY seconds between attempts.  All failed
+        attempts are recorded in the http_error_logger CSV.
 
         Args:
             system_prompt: System prompt content
             user_message: User message content
+            _case_id: Optional case identifier forwarded to the error log.
 
         Returns:
             The assistant's response text
 
         Raises:
-            RuntimeError: If the API call fails
+            RuntimeError: If the API call fails after all retries
         """
+        from .http_error_logger import log_http_errors
+
         headers = {
             "Authorization": f"Bearer {self.token}",
             "Content-Type": "application/json",
@@ -205,47 +218,84 @@ class MwaiClient:
             user_message[:300]
         )
 
-        resp = self._session.post(
-            ENDPOINT_WITHOUT_DATA,
-            headers=headers,
-            json=payload,
-            timeout=self.timeout,
-        )
+        max_attempts = 1 + MWAI_THROTTLE_MAX_RETRIES
+        failed_attempts: list[tuple[int, int, str]] = []  # (attempt, status_code, error_body)
 
-        logger.info(f"MWAI response status: {resp.status_code}")
-        logger.debug(f"MWAI raw response (first 1000 chars): {resp.text[:1000]}")
-
-        # On 401, force-refresh the token and retry once
-        if resp.status_code == 401 and self._via_msal:
-            logger.warning("MWAI returned 401 — forcing token refresh and retrying...")
-            self.token = acquire_msal_token(force_refresh=True)
+        for attempt in range(1, max_attempts + 1):
+            self._ensure_token_fresh()
             headers["Authorization"] = f"Bearer {self.token}"
+
             resp = self._session.post(
                 ENDPOINT_WITHOUT_DATA,
                 headers=headers,
                 json=payload,
                 timeout=self.timeout,
             )
-            logger.info(f"MWAI retry response status: {resp.status_code}")
 
-        # Sleep after each request to avoid rate limiting
-        logger.debug(f"Sleeping {MWAI_REQUEST_DELAY}s between MWAI requests...")
-        time.sleep(MWAI_REQUEST_DELAY)
+            logger.info(f"MWAI response status: {resp.status_code} (attempt {attempt}/{max_attempts})")
+            logger.debug(f"MWAI raw response (first 1000 chars): {resp.text[:1000]}")
 
-        if resp.status_code < 200 or resp.status_code >= 300:
-            logger.error(
-                f"MWAI API error {resp.status_code}: {resp.text[:500]}"
+            # On 401, force-refresh the token and retry once immediately (existing behaviour)
+            if resp.status_code == 401 and self._via_msal:
+                logger.warning("MWAI returned 401 — forcing token refresh and retrying...")
+                self.token = acquire_msal_token(force_refresh=True)
+                headers["Authorization"] = f"Bearer {self.token}"
+                resp = self._session.post(
+                    ENDPOINT_WITHOUT_DATA,
+                    headers=headers,
+                    json=payload,
+                    timeout=self.timeout,
+                )
+                logger.info(f"MWAI post-401-refresh status: {resp.status_code}")
+
+            # Sleep after each request to avoid rate limiting
+            logger.debug(f"Sleeping {MWAI_REQUEST_DELAY}s between MWAI requests...")
+            time.sleep(MWAI_REQUEST_DELAY)
+
+            # Success path
+            if 200 <= resp.status_code < 300:
+                if failed_attempts:
+                    # Previous attempt(s) failed but this one succeeded — retry helped
+                    log_http_errors(
+                        failed_attempts,
+                        endpoint=ENDPOINT_WITHOUT_DATA,
+                        max_attempts=max_attempts,
+                        retry_helped=True,
+                        case_id=_case_id,
+                    )
+                extracted = self._extract_response_text(resp)
+                logger.debug(
+                    "MWAI extracted response (first 500 chars): %s",
+                    extracted[:500] if extracted else "<empty>"
+                )
+                return extracted
+
+            # Transient error — record and possibly retry
+            if resp.status_code in MWAI_THROTTLE_RETRY_CODES and attempt < max_attempts:
+                logger.warning(
+                    f"MWAI throttle/transient error {resp.status_code} on attempt "
+                    f"{attempt}/{max_attempts} — retrying in {MWAI_THROTTLE_RETRY_DELAY}s..."
+                )
+                failed_attempts.append((attempt, resp.status_code, resp.text))
+                time.sleep(MWAI_THROTTLE_RETRY_DELAY)
+                continue
+
+            # Non-retryable error or retries exhausted
+            failed_attempts.append((attempt, resp.status_code, resp.text))
+            log_http_errors(
+                failed_attempts,
+                endpoint=ENDPOINT_WITHOUT_DATA,
+                max_attempts=max_attempts,
+                retry_helped=False,
+                case_id=_case_id,
             )
+            logger.error(f"MWAI API error {resp.status_code}: {resp.text[:500]}")
             raise RuntimeError(
                 f"MWAI API error {resp.status_code}: {resp.text[:500]}"
             )
 
-        extracted = self._extract_response_text(resp)
-        logger.debug(
-            "MWAI extracted response (first 500 chars): %s",
-            extracted[:500] if extracted else "<empty>"
-        )
-        return extracted
+        # Should not be reached, but guard against logic errors
+        raise RuntimeError("MWAI chat_completion exhausted all attempts without returning")
 
     @staticmethod
     def _extract_response_text(resp: requests.Response) -> str:
