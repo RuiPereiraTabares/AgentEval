@@ -147,6 +147,9 @@ def read_mweaeval_csv_cases(
             count += 1
 
 
+_MAX_CITATION_COLS = 20  # Fixed cap used for incremental (streaming) CSV writes
+
+
 def _max_citations(results: list[dict]) -> int:
     """Find the maximum number of per-citation results across all cases."""
     mx = 0
@@ -181,6 +184,280 @@ def _flatten_per_citation(pcr_list: list[dict], max_citations: int) -> dict:
     return flat
 
 
+def _detailed_fieldnames(max_cit: int = _MAX_CITATION_COLS) -> list[str]:
+    fields = [
+        'case_number', 'ai_response', 'issue_description', 'issue_product',
+        'sap_path', 'area_path', 'area_path_confidence', 'issue_type',
+        'primary_article_url', 'primary_article_score', 'primary_article_verdict',
+        'primary_article_action_required',
+        'article_relevance_score', 'article_relevance_verdict', 'article_relevance_fallback',
+        'article_relevance_matched_aspects', 'article_relevance_unmatched_aspects',
+        'article_relevance_product_match', 'article_relevance_version_match',
+        'article_relevance_is_outdated',
+        'article_completeness_score', 'article_completeness_verdict',
+        'article_completeness_missing_elements', 'article_completeness_has_prerequisites',
+        'article_completeness_has_step_by_step', 'article_completeness_has_examples',
+        'article_completeness_has_troubleshooting', 'article_completeness_has_success_criteria',
+        'article_validity_score', 'article_validity_verdict',
+        'article_validity_potential_issues', 'article_validity_addresses_root_cause',
+        'article_validity_is_current_solution', 'article_validity_environment_compatible',
+        'article_validity_confidence_level',
+        'dq_description_quality_score', 'dq_description_quality_verdict',
+        'product_clarity_score', 'symptom_specificity_score', 'operational_context_score',
+        'product_clarity_analysis', 'symptom_specificity_analysis', 'operational_context_analysis',
+        'dq_missing_elements', 'dq_improvement_suggestions', 'dq_evaluation_reliability_warning',
+        'citation_grounding_score', 'citation_grounding_verdict',
+        'cited_percentage', 'uncited_percentage',
+        'citations_total', 'citations_good', 'citations_partial', 'citations_bad',
+    ]
+    for i in range(1, max_cit + 1):
+        p = f'citation_{i}_'
+        fields += [f'{p}url', f'{p}score', f'{p}verdict', f'{p}coverage', f'{p}reasoning']
+    fields += [
+        'rq_ai_response_quality_score', 'rq_ai_response_quality_verdict',
+        'rq_response_quality_score', 'rq_response_quality_analysis',
+        'rq_groundedness_score', 'rq_groundedness_analysis',
+        'rq_issue_resolution_score', 'rq_issue_resolution_analysis',
+        'rq_quality_weaknesses', 'rq_improvement_suggestions',
+        'synthesis_priority', 'synthesis_priority_reason',
+        'synthesis_pm_actions', 'synthesis_root_cause_category',
+        'final_recommendation', 'processing_time_ms', 'error',
+    ]
+    return fields
+
+
+def _summary_fieldnames(max_cit: int = _MAX_CITATION_COLS) -> list[str]:
+    fields = [
+        'case_number', 'ai_response', 'issue_description', 'issue_product',
+        'sap_path', 'area_path', 'area_path_confidence',
+        'primary_article_score', 'primary_article_verdict',
+        'article_relevance_score', 'article_relevance_verdict', 'article_relevance_fallback',
+        'article_relevance_matched', 'article_relevance_unmatched',
+        'article_completeness_score', 'article_completeness_verdict',
+        'article_completeness_missing',
+        'article_validity_score', 'article_validity_verdict', 'article_validity_issues',
+        'dq_description_quality_score', 'dq_description_quality_verdict',
+        'product_clarity_score', 'symptom_specificity_score', 'operational_context_score',
+        'dq_missing_elements', 'dq_improvement_suggestions',
+        'citation_grounding_score', 'citation_grounding_verdict',
+        'cited_percentage', 'uncited_percentage',
+        'citations_total', 'citations_good', 'citations_partial', 'citations_bad',
+    ]
+    for i in range(1, max_cit + 1):
+        p = f'citation_{i}_'
+        fields += [f'{p}url', f'{p}score', f'{p}verdict', f'{p}coverage', f'{p}reasoning']
+    fields += [
+        'rq_ai_response_quality_score', 'rq_ai_response_quality_verdict',
+        'rq_response_quality_score', 'rq_groundedness_score', 'rq_issue_resolution_score',
+        'rq_quality_weaknesses',
+        'synthesis_priority', 'synthesis_priority_reason',
+        'synthesis_pm_actions', 'synthesis_root_cause_category',
+        'final_recommendation', 'error',
+    ]
+    return fields
+
+
+def _flatten_result_detailed(r: dict, max_cit: int = _MAX_CITATION_COLS) -> dict:
+    """Flatten a single result dict into the detailed CSV row format."""
+    eval_data = r.get('evaluation', {})
+    article_eval = eval_data.get('current_article_evaluation', {})
+    rel = article_eval.get('relevance', {})
+    comp = article_eval.get('completeness', {})
+    val = article_eval.get('validity', {})
+    dq = eval_data.get('description_quality', {})
+    cq = eval_data.get('citation_quality', {})
+    rq = eval_data.get('response_quality', {})
+
+    flat = {
+        'case_number': r.get('case_number', ''),
+        'ai_response': r.get('ai_response', ''),
+        'issue_description': eval_data.get('issue_summary', {}).get('raw_description', ''),
+        'issue_product': r.get('sap_path', '').split('/')[0].strip() if r.get('sap_path') else '',
+        'sap_path': r.get('sap_path', ''),
+        'area_path': eval_data.get('issue_summary', {}).get('area_path', ''),
+        'area_path_confidence': eval_data.get('issue_summary', {}).get('area_path_confidence', ''),
+        'issue_type': eval_data.get('issue_summary', {}).get('issue_type', ''),
+        'primary_article_url': article_eval.get('url', ''),
+        'primary_article_score': eval_data.get('overall_score', 0),
+        'primary_article_verdict': eval_data.get('verdict', ''),
+        'primary_article_action_required': eval_data.get('action_required', ''),
+        'article_relevance_score': rel.get('relevance_score', 0),
+        'article_relevance_verdict': rel.get('relevance_verdict', ''),
+        'article_relevance_fallback': rel.get('relevance_fallback', False),
+        'article_relevance_matched_aspects': _join(rel.get('matched_aspects', [])),
+        'article_relevance_unmatched_aspects': _join(rel.get('unmatched_aspects', [])),
+        'article_relevance_product_match': rel.get('product_match', ''),
+        'article_relevance_version_match': rel.get('version_match', ''),
+        'article_relevance_is_outdated': rel.get('is_outdated', ''),
+        'article_completeness_score': comp.get('completeness_score', 0),
+        'article_completeness_verdict': comp.get('completeness_verdict', ''),
+        'article_completeness_missing_elements': _join(comp.get('missing_elements', [])),
+        'article_completeness_has_prerequisites': comp.get('has_prerequisites', ''),
+        'article_completeness_has_step_by_step': comp.get('has_step_by_step', ''),
+        'article_completeness_has_examples': comp.get('has_examples', ''),
+        'article_completeness_has_troubleshooting': comp.get('has_troubleshooting', ''),
+        'article_completeness_has_success_criteria': comp.get('has_success_criteria', ''),
+        'article_validity_score': val.get('validity_score', 0),
+        'article_validity_verdict': val.get('validity_verdict', ''),
+        'article_validity_potential_issues': _join(val.get('potential_issues', [])),
+        'article_validity_addresses_root_cause': val.get('addresses_root_cause', ''),
+        'article_validity_is_current_solution': val.get('is_current_solution', ''),
+        'article_validity_environment_compatible': val.get('environment_compatible', ''),
+        'article_validity_confidence_level': val.get('confidence_level', ''),
+        'dq_description_quality_score': dq.get('description_quality_score', 0),
+        'dq_description_quality_verdict': dq.get('description_quality_verdict', ''),
+        'product_clarity_score': dq.get('product_clarity_score', 0),
+        'symptom_specificity_score': dq.get('symptom_specificity_score', 0),
+        'operational_context_score': dq.get('operational_context_score', 0),
+        'product_clarity_analysis': dq.get('product_clarity_analysis', ''),
+        'symptom_specificity_analysis': dq.get('symptom_specificity_analysis', ''),
+        'operational_context_analysis': dq.get('operational_context_analysis', ''),
+        'dq_missing_elements': _join(dq.get('missing_elements', [])),
+        'dq_improvement_suggestions': _join(dq.get('improvement_suggestions', [])),
+        'dq_evaluation_reliability_warning': eval_data.get('evaluation_reliability_warning', False),
+        'citation_grounding_score': cq.get('overall_grounding_score', ''),
+        'citation_grounding_verdict': cq.get('overall_verdict', ''),
+        'cited_percentage': cq.get('cited_percentage', ''),
+        'uncited_percentage': cq.get('uncited_percentage', ''),
+        'citations_total': cq.get('citations_total', ''),
+        'citations_good': cq.get('citations_good', ''),
+        'citations_partial': cq.get('citations_partial', ''),
+        'citations_bad': cq.get('citations_bad', ''),
+    }
+    flat.update(_flatten_per_citation(cq.get('per_citation_results', []), max_cit))
+    flat.update({
+        'rq_ai_response_quality_score': rq.get('ai_response_quality_score', ''),
+        'rq_ai_response_quality_verdict': rq.get('ai_response_quality_verdict', ''),
+        'rq_response_quality_score': rq.get('response_quality_score', ''),
+        'rq_response_quality_analysis': rq.get('response_quality_analysis', ''),
+        'rq_groundedness_score': rq.get('groundedness_score', ''),
+        'rq_groundedness_analysis': rq.get('groundedness_analysis', ''),
+        'rq_issue_resolution_score': rq.get('issue_resolution_score', ''),
+        'rq_issue_resolution_analysis': rq.get('issue_resolution_analysis', ''),
+        'rq_quality_weaknesses': _join(rq.get('quality_weaknesses', [])),
+        'rq_improvement_suggestions': _join(rq.get('improvement_suggestions', [])),
+        'synthesis_priority': eval_data.get('synthesis_priority', ''),
+        'synthesis_priority_reason': eval_data.get('synthesis_priority_reason', ''),
+        'synthesis_pm_actions': _join(eval_data.get('synthesis_pm_actions', [])),
+        'synthesis_root_cause_category': eval_data.get('synthesis_root_cause_category', ''),
+        'final_recommendation': eval_data.get('final_recommendation', ''),
+        'processing_time_ms': r.get('processing_time_ms', 0),
+        'error': r.get('error', ''),
+    })
+    return flat
+
+
+def _flatten_result_summary(r: dict, max_cit: int = _MAX_CITATION_COLS) -> dict:
+    """Flatten a single result dict into the summary CSV row format."""
+    eval_data = r.get('evaluation', {})
+    article_eval = eval_data.get('current_article_evaluation', {})
+    rel = article_eval.get('relevance', {})
+    comp = article_eval.get('completeness', {})
+    val = article_eval.get('validity', {})
+    dq = eval_data.get('description_quality', {})
+    cq = eval_data.get('citation_quality', {})
+    rq = eval_data.get('response_quality', {})
+
+    flat = {
+        'case_number': r.get('case_number', ''),
+        'ai_response': r.get('ai_response', ''),
+        'issue_description': eval_data.get('issue_summary', {}).get('raw_description', ''),
+        'issue_product': r.get('sap_path', '').split('/')[0].strip() if r.get('sap_path') else '',
+        'sap_path': r.get('sap_path', ''),
+        'area_path': eval_data.get('issue_summary', {}).get('area_path', ''),
+        'area_path_confidence': eval_data.get('issue_summary', {}).get('area_path_confidence', ''),
+        'primary_article_score': eval_data.get('overall_score', 0),
+        'primary_article_verdict': eval_data.get('verdict', ''),
+        'article_relevance_score': rel.get('relevance_score', 0),
+        'article_relevance_verdict': rel.get('relevance_verdict', ''),
+        'article_relevance_fallback': rel.get('relevance_fallback', False),
+        'article_relevance_matched': _join(rel.get('matched_aspects', [])),
+        'article_relevance_unmatched': _join(rel.get('unmatched_aspects', [])),
+        'article_completeness_score': comp.get('completeness_score', 0),
+        'article_completeness_verdict': comp.get('completeness_verdict', ''),
+        'article_completeness_missing': _join(comp.get('missing_elements', [])),
+        'article_validity_score': val.get('validity_score', 0),
+        'article_validity_verdict': val.get('validity_verdict', ''),
+        'article_validity_issues': _join(val.get('potential_issues', [])),
+        'dq_description_quality_score': dq.get('description_quality_score', 0),
+        'dq_description_quality_verdict': dq.get('description_quality_verdict', ''),
+        'product_clarity_score': dq.get('product_clarity_score', 0),
+        'symptom_specificity_score': dq.get('symptom_specificity_score', 0),
+        'operational_context_score': dq.get('operational_context_score', 0),
+        'dq_missing_elements': _join(dq.get('missing_elements', [])),
+        'dq_improvement_suggestions': _join(dq.get('improvement_suggestions', [])),
+        'citation_grounding_score': cq.get('overall_grounding_score', ''),
+        'citation_grounding_verdict': cq.get('overall_verdict', ''),
+        'cited_percentage': cq.get('cited_percentage', ''),
+        'uncited_percentage': cq.get('uncited_percentage', ''),
+        'citations_total': cq.get('citations_total', ''),
+        'citations_good': cq.get('citations_good', ''),
+        'citations_partial': cq.get('citations_partial', ''),
+        'citations_bad': cq.get('citations_bad', ''),
+    }
+    flat.update(_flatten_per_citation(cq.get('per_citation_results', []), max_cit))
+    flat.update({
+        'rq_ai_response_quality_score': rq.get('ai_response_quality_score', ''),
+        'rq_ai_response_quality_verdict': rq.get('ai_response_quality_verdict', ''),
+        'rq_response_quality_score': rq.get('response_quality_score', ''),
+        'rq_groundedness_score': rq.get('groundedness_score', ''),
+        'rq_issue_resolution_score': rq.get('issue_resolution_score', ''),
+        'rq_quality_weaknesses': _join(rq.get('quality_weaknesses', [])),
+        'synthesis_priority': eval_data.get('synthesis_priority', ''),
+        'synthesis_priority_reason': eval_data.get('synthesis_priority_reason', ''),
+        'synthesis_pm_actions': _join(eval_data.get('synthesis_pm_actions', [])),
+        'synthesis_root_cause_category': eval_data.get('synthesis_root_cause_category', ''),
+        'final_recommendation': eval_data.get('final_recommendation', ''),
+        'error': r.get('error', ''),
+    })
+    return flat
+
+
+class IncrementalResultsWriter:
+    """Streams evaluation results to detailed + summary CSVs as each case completes.
+
+    Usage::
+
+        with IncrementalResultsWriter(output_file, summary_file) as writer:
+            for case in cases:
+                result = evaluate(case)
+                writer.write(result)
+    """
+
+    def __init__(self, detailed_path: str, summary_path: str,
+                 max_cit: int = _MAX_CITATION_COLS):
+        self._detailed_path = detailed_path
+        self._summary_path = summary_path
+        self._max_cit = max_cit
+        self._df = self._sf = None
+        self._dw = self._sw = None
+
+    def __enter__(self):
+        self._df = open(self._detailed_path, 'w', newline='', encoding='utf-8')
+        self._dw = csv.DictWriter(self._df, fieldnames=_detailed_fieldnames(self._max_cit))
+        self._dw.writeheader()
+        self._df.flush()
+
+        self._sf = open(self._summary_path, 'w', newline='', encoding='utf-8')
+        self._sw = csv.DictWriter(self._sf, fieldnames=_summary_fieldnames(self._max_cit))
+        self._sw.writeheader()
+        self._sf.flush()
+        return self
+
+    def write(self, result: dict) -> None:
+        """Append one result row to both CSVs immediately."""
+        self._dw.writerow(_flatten_result_detailed(result, self._max_cit))
+        self._df.flush()
+        self._sw.writerow(_flatten_result_summary(result, self._max_cit))
+        self._sf.flush()
+
+    def __exit__(self, *_):
+        if self._df:
+            self._df.close()
+        if self._sf:
+            self._sf.close()
+
+
 def write_results_csv(results: list[dict], output_path: str):
     """Write evaluation results to CSV file."""
     if not results:
@@ -188,113 +465,12 @@ def write_results_csv(results: list[dict], output_path: str):
         return
 
     max_cit = _max_citations(results)
-
-    # Flatten results for CSV
-    flat_results = []
-    for r in results:
-        eval_data = r.get('evaluation', {})
-        article_eval = eval_data.get('current_article_evaluation', {})
-        rel = article_eval.get('relevance', {})
-        comp = article_eval.get('completeness', {})
-        val = article_eval.get('validity', {})
-        dq = eval_data.get('description_quality', {})
-        cq = eval_data.get('citation_quality', {})
-        rq = eval_data.get('response_quality', {})
-
-        flat = {
-            'case_number': r.get('case_number', ''),
-            'ai_response': r.get('ai_response', ''),
-            'issue_description': eval_data.get('issue_summary', {}).get('raw_description', ''),
-            'issue_product': r.get('sap_path', '').split('/')[0].strip() if r.get('sap_path') else '',
-            'sap_path': r.get('sap_path', ''),
-            'area_path': eval_data.get('issue_summary', {}).get('area_path', ''),
-            'area_path_confidence': eval_data.get('issue_summary', {}).get('area_path_confidence', ''),
-            'issue_type': eval_data.get('issue_summary', {}).get('issue_type', ''),
-            'primary_article_url': article_eval.get('url', ''),
-            'primary_article_score': eval_data.get('overall_score', 0),
-            'primary_article_verdict': eval_data.get('verdict', ''),
-            'primary_article_action_required': eval_data.get('action_required', ''),
-            # Relevance details (primary article)
-            'article_relevance_score': rel.get('relevance_score', 0),
-            'article_relevance_verdict': rel.get('relevance_verdict', ''),
-            'article_relevance_fallback': rel.get('relevance_fallback', False),
-            'article_relevance_matched_aspects': _join(rel.get('matched_aspects', [])),
-            'article_relevance_unmatched_aspects': _join(rel.get('unmatched_aspects', [])),
-            'article_relevance_product_match': rel.get('product_match', ''),
-            'article_relevance_version_match': rel.get('version_match', ''),
-            'article_relevance_is_outdated': rel.get('is_outdated', ''),
-            # Completeness details (primary article)
-            'article_completeness_score': comp.get('completeness_score', 0),
-            'article_completeness_verdict': comp.get('completeness_verdict', ''),
-            'article_completeness_missing_elements': _join(comp.get('missing_elements', [])),
-            'article_completeness_has_prerequisites': comp.get('has_prerequisites', ''),
-            'article_completeness_has_step_by_step': comp.get('has_step_by_step', ''),
-            'article_completeness_has_examples': comp.get('has_examples', ''),
-            'article_completeness_has_troubleshooting': comp.get('has_troubleshooting', ''),
-            'article_completeness_has_success_criteria': comp.get('has_success_criteria', ''),
-            # Validity details (primary article)
-            'article_validity_score': val.get('validity_score', 0),
-            'article_validity_verdict': val.get('validity_verdict', ''),
-            'article_validity_potential_issues': _join(val.get('potential_issues', [])),
-            'article_validity_addresses_root_cause': val.get('addresses_root_cause', ''),
-            'article_validity_is_current_solution': val.get('is_current_solution', ''),
-            'article_validity_environment_compatible': val.get('environment_compatible', ''),
-            'article_validity_confidence_level': val.get('confidence_level', ''),
-            # Description quality (support-readiness framework)
-            'dq_description_quality_score': dq.get('description_quality_score', 0),
-            'dq_description_quality_verdict': dq.get('description_quality_verdict', ''),
-            'product_clarity_score': dq.get('product_clarity_score', 0),
-            'symptom_specificity_score': dq.get('symptom_specificity_score', 0),
-            'operational_context_score': dq.get('operational_context_score', 0),
-            'product_clarity_analysis': dq.get('product_clarity_analysis', ''),
-            'symptom_specificity_analysis': dq.get('symptom_specificity_analysis', ''),
-            'operational_context_analysis': dq.get('operational_context_analysis', ''),
-            'dq_missing_elements': _join(dq.get('missing_elements', [])),
-            'dq_improvement_suggestions': _join(dq.get('improvement_suggestions', [])),
-            'dq_evaluation_reliability_warning': eval_data.get('evaluation_reliability_warning', False),
-            # Citation quality — summary
-            'citation_grounding_score': cq.get('overall_grounding_score', ''),
-            'citation_grounding_verdict': cq.get('overall_verdict', ''),
-            'cited_percentage': cq.get('cited_percentage', ''),
-            'uncited_percentage': cq.get('uncited_percentage', ''),
-            'citations_total': cq.get('citations_total', ''),
-            'citations_good': cq.get('citations_good', ''),
-            'citations_partial': cq.get('citations_partial', ''),
-            'citations_bad': cq.get('citations_bad', ''),
-        }
-        # Citation quality — per-citation breakdown
-        flat.update(_flatten_per_citation(cq.get('per_citation_results', []), max_cit))
-        flat.update({
-            # Response quality (multi-dimensional)
-            'rq_ai_response_quality_score': rq.get('ai_response_quality_score', ''),
-            'rq_ai_response_quality_verdict': rq.get('ai_response_quality_verdict', ''),
-            'rq_response_quality_score': rq.get('response_quality_score', ''),
-            'rq_response_quality_analysis': rq.get('response_quality_analysis', ''),
-            'rq_groundedness_score': rq.get('groundedness_score', ''),
-            'rq_groundedness_analysis': rq.get('groundedness_analysis', ''),
-            'rq_issue_resolution_score': rq.get('issue_resolution_score', ''),
-            'rq_issue_resolution_analysis': rq.get('issue_resolution_analysis', ''),
-            'rq_quality_weaknesses': _join(rq.get('quality_weaknesses', [])),
-            'rq_improvement_suggestions': _join(rq.get('improvement_suggestions', [])),
-            # LLM-synthesized recommendation
-            'synthesis_priority': eval_data.get('synthesis_priority', ''),
-            'synthesis_priority_reason': eval_data.get('synthesis_priority_reason', ''),
-            'synthesis_pm_actions': _join(eval_data.get('synthesis_pm_actions', [])),
-            'synthesis_root_cause_category': eval_data.get('synthesis_root_cause_category', ''),
-            # Summary
-            'final_recommendation': eval_data.get('final_recommendation', ''),
-            'processing_time_ms': r.get('processing_time_ms', 0),
-            'error': r.get('error', '')
-        })
-        flat_results.append(flat)
-
-    # Collect all fieldnames in stable order
-    fieldnames = list(flat_results[0].keys()) if flat_results else []
-
+    fieldnames = _detailed_fieldnames(max_cit)
     with open(output_path, 'w', newline='', encoding='utf-8') as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
-        writer.writerows(flat_results)
+        for r in results:
+            writer.writerow(_flatten_result_detailed(r, max_cit))
 
     logger.info(f"Results written to {output_path}")
 
@@ -305,88 +481,13 @@ def write_results_csv_summary(results: list[dict], output_path: str):
         logger.warning("No results to write")
         return
 
-    flat_results = []
-    for r in results:
-        eval_data = r.get('evaluation', {})
-        article_eval = eval_data.get('current_article_evaluation', {})
-        rel = article_eval.get('relevance', {})
-        comp = article_eval.get('completeness', {})
-        val = article_eval.get('validity', {})
-        dq = eval_data.get('description_quality', {})
-        cq = eval_data.get('citation_quality', {})
-        rq = eval_data.get('response_quality', {})
-
-        flat = {
-            'case_number': r.get('case_number', ''),
-            'ai_response': r.get('ai_response', ''),
-            'issue_description': eval_data.get('issue_summary', {}).get('raw_description', ''),
-            'issue_product': r.get('sap_path', '').split('/')[0].strip() if r.get('sap_path') else '',
-            'sap_path': r.get('sap_path', ''),
-            'area_path': eval_data.get('issue_summary', {}).get('area_path', ''),
-            'area_path_confidence': eval_data.get('issue_summary', {}).get('area_path_confidence', ''),
-            'primary_article_score': eval_data.get('overall_score', 0),
-            'primary_article_verdict': eval_data.get('verdict', ''),
-            # Relevance — score + reasons (primary article)
-            'article_relevance_score': rel.get('relevance_score', 0),
-            'article_relevance_verdict': rel.get('relevance_verdict', ''),
-            'article_relevance_fallback': rel.get('relevance_fallback', False),
-            'article_relevance_matched': _join(rel.get('matched_aspects', [])),
-            'article_relevance_unmatched': _join(rel.get('unmatched_aspects', [])),
-            # Completeness — score + reasons (primary article)
-            'article_completeness_score': comp.get('completeness_score', 0),
-            'article_completeness_verdict': comp.get('completeness_verdict', ''),
-            'article_completeness_missing': _join(comp.get('missing_elements', [])),
-            # Validity — score + reasons (primary article)
-            'article_validity_score': val.get('validity_score', 0),
-            'article_validity_verdict': val.get('validity_verdict', ''),
-            'article_validity_issues': _join(val.get('potential_issues', [])),
-            # Description quality — score + reasons (support-readiness framework)
-            'dq_description_quality_score': dq.get('description_quality_score', 0),
-            'dq_description_quality_verdict': dq.get('description_quality_verdict', ''),
-            'product_clarity_score': dq.get('product_clarity_score', 0),
-            'symptom_specificity_score': dq.get('symptom_specificity_score', 0),
-            'operational_context_score': dq.get('operational_context_score', 0),
-            'dq_missing_elements': _join(dq.get('missing_elements', [])),
-            'dq_improvement_suggestions': _join(dq.get('improvement_suggestions', [])),
-            # Citation quality — summary
-            'citation_grounding_score': cq.get('overall_grounding_score', ''),
-            'citation_grounding_verdict': cq.get('overall_verdict', ''),
-            'cited_percentage': cq.get('cited_percentage', ''),
-            'uncited_percentage': cq.get('uncited_percentage', ''),
-            'citations_total': cq.get('citations_total', ''),
-            'citations_good': cq.get('citations_good', ''),
-            'citations_partial': cq.get('citations_partial', ''),
-            'citations_bad': cq.get('citations_bad', ''),
-        }
-        # Citation quality — per-citation breakdown
-        max_cit = _max_citations(results)
-        flat.update(_flatten_per_citation(cq.get('per_citation_results', []), max_cit))
-        flat.update({
-            # Response quality (multi-dimensional)
-            'rq_ai_response_quality_score': rq.get('ai_response_quality_score', ''),
-            'rq_ai_response_quality_verdict': rq.get('ai_response_quality_verdict', ''),
-            'rq_response_quality_score': rq.get('response_quality_score', ''),
-            'rq_groundedness_score': rq.get('groundedness_score', ''),
-            'rq_issue_resolution_score': rq.get('issue_resolution_score', ''),
-            'rq_quality_weaknesses': _join(rq.get('quality_weaknesses', [])),
-            # LLM-synthesized recommendation
-            'synthesis_priority': eval_data.get('synthesis_priority', ''),
-            'synthesis_priority_reason': eval_data.get('synthesis_priority_reason', ''),
-            'synthesis_pm_actions': _join(eval_data.get('synthesis_pm_actions', [])),
-            'synthesis_root_cause_category': eval_data.get('synthesis_root_cause_category', ''),
-            # Final
-            'final_recommendation': eval_data.get('final_recommendation', ''),
-            'error': r.get('error', ''),
-        })
-        flat_results.append(flat)
-
-    # Collect all fieldnames in stable order
-    fieldnames = list(flat_results[0].keys()) if flat_results else []
-
+    max_cit = _max_citations(results)
+    fieldnames = _summary_fieldnames(max_cit)
     with open(output_path, 'w', newline='', encoding='utf-8') as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
-        writer.writerows(flat_results)
+        for r in results:
+            writer.writerow(_flatten_result_summary(r, max_cit))
 
     logger.info(f"Summary results written to {output_path}")
 

@@ -40,6 +40,7 @@ from article_evaluation_system.main import (
     read_csv_cases, read_mweaeval_csv_cases, read_results_csv_as_results,
     write_results_json, write_results_csv, write_results_csv_summary,
     write_trend_report_csv, write_citation_overlaps_csv,
+    IncrementalResultsWriter,
 )
 
 
@@ -256,6 +257,15 @@ def main():
         mwai_token_is_explicit=bool(args.token),
     )
 
+    # Open incremental CSV writers for CSV mode so each result is flushed immediately
+    _csv_writer_ctx = (
+        IncrementalResultsWriter(output_file, output_summary)
+        if args.format == 'csv' else None
+    )
+    if _csv_writer_ctx:
+        _csv_writer_ctx.__enter__()
+        print(f"Streaming results to {output_file} and {output_summary} as cases complete...")
+
     # Process cases
     results = []
     for i, case in enumerate(cases, 1):
@@ -450,15 +460,19 @@ def main():
             }
 
         results.append(result)
+        if _csv_writer_ctx:
+            _csv_writer_ctx.write(result)
 
-    # Write results — always produce both detailed + summary CSVs
-    print(f"\nWriting detailed results to {output_file}...")
+    # Close incremental writers
+    if _csv_writer_ctx:
+        _csv_writer_ctx.__exit__(None, None, None)
+
+    # Write results for JSON mode (CSV already written incrementally above)
     if args.format == 'json':
+        print(f"\nWriting results to {output_file}...")
         write_results_json(results, output_file)
-    else:
-        write_results_csv(results, output_file)
-    print(f"Writing summary CSV to {output_summary}...")
-    write_results_csv_summary(results, output_summary)
+        print(f"Writing summary CSV to {output_summary}...")
+        write_results_csv_summary(results, output_summary)
 
     # Trend report (opt-in)
     if args.trend_report and len(results) >= 2:
