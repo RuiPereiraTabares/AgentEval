@@ -3,6 +3,7 @@ Citation Quality Agent - Evaluates whether cited articles actually support
 the claims made in the AI-generated response.
 """
 
+import concurrent.futures
 import logging
 
 from . import BaseAgent
@@ -69,16 +70,17 @@ class CitationQualityAgent(BaseAgent):
             article_fetcher = ArticleFetcher()
 
         # Step 2: Evaluate each unique citation
-        per_citation_results = []
+        # Pre-classify citations into skipped (no URL / no text) vs valid for LLM eval
+        skipped_results = []
+        valid_citations = []  # list of (citation_idx, url, cited_text, coverage_pct)
         for citation_idx in parse_result.unique_citation_indices:
-            # citation_idx is 1-based, URLs are 0-based
             url_index = citation_idx - 1
             if url_index < 0 or url_index >= len(citation_urls):
                 logger.warning(
                     f"[CitationQualityAgent] Citation [{citation_idx}] has no "
                     f"corresponding URL (only {len(citation_urls)} URLs provided)"
                 )
-                per_citation_results.append(PerCitationResult(
+                skipped_results.append(PerCitationResult(
                     citation_index=citation_idx,
                     url="",
                     support_score=0,
@@ -96,7 +98,7 @@ class CitationQualityAgent(BaseAgent):
                 logger.warning(
                     f"[CitationQualityAgent] Citation [{citation_idx}] has no attributed text"
                 )
-                per_citation_results.append(PerCitationResult(
+                skipped_results.append(PerCitationResult(
                     citation_index=citation_idx,
                     url=url,
                     support_score=0,
@@ -106,10 +108,25 @@ class CitationQualityAgent(BaseAgent):
                 ))
                 continue
 
-            result = self._evaluate_single_citation(
-                citation_idx, url, cited_text, coverage_pct, article_fetcher
-            )
-            per_citation_results.append(result)
+            valid_citations.append((citation_idx, url, cited_text, coverage_pct))
+
+        # Evaluate valid citations in parallel (typically 2–6 citations per response)
+        evaluated_results = []
+        if valid_citations:
+            max_workers = min(6, len(valid_citations))
+            with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+                futures = {
+                    executor.submit(
+                        self._evaluate_single_citation,
+                        citation_idx, url, cited_text, coverage_pct, article_fetcher
+                    ): citation_idx
+                    for citation_idx, url, cited_text, coverage_pct in valid_citations
+                }
+                for future in concurrent.futures.as_completed(futures):
+                    evaluated_results.append(future.result())
+
+        per_citation_results = skipped_results + evaluated_results
+        per_citation_results.sort(key=lambda r: r.citation_index)
 
         # Step 3: Aggregate
         return CitationQualityResult.from_per_citation(

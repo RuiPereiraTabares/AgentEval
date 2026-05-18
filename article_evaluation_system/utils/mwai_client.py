@@ -17,7 +17,7 @@ import requests
 logger = logging.getLogger(__name__)
 
 # Delay between MWAI API requests to avoid rate limiting
-MWAI_REQUEST_DELAY = 1.2  # seconds — reduce to 0.3 if no 429 rate-limit errors appear
+MWAI_REQUEST_DELAY = 0.3  # seconds — increase if 429 rate-limit errors appear
 
 # ---------------------------------------------------------------------------
 # MWAI API Configuration
@@ -150,6 +150,7 @@ class MwaiClient:
         self.timeout = timeout
         self._via_msal = _via_msal
         self.model = model
+        self._session = requests.Session()
 
     def _ensure_token_fresh(self) -> None:
         """
@@ -177,8 +178,6 @@ class MwaiClient:
         Raises:
             RuntimeError: If the API call fails
         """
-        self._ensure_token_fresh()
-
         headers = {
             "Authorization": f"Bearer {self.token}",
             "Content-Type": "application/json",
@@ -206,7 +205,7 @@ class MwaiClient:
             user_message[:300]
         )
 
-        resp = requests.post(
+        resp = self._session.post(
             ENDPOINT_WITHOUT_DATA,
             headers=headers,
             json=payload,
@@ -221,7 +220,7 @@ class MwaiClient:
             logger.warning("MWAI returned 401 — forcing token refresh and retrying...")
             self.token = acquire_msal_token(force_refresh=True)
             headers["Authorization"] = f"Bearer {self.token}"
-            resp = requests.post(
+            resp = self._session.post(
                 ENDPOINT_WITHOUT_DATA,
                 headers=headers,
                 json=payload,
