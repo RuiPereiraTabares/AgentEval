@@ -144,6 +144,7 @@ class BaseAgent(ABC):
 
             self._last_user_message = effective_message
 
+            _is_http_error = False
             try:
                 response = (
                     self._llm_callable(system_prompt, effective_message)
@@ -151,16 +152,19 @@ class BaseAgent(ABC):
                     else self.client.chat_completion(system_prompt, effective_message)
                 )
             except RuntimeError as exc:
-                # HTTP 5xx from MWAI — treat as RAI refusal so heuristic fallbacks trigger
+                # HTTP 5xx from MWAI — the wrapper returns 500 for RAI blocks, so
+                # treat it like a text refusal and let the retry loop rephrase the prompt
                 if "mwai api error 5" in str(exc).lower():
                     logger.warning(
                         f"[{agent_name}] HTTP 5xx on attempt {attempt + 1} — "
-                        f"treating as RAI refusal: {exc}"
+                        f"treating as RAI refusal, will retry with rephrased prompt: {exc}"
                     )
-                    raise LLMRefusalError(f"HTTP 5xx treated as RAI refusal: {exc}") from exc
-                raise
+                    _is_http_error = True
+                    response = str(exc)[:200]
+                else:
+                    raise
 
-            if not _is_refusal(response):
+            if not _is_refusal(response) and not _is_http_error:
                 if attempt > 0:
                     logger.info(f"[{agent_name}] Recovered from RAI refusal on attempt {attempt + 1}")
                     _log_refusal(agent_name, response, self._refusal_context,
