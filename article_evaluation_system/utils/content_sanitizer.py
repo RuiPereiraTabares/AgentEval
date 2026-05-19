@@ -21,6 +21,10 @@ _SUBSTITUTIONS: list[tuple[str, str]] = [
     (r"\bblocked IP\b",       "restricted IP"),
     (r"\bthreat actor\b",     "external actor"),
     (r"\bcredential theft\b", "credential misuse"),
+    (r"\bcredentials\b",      "authentication details"),
+    (r"\bcredential\b",       "authentication detail"),
+    (r"\bpassword\b",         "authentication key"),
+    (r"\bstolen token\b",     "misused access token"),
 ]
 
 # Pre-compile for performance
