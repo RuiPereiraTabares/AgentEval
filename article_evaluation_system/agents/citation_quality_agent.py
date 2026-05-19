@@ -6,11 +6,12 @@ the claims made in the AI-generated response.
 import concurrent.futures
 import logging
 
-from . import BaseAgent
+from . import BaseAgent, LLMRefusalError
 from ..models.evaluation import PerCitationResult, CitationQualityResult
 from ..utils.prompts import AgentPrompts
 from ..utils.citation_parser import parse_citations
 from ..utils.article_fetcher import ArticleFetcher
+from ..utils.content_sanitizer import sanitize_for_rai
 
 
 logger = logging.getLogger(__name__)
@@ -164,8 +165,8 @@ class CitationQualityAgent(BaseAgent):
                 support_reasoning=f"Could not fetch article: {article.fetch_error}",
             )
 
-        # Truncate content to avoid token limits
-        article_content = article.content[:8000]
+        # Truncate and sanitize content to avoid token limits and RAI triggers
+        article_content = sanitize_for_rai(article.content[:8000])
 
         user_message = (
             f"=== TEXT FROM AI RESPONSE (attributed to this citation) ===\n"
@@ -192,6 +193,13 @@ class CitationQualityAgent(BaseAgent):
                 f"verdict={result.verdict}"
             )
             return result
+        except LLMRefusalError as e:
+            logger.warning(
+                f"[CitationQualityAgent] RAI refusal for [{citation_idx}] — using heuristic: {e}"
+            )
+            return self._heuristic_citation_quality(
+                citation_idx, url, cited_text, article_content, coverage_pct
+            )
         except Exception as e:
             logger.warning(
                 f"[CitationQualityAgent] LLM evaluation failed for [{citation_idx}]: {e}"
@@ -199,8 +207,60 @@ class CitationQualityAgent(BaseAgent):
             return PerCitationResult(
                 citation_index=citation_idx,
                 url=url,
-                support_score=0,
-                verdict="bad",
+                support_score=50,
+                verdict="partial",
                 coverage_percentage=coverage_pct,
-                support_reasoning=f"LLM evaluation failed: {e}",
+                support_reasoning=f"RAI/evaluation unavailable: {e}",
             )
+
+    def _heuristic_citation_quality(
+        self,
+        citation_idx: int,
+        url: str,
+        cited_text: str,
+        article_content: str,
+        coverage_pct: float,
+    ) -> PerCitationResult:
+        """
+        Keyword-overlap heuristic used when LLM refuses to evaluate a citation.
+
+        Measures token overlap between the cited text and the article content to
+        produce a meaningful score rather than defaulting to 0/bad.
+        """
+        cited_tokens = set(
+            w.lower() for w in cited_text.split() if len(w) > 3
+        )
+        article_lower = article_content.lower()
+
+        if not cited_tokens:
+            return PerCitationResult(
+                citation_index=citation_idx,
+                url=url,
+                support_score=50,
+                verdict="partial",
+                coverage_percentage=coverage_pct,
+                support_reasoning="RAI/evaluation unavailable; no tokens to compare",
+            )
+
+        matched = [t for t in cited_tokens if t in article_lower]
+        overlap = len(matched) / len(cited_tokens)
+
+        if overlap >= 0.6:
+            score, verdict = 70, "good"
+        elif overlap >= 0.35:
+            score, verdict = 50, "partial"
+        elif overlap >= 0.15:
+            score, verdict = 35, "partial"
+        else:
+            score, verdict = 20, "bad"
+
+        return PerCitationResult(
+            citation_index=citation_idx,
+            url=url,
+            support_score=score,
+            verdict=verdict,
+            coverage_percentage=coverage_pct,
+            support_reasoning=(
+                f"Heuristic overlap ({overlap:.0%}) used — LLM evaluation unavailable (RAI refusal)"
+            ),
+        )

@@ -6,6 +6,7 @@ import json
 import logging
 
 from . import BaseAgent
+from ..utils.content_sanitizer import sanitize_for_rai
 
 logger = logging.getLogger(__name__)
 from ..models.issue import Issue
@@ -67,7 +68,7 @@ class ValidityAgent(BaseAgent):
 **Last Updated:** {article.last_updated or "Unknown"}
 
 **Content:**
-{article.content[:8000]}
+{sanitize_for_rai(article.content[:8000])}
 
 Evaluate validity and respond with JSON only."""
 

@@ -6,6 +6,7 @@ import json
 import logging
 
 from . import BaseAgent, LLMRefusalError
+from ..utils.content_sanitizer import sanitize_for_rai
 
 logger = logging.getLogger(__name__)
 from ..models.issue import Issue
@@ -63,7 +64,7 @@ class RelevanceAgent(BaseAgent):
 **Applies To:** {', '.join(article.applies_to) if article.applies_to else "Not specified"}
 
 ## Article Content
-{article.content[:8000]}
+{sanitize_for_rai(article.content[:8000])}
 
 Evaluate and respond with JSON only."""
 

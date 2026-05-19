@@ -16,12 +16,16 @@ class LLMRefusalError(ValueError):
     pass
 
 
-_RAI_MAX_RETRIES = 2        # extra attempts after first refusal
+_RAI_MAX_RETRIES = 3        # extra attempts after first refusal
 _RAI_RETRY_DELAY = 2.0      # seconds between retries
 _RAI_RETRY_PREFIXES = [
     "Please provide a technical quality evaluation of the following Microsoft support content:\n\n",
     "Please analyze the following technical documentation for topical relevance to the user inquiry:\n\n",
+    "As a documentation analyst, assess the following enterprise IT support material:\n\n",
+    "Evaluate this Microsoft knowledge base article against the given technical inquiry:\n\n",
 ]
+# Progressive truncation limits per retry attempt (attempt index 1-based)
+_RAI_RETRY_TRUNCATE = {1: 4000, 2: 2000, 3: 800}
 
 # Patterns that indicate the LLM refused to answer (shared across all agents)
 _REFUSAL_PATTERNS = (
@@ -132,17 +136,29 @@ class BaseAgent(ABC):
         for attempt in range(1 + _RAI_MAX_RETRIES):
             if attempt > 0:
                 prefix = _RAI_RETRY_PREFIXES[min(attempt - 1, len(_RAI_RETRY_PREFIXES) - 1)]
-                effective_message = prefix + user_message
+                char_limit = _RAI_RETRY_TRUNCATE.get(attempt)
+                truncated = user_message[:char_limit] if char_limit else user_message
+                effective_message = prefix + truncated
             else:
                 effective_message = user_message
 
             self._last_user_message = effective_message
 
-            response = (
-                self._llm_callable(system_prompt, effective_message)
-                if self._llm_callable is not None
-                else self.client.chat_completion(system_prompt, effective_message)
-            )
+            try:
+                response = (
+                    self._llm_callable(system_prompt, effective_message)
+                    if self._llm_callable is not None
+                    else self.client.chat_completion(system_prompt, effective_message)
+                )
+            except RuntimeError as exc:
+                # HTTP 5xx from MWAI — treat as RAI refusal so heuristic fallbacks trigger
+                if "mwai api error 5" in str(exc).lower():
+                    logger.warning(
+                        f"[{agent_name}] HTTP 5xx on attempt {attempt + 1} — "
+                        f"treating as RAI refusal: {exc}"
+                    )
+                    raise LLMRefusalError(f"HTTP 5xx treated as RAI refusal: {exc}") from exc
+                raise
 
             if not _is_refusal(response):
                 if attempt > 0:
