@@ -17,7 +17,9 @@ class BaseAgent(ABC):
     def set_llm_callable(self, callable_fn)        # Inject custom LLM
 ```
 
-See [Architecture > BaseAgent](architecture.md#baseagent-class) for details on `_call_llm()` and `_parse_json_response()` 3-stage parsing.
+**`_call_llm()` caching:** On attempt 0, the LLM response dedup cache (`utils/llm_cache.py`) is checked before any API call. On success, the response is stored. Injected callables (via `set_llm_callable()`) bypass the cache — test stubs are unaffected.
+
+See [Architecture > BaseAgent](architecture.md#baseagent-class) and [Architecture > Caching & Rate Limiting](architecture.md#caching--rate-limiting) for full details on `_call_llm()`, `_parse_json_response()` 3-stage parsing, and the token-bucket rate limiter.
 
 ---
 

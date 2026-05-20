@@ -168,14 +168,20 @@ python run_evaluation.py --skip 100 -n 50
 # Custom input file
 python run_evaluation.py -i my_cases.csv
 
-# Verbose output (per-agent breakdowns)
+# Parallel mode — 3 workers (2–4× throughput; verbose suppressed)
+python run_evaluation.py --workers 3 -n 200
+
+# Verbose output (per-agent breakdowns) — sequential mode only
 python run_evaluation.py -v
 
-# Debug output (raw LLM prompts and responses)
+# Debug output (raw LLM prompts and responses) — sequential mode only
 python run_evaluation.py --debug
 
 # CSV output
 python run_evaluation.py --format csv
+
+# Disable caches for a guaranteed-fresh run
+python run_evaluation.py --no-llm-cache --no-article-cache
 ```
 
 ### Batch Mode
@@ -215,6 +221,16 @@ When `--output` is not specified, files are auto-named with a timestamp:
 ### Full Argument Reference
 
 See [Configuration > CLI Arguments](configuration.md#cli-arguments).
+
+### Throughput Flags
+
+| Flag | Description |
+|------|-------------|
+| `--workers N` | Run N cases in parallel. Each thread gets its own `Orchestrator`; all share one `MwaiClient` and token-bucket rate limiter. Default: `1` (sequential). Start at 3–4. |
+| `--no-llm-cache` | Disable LLM response dedup cache for this run. |
+| `--no-article-cache` | Disable persistent SQLite article cache for this run. |
+
+> **Note:** `--verbose` / `--debug` output is suppressed when `--workers > 1` because interleaved output from concurrent threads is unreadable. Use `--workers 1` for per-case debugging.
 
 ## CSV Input Format
 

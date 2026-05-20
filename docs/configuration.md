@@ -121,13 +121,42 @@ RESPONSE_QUALITY_WEIGHTS = {
 
 ## Rate Limiting and Caching
 
-| Setting | Default | Description |
-|---------|---------|-------------|
-| `requests_per_minute` | 50 | Max LLM API calls per minute |
-| `article_fetch_delay` | 0.5s | Delay between HTTP article fetches |
-| `cache_enabled` | `True` | Enable in-memory article cache |
-| `cache_ttl` | 3600s (1 hour) | Cache time-to-live |
-| `MWAI_REQUEST_DELAY` | 2s | Delay between MWAI API calls (hardcoded in `mwai_client.py`) |
+### MWAI Rate Limiter
+
+MWAI calls are governed by a **token-bucket rate limiter** (`_rate_limiter` in `utils/mwai_client.py`), shared across all worker threads. The bucket refills at `MWAI_MAX_RPS` tokens/second:
+
+```python
+# utils/mwai_client.py
+MWAI_MAX_RPS = 3.33   # ≈ 200 RPM — increase if your MWAI quota allows more
+MWAI_REQUEST_DELAY = 1.0 / MWAI_MAX_RPS  # backward-compat constant; not used for sleep
+```
+
+`MWAI_REQUEST_DELAY` is kept for backward compatibility (external code that imports it will not break), but the actual rate control is the token bucket.
+
+### Article Cache
+
+| Setting | Value | Description |
+|---------|-------|-------------|
+| `requests_per_minute` (Settings) | 50 | Informational — actual limit is MWAI_MAX_RPS |
+| `article_fetch_delay` (Settings) | 0.5s | Delay between live HTTP article fetches |
+| `cache_enabled` (Settings) | `True` | Enable in-memory L1 article cache |
+| `cache_ttl` (Settings) | 3600s | In-memory L1 TTL |
+| `_ARTICLE_CACHE_DB` | `~/.article_cache.db` | SQLite L2 persistent cache path (hardcoded) |
+| `_ARTICLE_CACHE_TTL` | 86400s (24h) | SQLite L2 TTL |
+
+Disable the SQLite L2 cache for a run with `--no-article-cache`.
+
+### LLM Response Cache
+
+Successful LLM responses are cached in SQLite to avoid redundant API calls on re-runs or for cases with identical prompts.
+
+| Setting | Value | Description |
+|---------|-------|-------------|
+| `_LLM_CACHE_DB` | `~/.llm_response_cache.db` | SQLite cache path (hardcoded in `utils/llm_cache.py`) |
+| `_LLM_CACHE_TTL` | 604800s (7 days) | Cache TTL |
+| `_LLM_CACHE_ENABLED` | `True` | Module flag in `agents/__init__.py`; set to `False` to disable globally |
+
+Disable for a run with `--no-llm-cache`.
 
 ## LLM Parameters
 
@@ -154,13 +183,15 @@ MWAI additionally uses `response_format: {"type": "json_object"}`.
 | `--skip` | `0` | Skip first N cases |
 | `--format` | `csv` | Output format (`json` or `csv`) |
 | `--mweaeval` | -- | Enable citation quality + response quality evaluation mode |
-| `--verbose`, `-v` | -- | Show per-agent scores and verdict reasoning |
-| `--debug` | -- | Show raw LLM prompts, responses, and API details |
+| `--verbose`, `-v` | -- | Show per-agent scores and verdict reasoning (sequential mode only) |
+| `--debug` | -- | Show raw LLM prompts, responses, and API details (sequential mode only) |
 | `--token` | -- | MWAI bearer token |
 | `--new-token` | -- | Force re-prompt for new MWAI token |
-| `--mweaeval` | -- | Enable citation quality + response quality evaluation mode |
+| `--workers` | `1` | Parallel case workers. Each thread gets its own Orchestrator; all share one MwaiClient and rate-limiter. Verbose/debug suppressed when > 1. |
 | `--batch-size` | -- | Number of cases per batch (enables batch mode with state persistence via `.batch_state.json`) |
 | `--continue` | -- | Continue from where the last batch left off (requires `--batch-size`) |
+| `--no-llm-cache` | -- | Disable LLM response dedup cache for this run (forces fresh API calls) |
+| `--no-article-cache` | -- | Disable persistent SQLite article cache for this run (forces re-fetch of all URLs) |
 
 **`article_evaluation_system/main.py`** (alternative CLI):
 

@@ -45,6 +45,9 @@ python run_evaluation.py -n 20 -i my_cases.csv
 # Evaluate a single case
 python run_evaluation.py --case 2508270010003948
 
+# Parallel mode — 3 concurrent cases (2–4× throughput)
+python run_evaluation.py --workers 3 -n 100
+
 # Batch mode with resume support
 python run_evaluation.py --batch-size 50 -i input.csv
 python run_evaluation.py --batch-size 50 --continue -i input.csv
@@ -58,9 +61,12 @@ python run_evaluation.py --all --trend-report
 # Regenerate trends from existing results (no re-evaluation)
 python run_evaluation.py --trends-only --from-results evaluation_results_*.csv
 
-# Verbose / debug output
+# Verbose / debug output (sequential mode only)
 python run_evaluation.py -v
 python run_evaluation.py --debug
+
+# Disable caches for a guaranteed-fresh run
+python run_evaluation.py --no-llm-cache --no-article-cache
 ```
 
 ### Key Arguments
@@ -72,6 +78,7 @@ python run_evaluation.py --debug
 | `--all` | Process all cases |
 | `--case ID` | Process a single case number |
 | `--skip N` | Skip first N cases |
+| `--workers N` | Parallel worker count (default: 1). Start at 3–4; share one rate-limiter token bucket across all threads |
 | `--mweaeval` | Citation quality + AI response evaluation mode |
 | `--trend-report` | Generate trend cluster report after evaluation |
 | `--trends-only` | Skip evaluation; regenerate trends from `--from-results` CSVs |
@@ -79,7 +86,9 @@ python run_evaluation.py --debug
 | `--model MODEL` | LLM model override (default: `gpt-4o`) |
 | `--token TOKEN` | MWAI bearer token |
 | `--new-token` | Force re-authentication |
-| `-v` / `--debug` | Verbose / debug logging |
+| `--no-llm-cache` | Disable LLM response dedup cache for this run |
+| `--no-article-cache` | Disable persistent article cache for this run |
+| `-v` / `--debug` | Verbose / debug logging (sequential mode only) |
 
 ## Output Files
 
@@ -103,7 +112,7 @@ AgentEval/
 │   ├── config/
 │   │   ├── settings.py                  # Thresholds and weights
 │   │   └── area_definitions.py          # Product area taxonomies
-│   ├── utils/                           # MWAI client, article fetcher, prompts, scoring
+│   ├── utils/                           # MWAI client, article fetcher, LLM cache, prompts, scoring
 │   └── synthesis/
 │       └── trend_synthesis.py           # Semantic clustering + citation overlap detection
 ├── dashboard/

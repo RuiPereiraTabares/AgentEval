@@ -10,6 +10,22 @@ import time
 
 logger = logging.getLogger(__name__)
 
+# Lazy import — avoids circular imports and keeps startup fast.
+# Set to False to disable the LLM response cache for a session
+# (e.g. pass --no-llm-cache from run_evaluation.py).
+_LLM_CACHE_ENABLED: bool = True
+
+
+def _get_llm_cache():
+    """Return the module-level LLM cache singleton, or None if disabled/unavailable."""
+    if not _LLM_CACHE_ENABLED:
+        return None
+    try:
+        from ..utils.llm_cache import _llm_cache
+        return _llm_cache
+    except Exception:
+        return None
+
 
 class LLMRefusalError(ValueError):
     """Raised when the LLM refuses to process a request (RAI guardrail)."""
@@ -133,6 +149,8 @@ class BaseAgent(ABC):
         self._last_system_prompt = system_prompt
         self._last_user_message = user_message
 
+        _cache = _get_llm_cache()
+
         for attempt in range(1 + _RAI_MAX_RETRIES):
             if attempt > 0:
                 prefix = _RAI_RETRY_PREFIXES[min(attempt - 1, len(_RAI_RETRY_PREFIXES) - 1)]
@@ -143,6 +161,13 @@ class BaseAgent(ABC):
                 effective_message = user_message
 
             self._last_user_message = effective_message
+
+            # Check LLM response cache (attempt 0 only — rephrased variants aren't cached)
+            if attempt == 0 and _cache is not None and self._llm_callable is None:
+                cached_response = _cache.get(system_prompt, effective_message)
+                if cached_response is not None:
+                    logger.info(f"[{agent_name}] LLM cache hit — skipping API call")
+                    return cached_response
 
             _is_http_error = False
             try:
@@ -165,6 +190,9 @@ class BaseAgent(ABC):
                     raise
 
             if not _is_refusal(response) and not _is_http_error:
+                # Store in cache (attempt 0, real API calls only)
+                if attempt == 0 and _cache is not None and self._llm_callable is None:
+                    _cache.put(system_prompt, effective_message, response)
                 if attempt > 0:
                     logger.info(f"[{agent_name}] Recovered from RAI refusal on attempt {attempt + 1}")
                     _log_refusal(agent_name, response, self._refusal_context,

@@ -82,6 +82,9 @@ python run_evaluation.py -n 5
 # Evaluate all cases
 python run_evaluation.py --all
 
+# Parallel mode — 3 workers for higher throughput
+python run_evaluation.py --workers 3 --all
+
 # Evaluate a specific case with verbose output
 python run_evaluation.py --case 2508270010003948 -v
 ```
@@ -105,6 +108,9 @@ python run_evaluation.py --case 2508270010003948 -v
 | **Area Path** | Classified support area for the issue (e.g., "Teams Meetings"). Set by AreaClassificationAgent; used as primary grouping dimension for trend clusters. |
 | **Trend Cluster** | Group of semantically similar cases that can be fixed with ONE PM action. Produced by `TrendSynthesizer` (opt-in: `--trend-report`). |
 | **Citation Overlap** | Article URL cited by ≥2 cases. `cross_coverage` = different problems sharing one article (hidden change risk); `duplicate_issues` = same problem repeated (consolidation candidate). |
+| **Token Bucket** | Thread-safe rate limiter in `mwai_client.py`. Shared across all `--workers` threads so the aggregate MWAI call rate stays within quota. Tune `MWAI_MAX_RPS`. |
+| **LLM Cache** | SQLite response cache (`~/.llm_response_cache.db`, 7-day TTL). Keyed by SHA-256(system_prompt + user_message). Avoids redundant API calls on re-runs. Disable with `--no-llm-cache`. |
+| **Article Cache** | Two-tier: L1 in-memory (per-run) + L2 SQLite (`~/.article_cache.db`, 24-hour TTL). Eliminates repeated HTTP fetches for the same URL across runs. Disable L2 with `--no-article-cache`. |
 
 ## Documentation Map
 

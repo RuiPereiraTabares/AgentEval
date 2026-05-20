@@ -33,11 +33,12 @@ article_evaluation_system/
     area_definitions.py  # Product area taxonomies (Teams: 17 areas; extensible)
   utils/
     __init__.py
-    article_fetcher.py # HTTP fetch + HTML parsing + cache
+    article_fetcher.py # HTTP fetch + HTML parsing + L1 in-memory + L2 SQLite persistent cache
+    llm_cache.py       # LLM response dedup cache (SQLite, 7-day TTL, shared across agents/threads)
     scoring.py         # ScoringUtils (score formulas, verdict logic)
     prompts.py         # All LLM system prompts (AgentPrompts, incl. TREND_SYNTHESIS)
     citation_parser.py # Citation URL extraction and parsing
-    mwai_client.py     # MWAI API client + token management
+    mwai_client.py     # MWAI API client, token management, token-bucket rate limiter
   synthesis/
     trend_synthesis.py # TrendSynthesizer — semantic clustering + citation overlap detection
 run_evaluation.py      # Primary CLI runner
@@ -59,9 +60,11 @@ class BaseAgent(ABC):
     def set_llm_callable(self, callable_fn)
 ```
 
-**`_call_llm()`** calls the MWAI API via `client.chat_completion(system_prompt, user_message)`. If an injected callable is set via `set_llm_callable()`, it is used instead.
+**`_call_llm()`** calls the MWAI API via `client.chat_completion(system_prompt, user_message)`. Before making an API call (attempt 0 only), it checks the LLM response dedup cache (`utils/llm_cache.py`). On success, the response is stored in the cache. If an injected callable is set via `set_llm_callable()`, it is used instead (cache is bypassed for injected callables — useful for tests).
 
 **`set_llm_callable()`** allows injecting an alternative LLM implementation without modifying agent logic.
+
+**`_LLM_CACHE_ENABLED`** (module-level flag in `agents/__init__.py`) disables the LLM cache globally when set to `False`. The `--no-llm-cache` CLI flag sets this at startup.
 
 ## Agent Interaction Sequence
 
@@ -189,6 +192,45 @@ write_results_json() / write_results_csv() / write_results_csv_summary()
     v
   write_trend_report_csv() / write_citation_overlaps_csv()
 ```
+
+## Caching & Rate Limiting
+
+### Token Bucket Rate Limiter (`mwai_client.py`)
+
+A module-level `_TokenBucket` singleton (`_rate_limiter`) governs all MWAI API calls. It is **shared across all worker threads**, so the aggregate call rate across a parallel run stays within the MWAI quota.
+
+```
+MWAI_MAX_RPS = 3.33  # ≈ 200 RPM — tune to your quota
+```
+
+`acquire()` blocks until a token is available, then consumes one. Burst capacity equals the rate (refills at the same rate it drains at steady state).
+
+### Article Cache (`article_fetcher.py`)
+
+Two-tier lookup for article content:
+
+| Tier | Scope | TTL | Location |
+|------|-------|-----|----------|
+| L1 in-memory dict | Per-instance, per-run | Until process exits | `ArticleFetcher._cache` |
+| L2 SQLite (`_PersistentArticleCache`) | Shared across runs and threads | 24 hours | `~/.article_cache.db` |
+
+On a cache miss in L1, L2 is consulted. On a cache miss in L2, the article is fetched live and written to both tiers. Disable L2 with `--no-article-cache`.
+
+### LLM Response Cache (`llm_cache.py`)
+
+`LLMResponseCache` caches successful, non-refused LLM responses in `~/.llm_response_cache.db` (7-day TTL). Key = SHA-256(system_prompt + `\0` + user_message).
+
+Cache hits are highest for:
+- Re-running the same input CSV (crash recovery, format changes)
+- Cases that share identical article content and issue phrasing (less common on first run)
+
+Cache is bypassed for injected LLM callables (`set_llm_callable()`), so tests are unaffected. Disable with `--no-llm-cache`.
+
+### Parallel Worker Pool (`run_evaluation.py`)
+
+The `--workers N` flag runs N cases concurrently using `ThreadPoolExecutor`. Each worker thread gets its own `Orchestrator` instance (and therefore its own per-agent mutable state), but **all threads share the same `MwaiClient`** so the token-bucket rate limiter caps the aggregate request rate. CSV output is guarded by a `threading.Lock`.
+
+Verbose/debug output is suppressed in parallel mode (interleaved output is unreadable); use `--workers 1` for per-case debugging.
 
 ## Error Handling Strategy
 

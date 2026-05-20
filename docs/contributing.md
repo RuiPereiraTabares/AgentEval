@@ -203,6 +203,10 @@ When modifying prompts:
 
 ## Testing Patterns
 
+### LLM Cache in Tests
+
+When using `set_llm_callable()`, the LLM response cache is automatically bypassed — injected callables are never cached. If you are running tests against the real MWAI API and need to avoid cache interference, set `article_evaluation_system.agents._LLM_CACHE_ENABLED = False` before the test.
+
 ### Mock LLM via `set_llm_callable()`
 
 Every agent supports injecting a mock LLM callable:
@@ -244,4 +248,5 @@ result = agent.evaluate(issue=test_issue, article=test_article)
 - **Logging** — use `logging.getLogger(__name__)` per module, `INFO` for milestones, `DEBUG` for raw LLM I/O, `WARNING` for fallbacks
 - **Fallbacks** — every agent must have a heuristic fallback path when the LLM fails
 - **MWAI provider** — all agent logic uses `_call_llm()` for LLM calls via MWAI
-- **No external state** — agents are stateless; all data flows through method parameters and return values
+- **Agents are stateless per evaluation** — all data flows through method parameters and return values; per-agent instance fields (`_refusal_context`, `_last_system_prompt`) are ephemeral and reset each call
+- **Caches live in `utils/`** — `llm_cache.py` and `article_fetcher._PersistentArticleCache` are shared singletons; agents do not hold cache references directly

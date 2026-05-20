@@ -20,6 +20,8 @@ import sys
 import json
 import logging
 import argparse
+import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from dotenv import load_dotenv
 
@@ -42,6 +44,93 @@ from article_evaluation_system.main import (
     write_trend_report_csv, write_citation_overlaps_csv,
     IncrementalResultsWriter,
 )
+
+
+# ---------------------------------------------------------------------------
+# Parallel worker helpers
+# ---------------------------------------------------------------------------
+
+_thread_local = threading.local()
+
+
+def _make_thread_evaluator(shared_client, model: str):
+    """Create a fresh ArticleEvaluator that reuses an existing MwaiClient.
+
+    Each worker thread gets its own Orchestrator (and therefore its own
+    per-agent mutable state) while sharing the single MwaiClient so the
+    token-bucket rate limiter remains effective across all threads.
+    """
+    from article_evaluation_system import ArticleEvaluator
+    from article_evaluation_system.agents.orchestrator import Orchestrator
+    ev = object.__new__(ArticleEvaluator)
+    ev.orchestrator = Orchestrator(client=shared_client, model=model)
+    return ev
+
+
+def _get_thread_evaluator(shared_client, model: str):
+    """Return (or lazily create) the caller thread's ArticleEvaluator."""
+    if not hasattr(_thread_local, "evaluator"):
+        _thread_local.evaluator = _make_thread_evaluator(shared_client, model)
+    return _thread_local.evaluator
+
+
+def _evaluate_case(case: dict, evaluator, args) -> dict:
+    """Evaluate one case and return a result dict.
+
+    This function is called by both the sequential loop and worker threads.
+    It must not access any shared mutable state other than through the
+    thread-local evaluator.
+    """
+    start = datetime.now()
+    try:
+        full_issue = f"{case['title']}\n\n{case['issue_description']}"
+
+        product_info = None
+        if case.get("sap_product_name") or case.get("sap_name"):
+            product_info = {
+                "sap_product_name": case.get("sap_product_name", ""),
+                "sap_product_family": case.get("sap_product_family", ""),
+                "sap_path": case.get("sap_path", ""),
+                "sap_name": case.get("sap_name", ""),
+            }
+
+        if args.mweaeval:
+            ai_response = case.get("ai_response", "")
+            citation_urls = case.get("citation_urls", [])
+            evaluation = evaluator.evaluate_with_citations(
+                customer_issue=full_issue,
+                ai_response=ai_response,
+                citation_urls=citation_urls,
+                product_info=product_info,
+            )
+        else:
+            has_citation = case.get("contains_citations", False)
+            urls = case.get("urls", []) if has_citation else []
+            evaluation = evaluator.evaluate(
+                customer_issue=full_issue,
+                recommended_article=urls[0] if urls else None,
+                product_info=product_info,
+            )
+
+        elapsed = (datetime.now() - start).total_seconds()
+        return {
+            "case_number": case["case_number"],
+            "ai_response": case.get("ai_response", ""),
+            "sap_path": case.get("sap_path", ""),
+            "evaluation": evaluation,
+            "processing_time_seconds": round(elapsed, 2),
+            "error": None,
+        }
+    except Exception as e:
+        elapsed = (datetime.now() - start).total_seconds()
+        return {
+            "case_number": case["case_number"],
+            "ai_response": case.get("ai_response", ""),
+            "sap_path": case.get("sap_path", ""),
+            "evaluation": {},
+            "processing_time_seconds": round(elapsed, 2),
+            "error": str(e),
+        }
 
 
 def main():
@@ -80,7 +169,41 @@ def main():
     parser.add_argument('--continue', dest='continue_batch', action='store_true',
                         help='Continue from where the last batch left off (requires --batch-size)')
 
+    # Parallelism
+    parser.add_argument(
+        '--workers', type=int, default=1,
+        help=(
+            'Number of parallel case workers (default: 1 = sequential). '
+            'Increase carefully — the token-bucket rate limiter caps total '
+            'MWAI calls/sec, but too many workers can still raise 429 rates. '
+            'Recommended starting point: 3-4. Verbose/debug output is '
+            'suppressed when workers > 1.'
+        ),
+    )
+    parser.add_argument(
+        '--no-llm-cache', action='store_true',
+        help='Disable the LLM response dedup cache for this run (forces fresh API calls)',
+    )
+    parser.add_argument(
+        '--no-article-cache', action='store_true',
+        help='Disable the persistent article cache for this run (forces re-fetch of all URLs)',
+    )
+
     args = parser.parse_args()
+
+    # Apply cache-disable flags before any agents are initialised
+    if args.no_llm_cache:
+        import article_evaluation_system.agents as _agents_mod
+        _agents_mod._LLM_CACHE_ENABLED = False
+        print("LLM response cache: DISABLED")
+    if args.no_article_cache:
+        from article_evaluation_system.utils import article_fetcher as _af_mod
+        # Replace the singleton with a no-op stub
+        class _NullArticleCache:
+            def get(self, url): return None
+            def put(self, url, article): pass
+        _af_mod._persistent_cache = _NullArticleCache()
+        print("Persistent article cache: DISABLED")
 
     BATCH_STATE_FILE = '.batch_state.json'
 
@@ -244,13 +367,17 @@ def main():
             sys.exit(1)
 
     print(f"Loaded {len(cases)} cases to process")
-    print(f"Using provider: mwai, model: {args.model}")
+    print(f"Using provider: mwai, model: {args.model}, workers: {args.workers}")
     if args.mweaeval:
         print(f"Mode: mweaeval (citation quality evaluation)")
 
     if not cases:
         print("No cases to process")
         sys.exit(0)
+
+    # Record start time
+    run_start = datetime.now()
+    print(f"Started: {run_start.strftime('%Y-%m-%d %H:%M:%S')}")
 
     # Initialize evaluator
     print("Initializing evaluator...")
@@ -272,200 +399,199 @@ def main():
 
     # Process cases
     results = []
-    for i, case in enumerate(cases, 1):
-        print(f"\n[{i}/{len(cases)}] Processing case: {case['case_number']}")
-        print(f"  Title: {case['title'][:60]}...")
+    _writer_lock = threading.Lock()
 
-        start = datetime.now()
+    if args.workers > 1:
+        # -------------------------------------------------------------------
+        # Parallel mode: one Orchestrator per worker thread, shared MwaiClient
+        # -------------------------------------------------------------------
+        shared_client = evaluator.orchestrator.client
+        print(f"Parallel mode: {args.workers} workers  "
+              f"(verbose/debug output suppressed — use workers=1 for that)")
 
-        try:
-            full_issue = f"{case['title']}\n\n{case['issue_description']}"
+        def _worker(task):
+            case, idx = task
+            thread_ev = _get_thread_evaluator(shared_client, args.model)
+            return idx, _evaluate_case(case, thread_ev, args)
 
-            product_info = None
-            if case.get('sap_product_name') or case.get('sap_name'):
-                product_info = {
-                    'sap_product_name': case.get('sap_product_name', ''),
-                    'sap_product_family': case.get('sap_product_family', ''),
-                    'sap_path': case.get('sap_path', ''),
-                    'sap_name': case.get('sap_name', ''),
-                }
+        tasks = [(case, i) for i, case in enumerate(cases, 1)]
+        with ThreadPoolExecutor(max_workers=args.workers) as executor:
+            futures = {executor.submit(_worker, t): t for t in tasks}
+            for future in as_completed(futures):
+                task_case, task_idx = futures[future]
+                try:
+                    task_idx, result = future.result()
+                except Exception as exc:
+                    result = {
+                        'case_number': task_case['case_number'],
+                        'ai_response': task_case.get('ai_response', ''),
+                        'sap_path': task_case.get('sap_path', ''),
+                        'evaluation': {},
+                        'processing_time_seconds': 0,
+                        'error': str(exc),
+                    }
+                ev = result.get('evaluation', {})
+                score = ev.get('overall_score', '-')
+                verdict = ev.get('verdict', 'error' if result.get('error') else 'unknown')
+                elapsed = result.get('processing_time_seconds', 0)
+                suffix = f"  ERROR: {result['error']}" if result.get('error') else ""
+                print(
+                    f"[{task_idx}/{len(cases)}] {result['case_number']}  "
+                    f"score={score}  verdict={verdict}  time={elapsed:.1f}s{suffix}"
+                )
+                results.append(result)
+                with _writer_lock:
+                    if _csv_writer_ctx:
+                        _csv_writer_ctx.write(result)
+
+    else:
+        # -------------------------------------------------------------------
+        # Sequential mode (default) — preserves verbose output
+        # -------------------------------------------------------------------
+        for i, case in enumerate(cases, 1):
+            print(f"\n[{i}/{len(cases)}] Processing case: {case['case_number']}")
+            print(f"  Title: {case['title'][:60]}...")
 
             if args.mweaeval:
-                # Citation quality evaluation mode
-                ai_response = case.get('ai_response', '')
-                citation_urls = case.get('citation_urls', [])
-                print(f"  Citations: {len(citation_urls)} URLs")
+                print(f"  Citations: {len(case.get('citation_urls', []))} URLs")
+            elif not case.get('contains_citations', False):
+                print(f"  No citation found — kicking search agent")
 
-                evaluation = evaluator.evaluate_with_citations(
-                    customer_issue=full_issue,
-                    ai_response=ai_response,
-                    citation_urls=citation_urls,
-                    product_info=product_info,
-                )
+            result = _evaluate_case(case, evaluator, args)
+            evaluation = result.get('evaluation', {})
+            elapsed = result.get('processing_time_seconds', 0)
+
+            if result.get('error'):
+                print(f"  ERROR: {result['error']}")
             else:
-                # Standard evaluation mode
-                has_citation = case.get('contains_citations', False)
-                urls = case.get('urls', []) if has_citation else []
+                print(f"  Score: {evaluation.get('overall_score', 0)}/100")
+                print(f"  Verdict: {evaluation.get('verdict', 'unknown')}")
+                print(f"  Time: {elapsed:.1f}s")
 
-                if not has_citation:
-                    print(f"  No citation found — kicking search agent")
+                if args.verbose or args.debug:
+                    # Show description quality (support-readiness framework)
+                    dq = evaluation.get('description_quality', {})
+                    if dq:
+                        print(f"  --- Description Quality ---")
+                        print(f"  Overall:   {dq.get('description_quality_score', '?'):>3}/100  "
+                              f"({dq.get('description_quality_verdict', '?')})")
+                        print(f"    Product Clarity:      {dq.get('product_clarity_score', '?'):>3}/100  "
+                              f"- {dq.get('product_clarity_analysis', '')[:80]}")
+                        print(f"    Symptom Specificity:  {dq.get('symptom_specificity_score', '?'):>3}/100  "
+                              f"- {dq.get('symptom_specificity_analysis', '')[:80]}")
+                        print(f"    Operational Context:  {dq.get('operational_context_score', '?'):>3}/100  "
+                              f"- {dq.get('operational_context_analysis', '')[:80]}")
+                        if dq.get('missing_elements'):
+                            print(f"    Missing: {', '.join(dq['missing_elements'][:4])}")
+                    if evaluation.get('evaluation_reliability_warning'):
+                        print(f"  *** LOW CONFIDENCE: description quality below reliability threshold ***")
 
-                evaluation = evaluator.evaluate(
-                    customer_issue=full_issue,
-                    recommended_article=urls[0] if urls else None,
-                    product_info=product_info,
-                )
+                    # Show per-agent score breakdown
+                    article_eval = evaluation.get('current_article_evaluation', {})
+                    rel = article_eval.get('relevance', {})
+                    comp = article_eval.get('completeness', {})
+                    val = article_eval.get('validity', {})
 
-            elapsed = (datetime.now() - start).total_seconds()
+                    print(f"  --- Agent Score Breakdown ---")
+                    print(f"  Relevance:    {rel.get('relevance_score', '?'):>3}/100  "
+                          f"({rel.get('relevance_verdict', '?')})  "
+                          f"product_match={rel.get('product_match', '?')}  "
+                          f"version_match={rel.get('version_match', '?')}  "
+                          f"outdated={rel.get('is_outdated', '?')}")
+                    if rel.get('matched_aspects'):
+                        print(f"    Matched: {', '.join(rel['matched_aspects'][:5])}")
+                    if rel.get('unmatched_aspects'):
+                        print(f"    Unmatched: {', '.join(rel['unmatched_aspects'][:5])}")
 
-            result = {
-                'case_number': case['case_number'],
-                'ai_response': case.get('ai_response', ''),
-                'sap_path': case.get('sap_path', ''),
-                'evaluation': evaluation,
-                'processing_time_seconds': round(elapsed, 2),
-                'error': None
-            }
+                    print(f"  Completeness: {comp.get('completeness_score', '?'):>3}/100  "
+                          f"({comp.get('completeness_verdict', '?')})  "
+                          f"prereqs={comp.get('has_prerequisites', '?')}  "
+                          f"steps={comp.get('has_step_by_step', '?')}  "
+                          f"examples={comp.get('has_examples', '?')}  "
+                          f"troubleshooting={comp.get('has_troubleshooting', '?')}")
+                    if comp.get('missing_elements'):
+                        print(f"    Missing: {', '.join(comp['missing_elements'][:3])}")
 
-            print(f"  Score: {evaluation.get('overall_score', 0)}/100")
-            print(f"  Verdict: {evaluation.get('verdict', 'unknown')}")
-            print(f"  Time: {elapsed:.1f}s")
+                    print(f"  Validity:     {val.get('validity_score', '?'):>3}/100  "
+                          f"({val.get('validity_verdict', '?')})  "
+                          f"root_cause={val.get('addresses_root_cause', '?')}  "
+                          f"current={val.get('is_current_solution', '?')}  "
+                          f"env_ok={val.get('environment_compatible', '?')}  "
+                          f"confidence={val.get('confidence_level', '?')}")
+                    if val.get('potential_issues'):
+                        print(f"    Issues: {', '.join(val['potential_issues'][:3])}")
 
-            if args.verbose or args.debug:
-                # Show description quality (support-readiness framework)
-                dq = evaluation.get('description_quality', {})
-                if dq:
-                    print(f"  --- Description Quality ---")
-                    print(f"  Overall:   {dq.get('description_quality_score', '?'):>3}/100  "
-                          f"({dq.get('description_quality_verdict', '?')})")
-                    print(f"    Product Clarity:      {dq.get('product_clarity_score', '?'):>3}/100  "
-                          f"- {dq.get('product_clarity_analysis', '')[:80]}")
-                    print(f"    Symptom Specificity:  {dq.get('symptom_specificity_score', '?'):>3}/100  "
-                          f"- {dq.get('symptom_specificity_analysis', '')[:80]}")
-                    print(f"    Operational Context:  {dq.get('operational_context_score', '?'):>3}/100  "
-                          f"- {dq.get('operational_context_analysis', '')[:80]}")
-                    if dq.get('missing_elements'):
-                        print(f"    Missing: {', '.join(dq['missing_elements'][:4])}")
-                if evaluation.get('evaluation_reliability_warning'):
-                    print(f"  *** LOW CONFIDENCE: description quality below reliability threshold ***")
+                    print(f"  --- Verdict Logic ---")
+                    overall = evaluation.get('overall_score', 0)
+                    rel_verdict = rel.get('relevance_verdict', 'unknown')
+                    print(f"    overall_score={overall} (threshold=70), "
+                          f"relevance_verdict='{rel_verdict}'")
+                    if overall >= 70 and rel_verdict in ['excellent', 'good']:
+                        print(f"    -> ADEQUATE (score>=70 AND relevance is excellent/good)")
+                    elif overall >= 70:
+                        print(f"    -> NEEDS_SUPPLEMENTATION (score>=70 BUT relevance='{rel_verdict}')")
+                    elif overall >= 50:
+                        print(f"    -> NEEDS_SUPPLEMENTATION (50<=score<70)")
+                    else:
+                        print(f"    -> INADEQUATE (score<50)")
 
-                # Show per-agent score breakdown
-                article_eval = evaluation.get('current_article_evaluation', {})
-                rel = article_eval.get('relevance', {})
-                comp = article_eval.get('completeness', {})
-                val = article_eval.get('validity', {})
+                    print(f"  Action: {evaluation.get('action_required', '?')}")
+                    print(f"  Recommendation: {evaluation.get('final_recommendation', '')[:200]}")
 
-                print(f"  --- Agent Score Breakdown ---")
-                print(f"  Relevance:    {rel.get('relevance_score', '?'):>3}/100  "
-                      f"({rel.get('relevance_verdict', '?')})  "
-                      f"product_match={rel.get('product_match', '?')}  "
-                      f"version_match={rel.get('version_match', '?')}  "
-                      f"outdated={rel.get('is_outdated', '?')}")
-                if rel.get('matched_aspects'):
-                    print(f"    Matched: {', '.join(rel['matched_aspects'][:5])}")
-                if rel.get('unmatched_aspects'):
-                    print(f"    Unmatched: {', '.join(rel['unmatched_aspects'][:5])}")
+                    # Show citation quality (mweaeval mode)
+                    cq = evaluation.get('citation_quality', {})
+                    if cq and cq.get('citations_total', 0) > 0:
+                        print(f"  --- Citation Quality ---")
+                        print(f"  Grounding:  {cq.get('overall_grounding_score', '?'):>3}/100  "
+                              f"({cq.get('overall_verdict', '?')})")
+                        print(f"  Cited: {cq.get('cited_percentage', 0):.1f}%  "
+                              f"Uncited: {cq.get('uncited_percentage', 0):.1f}%")
+                        print(f"  Citations: {cq.get('citations_total', 0)} total  "
+                              f"({cq.get('citations_good', 0)} good, "
+                              f"{cq.get('citations_partial', 0)} partial, "
+                              f"{cq.get('citations_bad', 0)} bad)")
+                        for pcr in cq.get('per_citation_results', []):
+                            print(f"    [{pcr.get('citation_index', '?')}] "
+                                  f"score={pcr.get('support_score', 0):>3}  "
+                                  f"verdict={pcr.get('verdict', '?'):<8}  "
+                                  f"coverage={pcr.get('coverage_percentage', 0):.1f}%  "
+                                  f"url={pcr.get('url', '')[:60]}")
+                            if pcr.get('support_reasoning'):
+                                print(f"        {pcr['support_reasoning'][:120]}")
 
-                print(f"  Completeness: {comp.get('completeness_score', '?'):>3}/100  "
-                      f"({comp.get('completeness_verdict', '?')})  "
-                      f"prereqs={comp.get('has_prerequisites', '?')}  "
-                      f"steps={comp.get('has_step_by_step', '?')}  "
-                      f"examples={comp.get('has_examples', '?')}  "
-                      f"troubleshooting={comp.get('has_troubleshooting', '?')}")
-                if comp.get('missing_elements'):
-                    print(f"    Missing: {', '.join(comp['missing_elements'][:3])}")
+                    # Show response quality (multi-dimensional)
+                    rq = evaluation.get('response_quality', {})
+                    if rq and rq.get('ai_response_quality_score') is not None:
+                        print(f"  --- AI Response Quality ---")
+                        print(f"  Overall:          {rq.get('ai_response_quality_score', '?'):>3}/100  "
+                              f"({rq.get('ai_response_quality_verdict', '?')})")
+                        print(f"    Response Quality:  {rq.get('response_quality_score', '?'):>3}/100  "
+                              f"- {rq.get('response_quality_analysis', '')[:80]}")
+                        print(f"    Groundedness:     {rq.get('groundedness_score', '?'):>3}/100  "
+                              f"- {rq.get('groundedness_analysis', '')[:80]}")
+                        print(f"    Issue Resolution: {rq.get('issue_resolution_score', '?'):>3}/100  "
+                              f"- {rq.get('issue_resolution_analysis', '')[:80]}")
+                        if rq.get('quality_weaknesses'):
+                            print(f"    Weaknesses: {'; '.join(rq['quality_weaknesses'][:3])}")
+                        if rq.get('improvement_suggestions'):
+                            print(f"    Suggestions: {'; '.join(rq['improvement_suggestions'][:3])}")
 
-                print(f"  Validity:     {val.get('validity_score', '?'):>3}/100  "
-                      f"({val.get('validity_verdict', '?')})  "
-                      f"root_cause={val.get('addresses_root_cause', '?')}  "
-                      f"current={val.get('is_current_solution', '?')}  "
-                      f"env_ok={val.get('environment_compatible', '?')}  "
-                      f"confidence={val.get('confidence_level', '?')}")
-                if val.get('potential_issues'):
-                    print(f"    Issues: {', '.join(val['potential_issues'][:3])}")
+                    # Show LLM-synthesized recommendation
+                    synth_priority = evaluation.get('synthesis_priority', '')
+                    if synth_priority:
+                        print(f"  --- LLM Synthesis ---")
+                        print(f"  Priority: {synth_priority.upper()}  "
+                              f"({evaluation.get('synthesis_priority_reason', '')})")
+                        print(f"  Root cause: {evaluation.get('synthesis_root_cause_category', '')}")
+                        pm_actions = evaluation.get('synthesis_pm_actions', [])
+                        if pm_actions:
+                            print(f"  PM Actions:")
+                            for action in pm_actions:
+                                print(f"    - {action}")
 
-                print(f"  --- Verdict Logic ---")
-                overall = evaluation.get('overall_score', 0)
-                rel_verdict = rel.get('relevance_verdict', 'unknown')
-                print(f"    overall_score={overall} (threshold=70), "
-                      f"relevance_verdict='{rel_verdict}'")
-                if overall >= 70 and rel_verdict in ['excellent', 'good']:
-                    print(f"    -> ADEQUATE (score>=70 AND relevance is excellent/good)")
-                elif overall >= 70:
-                    print(f"    -> NEEDS_SUPPLEMENTATION (score>=70 BUT relevance='{rel_verdict}')")
-                elif overall >= 50:
-                    print(f"    -> NEEDS_SUPPLEMENTATION (50<=score<70)")
-                else:
-                    print(f"    -> INADEQUATE (score<50)")
-
-                print(f"  Action: {evaluation.get('action_required', '?')}")
-                print(f"  Recommendation: {evaluation.get('final_recommendation', '')[:200]}")
-
-                # Show citation quality (mweaeval mode)
-                cq = evaluation.get('citation_quality', {})
-                if cq and cq.get('citations_total', 0) > 0:
-                    print(f"  --- Citation Quality ---")
-                    print(f"  Grounding:  {cq.get('overall_grounding_score', '?'):>3}/100  "
-                          f"({cq.get('overall_verdict', '?')})")
-                    print(f"  Cited: {cq.get('cited_percentage', 0):.1f}%  "
-                          f"Uncited: {cq.get('uncited_percentage', 0):.1f}%")
-                    print(f"  Citations: {cq.get('citations_total', 0)} total  "
-                          f"({cq.get('citations_good', 0)} good, "
-                          f"{cq.get('citations_partial', 0)} partial, "
-                          f"{cq.get('citations_bad', 0)} bad)")
-                    for pcr in cq.get('per_citation_results', []):
-                        print(f"    [{pcr.get('citation_index', '?')}] "
-                              f"score={pcr.get('support_score', 0):>3}  "
-                              f"verdict={pcr.get('verdict', '?'):<8}  "
-                              f"coverage={pcr.get('coverage_percentage', 0):.1f}%  "
-                              f"url={pcr.get('url', '')[:60]}")
-                        if pcr.get('support_reasoning'):
-                            print(f"        {pcr['support_reasoning'][:120]}")
-
-                # Show response quality (multi-dimensional)
-                rq = evaluation.get('response_quality', {})
-                if rq and rq.get('ai_response_quality_score') is not None:
-                    print(f"  --- AI Response Quality ---")
-                    print(f"  Overall:          {rq.get('ai_response_quality_score', '?'):>3}/100  "
-                          f"({rq.get('ai_response_quality_verdict', '?')})")
-                    print(f"    Response Quality:  {rq.get('response_quality_score', '?'):>3}/100  "
-                          f"- {rq.get('response_quality_analysis', '')[:80]}")
-                    print(f"    Groundedness:     {rq.get('groundedness_score', '?'):>3}/100  "
-                          f"- {rq.get('groundedness_analysis', '')[:80]}")
-                    print(f"    Issue Resolution: {rq.get('issue_resolution_score', '?'):>3}/100  "
-                          f"- {rq.get('issue_resolution_analysis', '')[:80]}")
-                    if rq.get('quality_weaknesses'):
-                        print(f"    Weaknesses: {'; '.join(rq['quality_weaknesses'][:3])}")
-                    if rq.get('improvement_suggestions'):
-                        print(f"    Suggestions: {'; '.join(rq['improvement_suggestions'][:3])}")
-
-                # Show LLM-synthesized recommendation
-                synth_priority = evaluation.get('synthesis_priority', '')
-                if synth_priority:
-                    print(f"  --- LLM Synthesis ---")
-                    print(f"  Priority: {synth_priority.upper()}  "
-                          f"({evaluation.get('synthesis_priority_reason', '')})")
-                    print(f"  Root cause: {evaluation.get('synthesis_root_cause_category', '')}")
-                    pm_actions = evaluation.get('synthesis_pm_actions', [])
-                    if pm_actions:
-                        print(f"  PM Actions:")
-                        for action in pm_actions:
-                            print(f"    - {action}")
-
-        except Exception as e:
-            print(f"  ERROR: {e}")
-            result = {
-                'case_number': case['case_number'],
-                'ai_response': case.get('ai_response', ''),
-                'sap_path': case.get('sap_path', ''),
-                'evaluation': {},
-                'processing_time_seconds': 0,
-                'error': str(e)
-            }
-
-        results.append(result)
-        if _csv_writer_ctx:
-            _csv_writer_ctx.write(result)
+            results.append(result)
+            if _csv_writer_ctx:
+                _csv_writer_ctx.write(result)
 
     # Close incremental writers
     if _csv_writer_ctx:
@@ -676,9 +802,19 @@ def main():
             print(f"  Status codes: {dict(_codes)}")
             print(f"  HTTP error log: {_hlog}")
 
+    run_end = datetime.now()
+    elapsed = run_end - run_start
+    total_seconds = int(elapsed.total_seconds())
+    hours, remainder = divmod(total_seconds, 3600)
+    minutes, seconds = divmod(remainder, 60)
+    elapsed_str = f"{hours}h {minutes}m {seconds}s" if hours else f"{minutes}m {seconds}s"
+
     print(f"\nResults saved to:")
     print(f"  Detailed: {output_file}")
     print(f"  Summary:  {output_summary}")
+    print(f"\nStarted:  {run_start.strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"Finished: {run_end.strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"Elapsed:  {elapsed_str}")
 
 
 if __name__ == '__main__':

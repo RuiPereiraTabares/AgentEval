@@ -10,7 +10,7 @@ The system uses MWAI as its LLM provider. All agents use the same evaluation log
 | Auth | JWT bearer token |
 | Env var | `MWAI_TOKEN` |
 | JSON mode | Yes (`response_format`) |
-| Rate limit delay | 2s between requests |
+| Rate limiting | Token bucket at `MWAI_MAX_RPS = 3.33` req/s (≈ 200 RPM), shared across all worker threads |
 | Max tokens | 4096 |
 | Temperature | 0.1 |
 
@@ -38,7 +38,7 @@ Priority for token resolution (`resolve_mwai_token()`):
 
 ### Rate Limiting
 
-MWAI has a hardcoded 2-second delay between requests (`MWAI_REQUEST_DELAY = 2` in `mwai_client.py`).
+MWAI calls are controlled by a **thread-safe token bucket** (`_rate_limiter` in `mwai_client.py`), not a fixed sleep. The bucket refills at `MWAI_MAX_RPS = 3.33` tokens/second (≈ 200 RPM). All worker threads share the same bucket, so the aggregate call rate stays within quota regardless of `--workers` count. Tune `MWAI_MAX_RPS` in `mwai_client.py` to match your actual quota.
 
 ### Interactive Auth
 

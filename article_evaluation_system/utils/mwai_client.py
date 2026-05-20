@@ -16,8 +16,55 @@ import requests
 
 logger = logging.getLogger(__name__)
 
-# Delay between MWAI API requests to avoid rate limiting
-MWAI_REQUEST_DELAY = 0.3  # seconds — increase if 429 rate-limit errors appear
+# ---------------------------------------------------------------------------
+# Rate limiter — token bucket shared across all threads
+# ---------------------------------------------------------------------------
+
+# Target request rate. Default 3.33 req/s ≈ 200 RPM.
+# Increase if your MWAI quota allows more; decrease if 429 frequency rises.
+MWAI_MAX_RPS: float = 3.33
+
+# Backward-compat constant (no longer used for sleep; kept so external code
+# that references MWAI_REQUEST_DELAY still imports without error).
+MWAI_REQUEST_DELAY: float = 1.0 / MWAI_MAX_RPS
+
+
+class _TokenBucket:
+    """Thread-safe token bucket rate limiter.
+
+    Refills at *rate* tokens/second up to *burst* capacity.
+    ``acquire()`` blocks until one token is available, then consumes it.
+    Multiple worker threads all share a single instance so the aggregate
+    call rate never exceeds the quota.
+    """
+
+    def __init__(self, rate: float, burst: float) -> None:
+        self._rate = rate        # tokens / second
+        self._burst = burst      # max tokens (burst capacity)
+        self._tokens = burst     # start full
+        self._last = time.monotonic()
+        self._lock = threading.Lock()
+
+    def acquire(self) -> None:
+        """Block until a token is available, then consume one."""
+        while True:
+            with self._lock:
+                now = time.monotonic()
+                self._tokens = min(
+                    self._burst,
+                    self._tokens + (now - self._last) * self._rate,
+                )
+                self._last = now
+                if self._tokens >= 1.0:
+                    self._tokens -= 1.0
+                    return
+                # How long until the next token refills
+                wait = (1.0 - self._tokens) / self._rate
+            time.sleep(max(wait, 0.005))  # never busy-loop shorter than 5 ms
+
+
+# Shared singleton — all threads (and all MwaiClient instances) go through here
+_rate_limiter = _TokenBucket(rate=MWAI_MAX_RPS, burst=MWAI_MAX_RPS)
 
 # Retry settings for transient server errors (throttle / 5xx)
 MWAI_THROTTLE_RETRY_CODES = {429, 500, 502, 503, 504}
@@ -248,9 +295,9 @@ class MwaiClient:
                 )
                 logger.info(f"MWAI post-401-refresh status: {resp.status_code}")
 
-            # Sleep after each request to avoid rate limiting
-            logger.debug(f"Sleeping {MWAI_REQUEST_DELAY}s between MWAI requests...")
-            time.sleep(MWAI_REQUEST_DELAY)
+            # Acquire a rate-limiter token (blocks if we're above quota)
+            logger.debug("Waiting for MWAI rate-limiter token...")
+            _rate_limiter.acquire()
 
             # Success path
             if 200 <= resp.status_code < 300:

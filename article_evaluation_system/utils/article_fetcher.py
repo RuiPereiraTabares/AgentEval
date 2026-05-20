@@ -2,9 +2,14 @@
 Article fetching and parsing utilities.
 """
 
+import logging
+import pickle
 import re
+import sqlite3
+import threading
 import time
 import hashlib
+from pathlib import Path
 from typing import Optional
 from datetime import datetime, timedelta
 
@@ -12,6 +17,80 @@ import requests
 from bs4 import BeautifulSoup
 
 from ..models.article import Article
+
+logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Persistent SQLite article cache
+# ---------------------------------------------------------------------------
+
+_ARTICLE_CACHE_DB = str(Path.home() / ".article_cache.db")
+_ARTICLE_CACHE_TTL = 24 * 3600  # 24 hours — articles rarely change intra-day
+
+
+class _PersistentArticleCache:
+    """SQLite-backed article cache with TTL eviction (thread-safe).
+
+    Articles are serialised with pickle.  Cache misses (expired or absent)
+    return ``None``; callers should then fetch the live URL and call
+    ``put()`` to populate the cache.
+    """
+
+    def __init__(self, db_path: str = _ARTICLE_CACHE_DB, ttl: int = _ARTICLE_CACHE_TTL) -> None:
+        self._ttl = ttl
+        self._lock = threading.Lock()
+        self._conn = sqlite3.connect(db_path, check_same_thread=False)
+        self._conn.execute("PRAGMA journal_mode=WAL")
+        self._conn.execute("""
+            CREATE TABLE IF NOT EXISTS article_cache (
+                url_hash  TEXT PRIMARY KEY,
+                url       TEXT NOT NULL,
+                data      BLOB NOT NULL,
+                fetched_at REAL NOT NULL
+            )
+        """)
+        self._conn.commit()
+        logger.debug(f"[ArticleCache] SQLite cache opened: {db_path}")
+
+    def get(self, url: str) -> Optional["Article"]:
+        key = hashlib.md5(url.encode()).hexdigest()
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT data, fetched_at FROM article_cache WHERE url_hash=?", (key,)
+            ).fetchone()
+        if row is None:
+            return None
+        data, fetched_at = row
+        if time.time() - fetched_at > self._ttl:
+            logger.debug(f"[ArticleCache] Expired: {url[:80]}")
+            return None
+        try:
+            article = pickle.loads(data)
+            logger.debug(f"[ArticleCache] Hit: {url[:80]}")
+            return article
+        except Exception as exc:
+            logger.debug(f"[ArticleCache] Deserialise error ({exc}) for {url[:80]}")
+            return None
+
+    def put(self, url: str, article: "Article") -> None:
+        key = hashlib.md5(url.encode()).hexdigest()
+        try:
+            data = pickle.dumps(article)
+        except Exception as exc:
+            logger.debug(f"[ArticleCache] Serialise error ({exc}) — not cached: {url[:80]}")
+            return
+        with self._lock:
+            self._conn.execute(
+                "INSERT OR REPLACE INTO article_cache (url_hash, url, data, fetched_at) "
+                "VALUES (?, ?, ?, ?)",
+                (key, url, data, time.time()),
+            )
+            self._conn.commit()
+        logger.debug(f"[ArticleCache] Stored: {url[:80]}")
+
+
+# Module-level singleton — shared across all ArticleFetcher instances and threads
+_persistent_cache = _PersistentArticleCache()
 
 
 class ArticleFetcher:
@@ -60,6 +139,11 @@ class ArticleFetcher:
         """
         Fetch and parse an article from URL.
 
+        Lookup order:
+        1. In-memory L1 cache (per-instance, fast)
+        2. Persistent SQLite L2 cache (shared across runs/threads, 24 h TTL)
+        3. Live HTTP request
+
         Args:
             url: The article URL
             use_cache: Whether to use cached results
@@ -70,12 +154,21 @@ class ArticleFetcher:
         if not url:
             return Article(url="", fetch_error="No URL provided")
 
-        # Check cache
+        # L1: in-memory cache
         cache_key = self._get_cache_key(url)
         if use_cache and cache_key in self._cache and self._is_cache_valid(cache_key):
             return self._cache[cache_key]
 
-        # Apply rate limiting
+        # L2: persistent SQLite cache
+        if use_cache:
+            cached = _persistent_cache.get(url)
+            if cached is not None:
+                # Backfill L1 so subsequent in-process requests are instant
+                self._cache[cache_key] = cached
+                self._cache_timestamps[cache_key] = datetime.now()
+                return cached
+
+        # Apply rate limiting before live fetch
         self._rate_limit()
 
         try:
@@ -84,9 +177,11 @@ class ArticleFetcher:
 
             article = self._parse_article(url, response.text)
 
-            # Cache the result
+            # Populate both cache tiers
             self._cache[cache_key] = article
             self._cache_timestamps[cache_key] = datetime.now()
+            if use_cache:
+                _persistent_cache.put(url, article)
 
             return article
 
