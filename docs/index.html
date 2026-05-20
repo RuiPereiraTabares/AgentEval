@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Agentic Insight Engine — Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<div class="header">
+  <div class="header-logo">📊</div>
+  <div>
+    <div class="header-title">Agentic Insight Engine</div>
+    <div class="header-sub">Local Evaluation Dashboard</div>
+  </div>
+</div>
+
+<div class="upload-section">
+  <label class="upload-card" id="eval-card" ondragover="onDragOver(event,'eval-card')" ondragleave="onDragLeave('eval-card')" ondrop="onDrop(event,'eval')">
+    <input type="file" accept=".csv" class="upload-input" id="eval-input" onchange="handleFile(event,'eval')">
+    <div class="upload-icon" id="eval-icon">📋</div>
+    <div class="upload-title">Evaluation Results CSV</div>
+    <div class="upload-hint" id="eval-hint">evaluation_results_*.csv</div>
+    <div class="upload-filename" id="eval-fname"></div>
+    <button class="upload-clear" onclick="clearFile(event,'eval')">✕</button>
+  </label>
+  <label class="upload-card" id="trend-card" ondragover="onDragOver(event,'trend-card')" ondragleave="onDragLeave('trend-card')" ondrop="onDrop(event,'trend')">
+    <input type="file" accept=".csv" class="upload-input" id="trend-input" onchange="handleFile(event,'trend')">
+    <div class="upload-icon" id="trend-icon">📈</div>
+    <div class="upload-title">Trend Report CSV</div>
+    <div class="upload-hint" id="trend-hint">trend_report_*.csv</div>
+    <div class="upload-filename" id="trend-fname"></div>
+    <button class="upload-clear" onclick="clearFile(event,'trend')">✕</button>
+  </label>
+  <label class="upload-card" id="overlap-card" ondragover="onDragOver(event,'overlap-card')" ondragleave="onDragLeave('overlap-card')" ondrop="onDrop(event,'overlap')">
+    <input type="file" accept=".csv" class="upload-input" id="overlap-input" onchange="handleFile(event,'overlap')">
+    <div class="upload-icon" id="overlap-icon">🔗</div>
+    <div class="upload-title">Citation Overlaps CSV</div>
+    <div class="upload-hint" id="overlap-hint">citation_overlaps_*.csv</div>
+    <div class="upload-filename" id="overlap-fname"></div>
+    <button class="upload-clear" onclick="clearFile(event,'overlap')">✕</button>
+  </label>
+</div>
+
+<div class="empty-state" id="empty-state">
+  <div style="font-size:44px;margin-bottom:14px">📂</div>
+  <h2>Upload a CSV to get started</h2>
+  <p>Drop <strong>evaluation_results_*.csv</strong> for MWEA results &amp; SPM action plan,<br><strong>trend_report_*.csv</strong> for trend clusters, or <strong>citation_overlaps_*.csv</strong> for overlap analysis.</p>
+</div>
+
+<nav class="tabs" id="tabs">
+  <button class="tab-btn" id="tab-spm" onclick="showTab('spm')"><span class="tab-dot"></span> SPM Actions</button>
+  <button class="tab-btn" id="tab-eval" onclick="showTab('eval')"><span class="tab-dot"></span> Evaluation Report</button>
+  <button class="tab-btn" id="tab-trends" onclick="showTab('trends')"><span class="tab-dot"></span> Trend Report</button>
+  <button class="tab-btn" id="tab-overlaps" onclick="showTab('overlaps')"><span class="tab-dot"></span> Citation Overlaps</button>
+</nav>
+
+<!-- ═══════════════════════════════ SPM ACTIONS ═══════════════════════════════ -->
+<div class="tab-content" id="content-spm">
+  <div id="spm-alert"></div>
+  <div class="kpi-grid g3" id="spm-kpis" style="margin-bottom:18px"></div>
+
+  <div class="section">
+    <div class="section-header">
+      <div class="section-title">Prioritized Action List</div>
+      <div class="section-badge" id="spm-table-badge"></div>
+    </div>
+    <p style="font-size:12px;color:#64748b;margin-bottom:10px">Click any row to expand the full PM action details, quality analysis, and recommendations.</p>
+    <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap">
+      <input type="text" id="spm-search" class="table-filter" placeholder="Search case # or area path…" oninput="renderSPM()" style="min-width:200px">
+      <select class="table-filter" id="spm-f-priority" onchange="renderSPM()">
+        <option value="">All Priorities</option>
+        <option value="red">🔴 Red</option><option value="yellow">🟡 Yellow</option><option value="green">🟢 Green</option><option value="gray">⚪ Gray</option>
+      </select>
+      <select class="table-filter" id="spm-f-score" onchange="renderSPM()">
+        <option value="">All Scores</option>
+        <option value="0-20">0-20</option>
+        <option value="21-40">21-40</option>
+        <option value="41-60">41-60</option>
+        <option value="60-100">60-100</option>
+      </select>
+      <select class="table-filter" id="spm-f-area" onchange="renderSPM()">
+        <option value="">All Area Paths</option>
+      </select>
+      <select class="table-filter" id="spm-f-dq" onchange="renderSPM()">
+        <option value="">All Description Quality</option>
+        <option value="agent_ready">🟢 Agent Ready</option>
+        <option value="workable">🟡 Workable</option>
+        <option value="insufficient">🔴 Insufficient</option>
+      </select>
+    </div>
+    <div class="action-table-wrap">
+      <table class="action-table">
+        <thead>
+          <tr>
+            <th style="width:28px"></th>
+            <th onclick="sortSpm('_priorityOrder')" style="cursor:pointer">Priority ↕</th>
+            <th onclick="sortSpm('case_number')" style="cursor:pointer">Case # ↕</th>
+            <th onclick="sortSpm('_product')" style="cursor:pointer">Product ↕</th>
+            <th onclick="sortSpm('_areaPath')" style="cursor:pointer">Area Path ↕</th>
+            <th onclick="sortSpm('primary_article_score')" style="cursor:pointer">Score ↕</th>
+            <th>Cited Article</th>
+            <th>PM Actions (preview)</th>
+          </tr>
+        </thead>
+        <tbody id="spm-table-body"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════ EVAL REPORT ═══════════════════════════════ -->
+<div class="tab-content" id="content-eval">
+
+  <div id="filter-chips" style="display:none;flex-wrap:wrap;gap:6px;padding:4px 0 16px;align-items:center"></div>
+
+  <div class="section">
+    <div class="section-header"><div class="section-title">Executive Summary</div><div class="section-badge" id="eval-badge"></div></div>
+    <div class="kpi-grid g4" id="exec-kpis"></div>
+    <div class="kpi-grid g3" id="exec-kpis2" style="margin-top:10px"></div>
+    <div style="margin-top:14px" class="chart-grid cg2">
+      <div class="chart-card"><div class="chart-title">Article Verdict Distribution</div><div class="chart-wrap h180"><canvas id="chart-verdict"></canvas></div></div>
+      <div class="chart-card"><div class="chart-title">Priority Breakdown</div><div class="chart-wrap h180"><canvas id="chart-priority"></canvas></div></div>
+    </div>
+    <div style="margin-top:14px" class="chart-grid cg2">
+      <div class="chart-card"><div class="chart-title">Score Band Distribution</div><div class="chart-wrap h220"><canvas id="chart-scorebands"></canvas></div></div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-header"><div class="section-title">Article Quality</div><div class="section-badge">Relevance · Completeness · Validity</div></div>
+    <div class="kpi-grid g3" id="article-kpis"></div>
+    <div style="margin-top:14px" class="chart-grid cg3">
+      <div class="chart-card"><div class="chart-title">Relevance Verdicts</div><div class="chart-wrap h180"><canvas id="chart-rel"></canvas></div></div>
+      <div class="chart-card"><div class="chart-title">Completeness Verdicts</div><div class="chart-wrap h180"><canvas id="chart-comp"></canvas></div></div>
+      <div class="chart-card"><div class="chart-title">Validity Verdicts</div><div class="chart-wrap h180"><canvas id="chart-val"></canvas></div></div>
+    </div>
+    <div style="margin-top:14px" class="chart-card">
+      <div class="chart-title">Article Content Checklist (% of cases)</div>
+      <div id="checklist"></div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-header"><div class="section-title">Description Quality (Kepner-Tregoe)</div></div>
+    <div class="kpi-grid g4" id="kt-kpis"></div>
+    <div style="margin-top:14px" class="chart-grid cg2">
+      <div class="chart-card"><div class="chart-title">KT Dimension Averages</div><div id="kt-bars" style="padding:6px 0"></div></div>
+      <div class="chart-card"><div class="chart-title">Description Quality Verdicts</div><div class="chart-wrap h180"><canvas id="chart-kt"></canvas></div></div>
+    </div>
+  </div>
+
+  <div class="section" id="sec-citation" style="display:none">
+    <div class="section-header"><div class="section-title">Citation &amp; AI Response Quality</div><div class="section-badge mwea">mweaeval mode</div></div>
+    <p style="font-size:12px;color:#64748b;margin-bottom:14px;line-height:1.6">
+      <strong>Grounding</strong> measures how well the AI's response is backed by the cited article.
+      A <em>cited</em> statement can be traced to specific content in the article; an <em>uncited</em> statement is an AI assertion with no article support — a potential hallucination risk.
+      The <strong>Good Citation Rate</strong> shows what percentage of all evaluated citations were considered accurate and grounded in the source material.
+      <strong>Grounding Verdicts</strong> classify each case: <em>Well Grounded</em> (most claims supported) → <em>Partially</em> → <em>Poorly</em> → <em>Ungrounded</em> (response not traceable to the article).
+    </p>
+    <div class="kpi-grid g4" id="citation-kpis"></div>
+    <div style="margin-top:14px" class="chart-grid cg2">
+      <div class="chart-card"><div class="chart-title">Grounding Verdicts</div><div class="chart-wrap h180"><canvas id="chart-ground"></canvas></div></div>
+      <div class="chart-card"><div class="chart-title">Response Quality Verdicts</div><div class="chart-wrap h180"><canvas id="chart-rq"></canvas></div></div>
+    </div>
+    <div style="margin-top:14px" class="chart-card">
+      <div class="chart-title">Response Quality Components (average)</div>
+      <div id="rq-bars" style="padding:6px 0"></div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-header"><div class="section-title">Synthesis &amp; Root Cause</div></div>
+    <div class="kpi-grid g4" id="synth-kpis"></div>
+    <div style="margin-top:14px" class="chart-grid cg2">
+      <div class="chart-card"><div class="chart-title">Root Cause Categories</div><div class="chart-wrap h260"><canvas id="chart-rc"></canvas></div></div>
+      <div class="chart-card"><div class="chart-title">Avg Score by Product (top 12)</div><div class="chart-wrap h260"><canvas id="chart-product"></canvas></div></div>
+    </div>
+    <div style="margin-top:14px" class="chart-card">
+      <div class="chart-title">Cases by Area Path</div>
+      <div class="chart-wrap h220"><canvas id="chart-area"></canvas></div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-header"><div class="section-title">Case Details</div><div class="section-badge" id="table-badge"></div></div>
+    <div class="table-controls">
+      <input type="text" class="table-search" id="table-search" placeholder="Search case #, product, verdict…" oninput="filterTable()">
+      <select class="table-filter" id="f-priority" onchange="filterTable()">
+        <option value="">All Priorities</option>
+        <option value="red">🔴 Red</option><option value="yellow">🟡 Yellow</option><option value="green">🟢 Green</option><option value="gray">⚪ Gray</option>
+      </select>
+      <select class="table-filter" id="f-verdict" onchange="filterTable()">
+        <option value="">All Verdicts</option>
+        <option value="adequate">Adequate</option><option value="needs_supplementation">Needs Supplement</option>
+        <option value="inadequate">Inadequate</option><option value="no_citation_provided">No Citation</option>
+      </select>
+      <select class="table-filter" id="f-dq" onchange="filterTable()">
+        <option value="">All Description Quality</option>
+        <option value="agent_ready">🟢 Agent Ready</option>
+        <option value="workable">🟡 Workable</option>
+        <option value="insufficient">🔴 Insufficient</option>
+      </select>
+      <select class="table-filter" id="f-area" onchange="filterTable()">
+        <option value="">All Area Paths</option>
+      </select>
+    </div>
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead><tr>
+          <th style="width:24px"></th>
+          <th onclick="sortTable('case_number')">Case # ↕</th>
+          <th onclick="sortTable('issue_product')">Product ↕</th>
+          <th onclick="sortTable('area_path')">Area Path ↕</th>
+          <th onclick="sortTable('primary_article_score')">Score ↕</th>
+          <th onclick="sortTable('primary_article_verdict')">Verdict ↕</th>
+          <th onclick="sortTable('synthesis_priority')">Priority ↕</th>
+          <th onclick="sortTable('dq_description_quality_score')">Description Quality ↕</th>
+        </tr></thead>
+        <tbody id="case-tbody"></tbody>
+      </table>
+      <div class="table-pagination" id="table-pagination"></div>
+    </div>
+  </div>
+
+</div><!-- end eval -->
+
+<!-- ═══════════════════════════════ TRENDS ═══════════════════════════════ -->
+<div class="tab-content" id="content-trends">
+  <div class="section">
+    <div class="section-header"><div class="section-title">Trend Overview</div><div class="section-badge" id="trend-badge"></div></div>
+    <div class="kpi-grid g5" id="trend-kpis"></div>
+  </div>
+  <div class="section">
+    <div class="section-header"><div class="section-title">Root Cause &amp; Priority Distribution</div></div>
+    <div class="chart-grid cg2">
+      <div class="chart-card"><div class="chart-title">Cases by Root Cause Pattern</div><div class="chart-wrap h220"><canvas id="chart-trc"></canvas></div></div>
+      <div class="chart-card"><div class="chart-title">Cluster Priority Mix</div><div class="chart-wrap h220"><canvas id="chart-tpri"></canvas></div></div>
+    </div>
+  </div>
+  <div class="section">
+    <div class="section-header"><div class="section-title">Trend Clusters</div><div class="section-badge">sorted by priority · case count</div></div>
+    <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap">
+      <select class="table-filter" id="trend-f-area" onchange="renderTrends()">
+        <option value="">All Area Paths</option>
+      </select>
+    </div>
+    <div class="cluster-grid" id="cluster-grid"></div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════ OVERLAPS ═══════════════════════════════ -->
+<div class="tab-content" id="content-overlaps">
+  <div class="section">
+    <div class="section-header">
+      <div class="section-title">Citation Overlap Analysis</div>
+      <div class="section-badge" id="overlap-badge"></div>
+    </div>
+    <div class="kpi-grid g3" id="overlap-kpis"></div>
+  </div>
+  <div class="section">
+    <div class="section-header"><div class="section-title">Overlap Details</div></div>
+    <div class="table-controls">
+      <select class="table-filter" id="overlap-f-type" onchange="renderOverlaps()">
+        <option value="">All Types</option>
+        <option value="cross_coverage">Cross-Coverage</option>
+        <option value="duplicate_issues">Potential Duplicates</option>
+      </select>
+    </div>
+    <div id="overlap-grid" class="cluster-grid"></div>
+  </div>
+</div>
+
+<script src="js/app.js"></script>
+</body>
+</html>
