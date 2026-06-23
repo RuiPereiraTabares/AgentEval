@@ -1,0 +1,3204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Agentic Insight Engine — Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+/* ── Fluent Design Tokens ─────────────────────────────────────── */
+:root {
+  --ms-brand: #0078d4;
+  --ms-brand-dark: #005a9e;
+  --ms-brand-light: #deecf9;
+  --ms-brand-xlight: #eff6fc;
+  --ms-red: #c50f1f;
+  --ms-red-bg: #fde7e9;
+  --ms-red-border: #f4b8bc;
+  --ms-yellow-text: #7a5c00;
+  --ms-yellow-bg: #fff4ce;
+  --ms-yellow-border: #f4d27e;
+  --ms-yellow-dot: #ffb900;
+  --ms-green: #107c10;
+  --ms-green-bg: #dff6dd;
+  --ms-green-border: #9fd89e;
+  --ms-purple: #5c2d91;
+  --ms-purple-bg: #e9d7f5;
+  --ms-purple-border: #c6aedf;
+  --ms-bg: #f5f4f3;
+  --ms-surface: #ffffff;
+  --ms-surface-alt: #f3f2f1;
+  --ms-stroke: #edebe9;
+  --ms-stroke-strong: #c8c6c4;
+  --ms-text: #201f1e;
+  --ms-text-secondary: #605e5c;
+  --ms-text-disabled: #a19f9d;
+  --ms-shadow-2: 0 1.6px 3.6px rgba(0,0,0,.132), 0 0.3px 0.9px rgba(0,0,0,.108);
+  --ms-shadow-4: 0 3.2px 7.2px rgba(0,0,0,.132), 0 0.6px 1.8px rgba(0,0,0,.108);
+  --ms-shadow-8: 0 6.4px 14.4px rgba(0,0,0,.132), 0 1.2px 3.6px rgba(0,0,0,.108);
+  --ms-shadow-16: 0 12.8px 28.8px rgba(0,0,0,.22), 0 2.4px 7.2px rgba(0,0,0,.18);
+  --ms-r: 4px;
+  --ms-r-lg: 8px;
+  --ms-dur: 180ms;
+  --ms-ease: cubic-bezier(0.33, 0, 0.67, 1);
+}
+
+body {
+  font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
+  background: var(--ms-bg);
+  color: var(--ms-text);
+  min-height: 100vh;
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+/* ── HEADER ─────────────────────────────────────────────────────── */
+.header {
+  background: linear-gradient(135deg, #243a5e 0%, #106ebe 100%);
+  color: #fff;
+  padding: 0 24px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  height: 56px;
+  box-shadow: var(--ms-shadow-4);
+  position: relative;
+  z-index: 200;
+}
+.header-logo {
+  width: 36px; height: 36px;
+  background: rgba(255,255,255,0.18);
+  border-radius: var(--ms-r);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 20px; flex-shrink: 0;
+  backdrop-filter: blur(4px);
+}
+.header-title { font-size: 17px; font-weight: 700; letter-spacing: -0.01em; }
+.header-sub { font-size: 11px; color: rgba(255,255,255,0.72); margin-top: 1px; }
+.header-spacer { flex: 1; }
+.header-tag {
+  background: rgba(255,255,255,0.14);
+  color: rgba(255,255,255,0.86);
+  border: 1px solid rgba(255,255,255,0.2);
+  border-radius: 20px;
+  padding: 3px 10px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+/* ── UPLOAD SECTION ──────────────────────────────────────────────── */
+.upload-section {
+  padding: 20px 24px 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 12px;
+  max-width: 880px;
+  margin: 0 auto;
+}
+.upload-card {
+  background: var(--ms-surface);
+  border: 1px solid var(--ms-stroke);
+  border-radius: var(--ms-r-lg);
+  padding: 16px 18px;
+  text-align: center;
+  cursor: pointer;
+  transition: box-shadow var(--ms-dur) var(--ms-ease), border-color var(--ms-dur) var(--ms-ease), background var(--ms-dur) var(--ms-ease);
+  position: relative;
+  box-shadow: var(--ms-shadow-2);
+}
+.upload-card:hover, .upload-card.drag-over {
+  border-color: var(--ms-brand);
+  box-shadow: var(--ms-shadow-4);
+  background: var(--ms-brand-xlight);
+}
+.upload-card.loaded {
+  border-color: var(--ms-green);
+  border-width: 1.5px;
+  background: var(--ms-green-bg);
+  box-shadow: none;
+}
+.upload-icon { font-size: 24px; margin-bottom: 6px; }
+.upload-title { font-weight: 700; font-size: 13px; color: var(--ms-text); }
+.upload-hint { font-size: 11px; color: var(--ms-text-secondary); margin-top: 2px; }
+.upload-filename { font-size: 11px; color: var(--ms-green); font-weight: 700; margin-top: 4px; }
+.upload-input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+.upload-clear {
+  position: absolute; top: 8px; right: 10px;
+  background: none; border: none; cursor: pointer;
+  font-size: 14px; color: var(--ms-text-disabled);
+  display: none; width: 24px; height: 24px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 50%;
+  transition: background var(--ms-dur);
+}
+.upload-clear:hover { background: rgba(0,0,0,.06); color: var(--ms-text); }
+.upload-card:not(.loaded) .upload-clear { display: none; }
+.upload-card.loaded .upload-clear { display: flex; }
+.upload-desc { font-size: 11px; color: var(--ms-text-secondary); margin-top: 3px; line-height: 1.4; }
+
+/* ── SETTINGS ROW ────────────────────────────────────────────────── */
+.settings-row { max-width: 880px; margin: 10px auto 0; padding: 0 24px; }
+.settings-row-inner {
+  background: var(--ms-surface);
+  border: 1px solid var(--ms-stroke);
+  border-radius: var(--ms-r-lg);
+  padding: 10px 16px;
+  display: flex; align-items: center; gap: 12px;
+  box-shadow: var(--ms-shadow-2);
+}
+.settings-label { font-size: 13px; font-weight: 600; color: var(--ms-text); }
+.settings-desc { font-size: 11px; color: var(--ms-text-secondary); margin-top: 1px; line-height: 1.4; }
+.settings-desc code { background: var(--ms-surface-alt); padding: 1px 4px; border-radius: 2px; font-size: 10px; }
+.toggle-switch { position: relative; display: inline-flex; flex-shrink: 0; }
+.toggle-switch input { opacity: 0; width: 0; height: 0; position: absolute; }
+.toggle-track { width: 40px; height: 22px; background: var(--ms-stroke-strong); border-radius: 11px; position: relative; cursor: pointer; transition: background var(--ms-dur); }
+.toggle-switch input:checked + .toggle-track { background: var(--ms-brand); }
+.toggle-thumb { position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; background: #fff; border-radius: 50%; transition: left var(--ms-dur); box-shadow: 0 1px 3px rgba(0,0,0,.2); }
+.toggle-switch input:checked + .toggle-track .toggle-thumb { left: 21px; }
+
+/* ── TAB NAVIGATION (Fluent Pivot) ───────────────────────────────── */
+.tabs {
+  display: none;
+  background: var(--ms-surface);
+  border-bottom: 1px solid var(--ms-stroke);
+  padding: 0 24px;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  box-shadow: 0 1px 4px rgba(0,0,0,.08);
+  gap: 0;
+}
+.tabs.visible { display: flex; }
+.tab-btn {
+  padding: 0 16px;
+  height: 52px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  border-bottom: 3px solid transparent;
+  margin-bottom: -1px;
+  transition: border-color var(--ms-dur) var(--ms-ease), color var(--ms-dur);
+  display: flex; align-items: center; gap: 10px;
+  white-space: nowrap;
+  color: var(--ms-text-secondary);
+  font-size: 14px;
+  font-weight: 600;
+  font-family: inherit;
+}
+.tab-btn:hover:not(.disabled) {
+  color: var(--ms-text);
+  background: var(--ms-surface-alt);
+}
+.tab-btn.active {
+  border-bottom-color: var(--ms-brand);
+  color: var(--ms-brand);
+}
+.tab-btn.disabled { opacity: 0.4; cursor: not-allowed; }
+.tab-label-group { display: flex; flex-direction: column; align-items: flex-start; }
+.tab-label-main { font-size: 14px; font-weight: 600; line-height: 1.2; }
+.tab-label-sub { font-size: 10px; color: var(--ms-text-disabled); margin-top: 1px; font-weight: 400; }
+.tab-btn.active .tab-label-sub { color: color-mix(in srgb, var(--ms-brand) 60%, transparent); }
+.tab-count {
+  background: var(--ms-surface-alt);
+  color: var(--ms-text-secondary);
+  font-size: 10px; font-weight: 700;
+  padding: 2px 7px; border-radius: 10px;
+  display: none;
+  border: 1px solid var(--ms-stroke);
+}
+.tab-btn.has-data .tab-count { display: inline-flex; }
+.tab-btn.active .tab-count { background: var(--ms-brand-light); color: var(--ms-brand); border-color: var(--ms-brand-light); }
+
+/* ── TAB CONTENT ─────────────────────────────────────────────────── */
+.tab-content { display: none; padding: 24px 24px 48px; max-width: 1400px; margin: 0 auto; }
+.tab-content.active { display: block; animation: fadeSlideIn var(--ms-dur) var(--ms-ease) both; }
+@keyframes fadeSlideIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ── EMPTY STATE ─────────────────────────────────────────────────── */
+.empty-state { text-align: center; padding: 56px 24px; color: var(--ms-text-secondary); }
+.empty-state h2 { font-size: 20px; margin-bottom: 8px; color: var(--ms-text); font-weight: 600; }
+.empty-state p { font-size: 14px; line-height: 1.6; }
+.onboarding-steps { display: flex; flex-direction: column; gap: 10px; max-width: 520px; margin: 20px auto 0; text-align: left; }
+.onboard-step {
+  display: flex; gap: 14px; align-items: flex-start;
+  background: var(--ms-surface); border: 1px solid var(--ms-stroke);
+  border-radius: var(--ms-r-lg); padding: 14px 16px;
+  box-shadow: var(--ms-shadow-2);
+}
+.onboard-num {
+  width: 28px; height: 28px; background: var(--ms-brand); color: #fff;
+  border-radius: 50%; display: flex; align-items: center; justify-content: center;
+  font-size: 13px; font-weight: 800; flex-shrink: 0;
+}
+.onboard-title { font-size: 13px; font-weight: 700; color: var(--ms-text); margin-bottom: 3px; }
+.onboard-desc { font-size: 12px; color: var(--ms-text-secondary); line-height: 1.5; }
+
+/* ── ALERTS ──────────────────────────────────────────────────────── */
+.alert-banner {
+  border-radius: var(--ms-r); padding: 12px 16px;
+  margin-bottom: 16px; display: flex; align-items: center; gap: 10px;
+  font-size: 13px; font-weight: 500;
+}
+.alert-red { background: var(--ms-red-bg); border: 1px solid var(--ms-red-border); color: var(--ms-red); }
+.alert-yellow { background: var(--ms-yellow-bg); border: 1px solid var(--ms-yellow-border); color: var(--ms-yellow-text); }
+.alert-green { background: var(--ms-green-bg); border: 1px solid var(--ms-green-border); color: var(--ms-green); }
+
+/* ── SECTIONS ────────────────────────────────────────────────────── */
+.section { margin-bottom: 28px; }
+.section-header { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; padding-bottom: 8px; border-bottom: 1px solid var(--ms-stroke); }
+.section-title { font-size: 16px; font-weight: 700; color: var(--ms-text); }
+.section-badge { font-size: 11px; background: var(--ms-surface-alt); color: var(--ms-text-secondary); padding: 2px 8px; border-radius: 10px; border: 1px solid var(--ms-stroke); }
+.section-badge.mwea { background: var(--ms-brand-xlight); color: var(--ms-brand); border-color: var(--ms-brand-light); }
+
+/* ── KPI CARDS ───────────────────────────────────────────────────── */
+.kpi-grid { display: grid; gap: 12px; }
+.g2 { grid-template-columns: repeat(2, 1fr); }
+.g3 { grid-template-columns: repeat(3, 1fr); }
+.g4 { grid-template-columns: repeat(4, 1fr); }
+.g5 { grid-template-columns: repeat(5, 1fr); }
+.kpi-card {
+  background: var(--ms-surface);
+  border: 1px solid var(--ms-stroke);
+  border-radius: var(--ms-r-lg);
+  padding: 14px 16px;
+  box-shadow: var(--ms-shadow-2);
+  transition: box-shadow var(--ms-dur);
+}
+.kpi-card:hover { box-shadow: var(--ms-shadow-4); }
+.kpi-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ms-text-secondary); margin-bottom: 6px; }
+.kpi-value { font-size: 28px; font-weight: 700; line-height: 1; letter-spacing: -0.02em; }
+.kpi-sub { font-size: 11px; color: var(--ms-text-secondary); margin-top: 4px; }
+.kpi-bar { height: 3px; background: var(--ms-stroke); border-radius: 2px; margin-top: 10px; overflow: hidden; }
+.kpi-bar-fill { height: 100%; border-radius: 2px; transition: width 0.4s var(--ms-ease); }
+
+/* ── CHART CARDS ─────────────────────────────────────────────────── */
+.chart-grid { display: grid; gap: 14px; }
+.cg2 { grid-template-columns: 1fr 1fr; }
+.cg3 { grid-template-columns: 1fr 1fr 1fr; }
+.chart-card {
+  background: var(--ms-surface);
+  border: 1px solid var(--ms-stroke);
+  border-radius: var(--ms-r-lg);
+  padding: 14px 16px;
+  box-shadow: var(--ms-shadow-2);
+}
+.chart-card.filtering {
+  border-color: var(--ms-brand);
+  box-shadow: 0 0 0 2px var(--ms-brand-light);
+}
+.chart-title { font-size: 12px; font-weight: 700; color: var(--ms-text-secondary); margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.04em; }
+.chart-wrap { position: relative; }
+.h180 { height: 180px; }
+.h220 { height: 220px; }
+.h260 { height: 260px; }
+
+/* ── SEMANTIC COLORS ─────────────────────────────────────────────── */
+.c-red { color: var(--ms-red); }
+.c-yellow { color: var(--ms-yellow-dot); }
+.c-green { color: var(--ms-green); }
+.c-blue { color: var(--ms-brand); }
+.c-gray { color: var(--ms-text-secondary); }
+
+/* ── BADGES ──────────────────────────────────────────────────────── */
+.badge {
+  display: inline-flex; align-items: center;
+  padding: 2px 8px; border-radius: 20px;
+  font-size: 11px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+.b-red { background: var(--ms-red-bg); color: var(--ms-red); border: 1px solid var(--ms-red-border); }
+.b-yellow { background: var(--ms-yellow-bg); color: var(--ms-yellow-text); border: 1px solid var(--ms-yellow-border); }
+.b-green { background: var(--ms-green-bg); color: var(--ms-green); border: 1px solid var(--ms-green-border); }
+.b-gray { background: var(--ms-surface-alt); color: var(--ms-text-secondary); border: 1px solid var(--ms-stroke); }
+.b-blue { background: var(--ms-brand-xlight); color: var(--ms-brand); border: 1px solid var(--ms-brand-light); }
+.b-purple { background: var(--ms-purple-bg); color: var(--ms-purple); border: 1px solid var(--ms-purple-border); }
+.score-chip {
+  display: inline-block; padding: 2px 8px;
+  border-radius: 10px; font-size: 11px; font-weight: 700; color: #fff;
+}
+
+/* ── TABLE (MWEA case table) ─────────────────────────────────────── */
+.table-controls { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; align-items: center; }
+.table-search {
+  flex: 1; min-width: 200px;
+  padding: 7px 12px;
+  border: 1px solid var(--ms-stroke-strong);
+  border-radius: var(--ms-r);
+  font-size: 13px; font-family: inherit;
+  background: var(--ms-surface);
+  color: var(--ms-text);
+  transition: border-color var(--ms-dur), box-shadow var(--ms-dur);
+}
+.table-search:focus {
+  outline: none;
+  border-color: var(--ms-brand);
+  box-shadow: 0 0 0 2px var(--ms-brand-light);
+}
+.table-filter {
+  padding: 7px 10px;
+  border: 1px solid var(--ms-stroke-strong);
+  border-radius: var(--ms-r);
+  font-size: 12px; font-family: inherit;
+  background: var(--ms-surface);
+  color: var(--ms-text);
+  cursor: pointer;
+  transition: border-color var(--ms-dur);
+}
+.table-filter:focus { outline: none; border-color: var(--ms-brand); }
+.table-wrap { border: 1px solid var(--ms-stroke); border-radius: var(--ms-r-lg); background: var(--ms-surface); overflow: hidden; box-shadow: var(--ms-shadow-2); }
+.data-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.data-table th {
+  padding: 10px 12px;
+  background: var(--ms-surface-alt);
+  text-align: left;
+  font-size: 11px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.05em;
+  color: var(--ms-text-secondary);
+  border-bottom: 1px solid var(--ms-stroke);
+  cursor: pointer; white-space: nowrap;
+  user-select: none;
+  transition: background var(--ms-dur);
+}
+.data-table th:hover { background: var(--ms-stroke); color: var(--ms-text); }
+.data-table th.sort-active { color: var(--ms-brand); background: var(--ms-brand-xlight); }
+.data-table td { padding: 9px 12px; border-bottom: 1px solid #f3f2f1; color: var(--ms-text); vertical-align: middle; }
+.data-table tr.data-row { cursor: pointer; transition: background var(--ms-dur); }
+.data-table tr.data-row:hover td { background: var(--ms-surface-alt); }
+.data-table tr.data-row.expanded td { background: var(--ms-brand-xlight); }
+.data-table tr:last-child td { border-bottom: none; }
+.table-pagination {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 14px; background: var(--ms-surface-alt);
+  border-top: 1px solid var(--ms-stroke);
+  font-size: 11px; color: var(--ms-text-secondary);
+}
+.pagination-btns { display: flex; gap: 3px; }
+.pagination-btns button {
+  padding: 4px 10px; border: 1px solid var(--ms-stroke);
+  border-radius: var(--ms-r); background: var(--ms-surface);
+  cursor: pointer; font-size: 11px; font-family: inherit;
+  color: var(--ms-text-secondary);
+  transition: all var(--ms-dur);
+}
+.pagination-btns button:hover { background: var(--ms-surface-alt); border-color: var(--ms-stroke-strong); }
+.pagination-btns button.active { background: var(--ms-brand); color: #fff; border-color: var(--ms-brand); }
+
+/* ── CLUSTER CARDS (Fluent redesign) ─────────────────────────────── */
+.cluster-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 14px; }
+
+.cluster-card {
+  background: var(--ms-surface);
+  border: 1px solid var(--ms-stroke);
+  border-radius: var(--ms-r-lg);
+  overflow: hidden;
+  box-shadow: var(--ms-shadow-2);
+  transition: box-shadow var(--ms-dur) var(--ms-ease), transform var(--ms-dur) var(--ms-ease);
+  display: flex; flex-direction: column;
+}
+.cluster-card:hover { box-shadow: var(--ms-shadow-4); transform: translateY(-1px); }
+.cluster-card.open { box-shadow: var(--ms-shadow-8); transform: none; border-color: var(--ms-brand); }
+
+/* Priority Banner — the dominant visual element */
+.cluster-banner {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 16px;
+  font-size: 12px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.06em;
+}
+.cluster-banner.red { background: var(--ms-red); color: #fff; }
+.cluster-banner.yellow { background: var(--ms-yellow-dot); color: #3d2d00; }
+.cluster-banner.green { background: var(--ms-green); color: #fff; }
+.cluster-banner.gray { background: var(--ms-stroke-strong); color: var(--ms-text); }
+.cluster-banner-icon { font-size: 15px; flex-shrink: 0; }
+.cluster-banner-label { flex: 1; }
+.cluster-banner-cases {
+  background: rgba(255,255,255,0.22);
+  border-radius: 20px;
+  padding: 2px 9px;
+  font-size: 11px;
+  white-space: nowrap;
+}
+.cluster-banner.yellow .cluster-banner-cases { background: rgba(0,0,0,.12); }
+
+/* Card body */
+.cluster-body { padding: 14px 16px 0; }
+.cluster-name { font-size: 15px; font-weight: 700; color: var(--ms-text); margin-bottom: 8px; line-height: 1.35; }
+.cluster-meta { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 12px; }
+
+/* PM Action bar — always visible, key insight */
+.cluster-action-bar {
+  background: var(--ms-brand-xlight);
+  border: 1px solid var(--ms-brand-light);
+  border-radius: var(--ms-r);
+  padding: 9px 12px;
+  margin: 0 0 12px;
+  display: flex; gap: 8px; align-items: flex-start;
+}
+.cluster-action-arrow { color: var(--ms-brand); font-weight: 800; font-size: 14px; flex-shrink: 0; margin-top: 1px; }
+.cluster-action-text { font-size: 13px; font-weight: 600; color: #003d73; line-height: 1.4; }
+
+/* Context section */
+.cluster-context { padding: 0 16px 12px; }
+.cluster-fl { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; color: var(--ms-text-secondary); margin-bottom: 3px; }
+.cluster-fv { font-size: 12px; color: var(--ms-text); line-height: 1.4; margin-bottom: 8px; }
+
+/* Expand toggle */
+.cluster-toggle {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 9px 16px;
+  background: var(--ms-surface-alt);
+  border-top: 1px solid var(--ms-stroke);
+  cursor: pointer; user-select: none;
+  transition: background var(--ms-dur);
+  margin-top: auto;
+}
+.cluster-toggle:hover { background: var(--ms-stroke); }
+.cluster-toggle-label { font-size: 11px; font-weight: 700; color: var(--ms-brand); }
+.cluster-toggle-count {
+  font-size: 11px; font-weight: 700;
+  background: var(--ms-stroke);
+  color: var(--ms-text-secondary);
+  padding: 2px 7px; border-radius: 8px;
+}
+.cluster-chevron { font-size: 9px; color: var(--ms-text-secondary); transition: transform 0.2s; display: inline-block; }
+.cluster-chevron.open { transform: rotate(180deg); }
+
+/* Expand detail panel */
+.cluster-detail { display: none; border-top: 2px solid var(--ms-brand-light); background: var(--ms-surface-alt); }
+.cluster-detail.open { display: block; animation: slideDown 0.2s var(--ms-ease) both; }
+@keyframes slideDown { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+
+/* Representative case snippets */
+.cluster-snippets { padding: 10px 16px 4px; }
+.rep-case-snippet { font-size: 12px; color: var(--ms-text-secondary); line-height: 1.5; padding: 6px 0; border-bottom: 1px solid var(--ms-stroke); }
+.rep-case-snippet:last-child { border-bottom: none; }
+.rep-centroid { font-weight: 600; color: var(--ms-text); }
+/* Centroid / Representative sections in cluster expand panel */
+.cpd-section { padding: 8px 16px 6px; }
+.cpd-section + .cpd-section { border-top: 1px solid var(--ms-stroke); }
+.cpd-section-label { font-size: 10px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ms-text-secondary); margin-bottom: 6px; display: flex; align-items: center; gap: 5px; }
+.cpd-centroid-label { color: #92400e; }
+.cpd-rep-label { color: #3730a3; }
+.cpd-row { display: flex; align-items: flex-start; gap: 8px; padding: 4px 0; }
+.cpd-row + .cpd-row { border-top: 1px solid var(--ms-stroke); }
+.cpd-snippet { font-size: 12px; color: var(--ms-text-secondary); line-height: 1.5; flex: 1; }
+.case-chip.chip-centroid { border-color: #f59e0b; background: #fffbeb; color: #92400e; font-weight: 700; flex-shrink: 0; }
+.case-chip.chip-rep { border-color: #818cf8; background: #eef2ff; color: #3730a3; flex-shrink: 0; }
+
+/* Top citations toggle inside card */
+.cluster-citations-toggle {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 16px;
+  cursor: pointer; user-select: none;
+  background: var(--ms-surface-alt);
+  border-top: 1px solid var(--ms-stroke);
+  transition: background var(--ms-dur);
+}
+.cluster-citations-toggle:hover { background: var(--ms-stroke); }
+.cluster-citations-label { font-size: 11px; font-weight: 700; color: var(--ms-brand); }
+
+/* Weak + evicted */
+.weak-cluster-toggle {
+  display: flex; align-items: center; justify-content: center;
+  padding: 10px 16px;
+  background: var(--ms-surface-alt);
+  border: 1px dashed var(--ms-stroke-strong);
+  border-radius: var(--ms-r);
+  margin: 8px 0;
+  cursor: pointer; font-size: 12px; font-weight: 600;
+  color: var(--ms-text-secondary); user-select: none;
+  transition: background var(--ms-dur);
+}
+.weak-cluster-toggle:hover { background: var(--ms-stroke); }
+.weak-cluster-section { display: none; }
+.evicted-section { margin-top: 32px; border-top: 2px dashed var(--ms-red-border); padding-top: 16px; }
+.evicted-section-header {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 12px; font-weight: 700; color: var(--ms-red);
+  text-transform: uppercase; letter-spacing: .06em;
+  margin-bottom: 10px; cursor: pointer; user-select: none;
+}
+.evicted-section-body { display: none; }
+.evicted-section-body.open { display: block; }
+.cluster-card.evicted { opacity: 0.6; }
+.eviction-badge {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 2px 8px; border-radius: 4px;
+  font-size: 10px; font-weight: 700;
+  background: var(--ms-red-bg); color: var(--ms-red); margin-left: 4px;
+}
+.synthetic-badge {
+  display: inline-flex; align-items: center; gap: 3px;
+  padding: 2px 7px; border-radius: 4px; font-size: 10px; font-weight: 600;
+  background: var(--ms-yellow-bg); color: var(--ms-yellow-text);
+  border: 1px solid var(--ms-yellow-border); margin-left: 4px; cursor: default;
+}
+.cluster-case-chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px; }
+.case-chip {
+  display: inline-flex; align-items: center;
+  padding: 3px 9px; border-radius: var(--ms-r);
+  font-size: 11px; font-weight: 700;
+  background: var(--ms-surface-alt); color: var(--ms-text-secondary);
+  font-family: 'Cascadia Code', 'Consolas', monospace;
+  border: 1px solid var(--ms-stroke);
+}
+.case-chip.clickable { cursor: pointer; }
+.case-chip.clickable:hover { background: var(--ms-brand-light); color: var(--ms-brand); border-color: var(--ms-brand-light); }
+.cluster-article-item {
+  background: var(--ms-surface-alt); border-radius: var(--ms-r);
+  padding: 7px 10px; margin-top: 4px;
+  font-size: 11px; color: var(--ms-text-secondary);
+  line-height: 1.5; border-left: 3px solid var(--ms-stroke);
+}
+.cluster-article-item.has-url { border-left-color: var(--ms-brand); }
+
+/* Area path chips */
+.area-chip {
+  display: inline-flex; align-items: center;
+  padding: 2px 8px; border-radius: 10px; font-size: 10px; font-weight: 600;
+  background: var(--ms-brand-xlight); color: var(--ms-brand);
+  border: 1px solid var(--ms-brand-light); white-space: nowrap;
+  max-width: 200px; overflow: hidden; text-overflow: ellipsis;
+}
+.area-section { margin-bottom: 32px; }
+.area-section-header {
+  font-size: 12px; font-weight: 700; color: var(--ms-text-secondary);
+  text-transform: uppercase; letter-spacing: .07em;
+  border-bottom: 2px solid var(--ms-stroke);
+  padding-bottom: 7px; margin-bottom: 14px;
+}
+.area-cluster-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 14px; }
+.case-show-more {
+  display: inline-block; font-size: 11px; color: var(--ms-brand);
+  cursor: pointer; padding: 2px 6px;
+  border: 1px dashed var(--ms-brand-light); border-radius: var(--ms-r); margin: 2px;
+}
+.case-show-more:hover { background: var(--ms-brand-xlight); }
+
+/* ── OVERLAP CARDS ───────────────────────────────────────────────── */
+.overlap-card {
+  background: var(--ms-surface);
+  border: 1px solid var(--ms-stroke);
+  border-left: 4px solid var(--ms-yellow-dot);
+  border-radius: var(--ms-r-lg);
+  overflow: hidden;
+  box-shadow: var(--ms-shadow-2);
+  margin-bottom: 14px;
+  transition: box-shadow var(--ms-dur);
+}
+.overlap-card.open { box-shadow: var(--ms-shadow-4); }
+.overlap-header { padding: 14px 16px 12px; border-bottom: 1px solid var(--ms-stroke); }
+.overlap-article-slug { font-size: 15px; font-weight: 700; color: var(--ms-text); margin-bottom: 4px; word-break: break-all; }
+.overlap-article-url { font-size: 11px; color: var(--ms-text-secondary); word-break: break-all; }
+.overlap-article-url a { color: var(--ms-brand); text-decoration: none; }
+.overlap-article-url a:hover { text-decoration: underline; }
+.overlap-case-count { display: inline-flex; align-items: center; gap: 6px; margin-top: 8px; }
+.overlap-case-num { font-size: 15px; font-weight: 800; color: var(--ms-yellow-dot); }
+.overlap-case-caption { font-size: 12px; color: var(--ms-text-secondary); }
+.overlap-why { background: var(--ms-yellow-bg); border-bottom: 1px solid var(--ms-yellow-border); padding: 10px 16px; }
+.overlap-why-label { font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ms-yellow-text); margin-bottom: 6px; }
+.overlap-sim-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.overlap-sim-label { font-size: 11px; color: var(--ms-text); min-width: 90px; }
+.overlap-sim-pct { font-size: 13px; font-weight: 700; color: var(--ms-yellow-dot); min-width: 36px; }
+.overlap-flag-text { font-size: 12px; color: var(--ms-yellow-text); line-height: 1.5; }
+.overlap-action { padding: 12px 16px; border-bottom: 1px solid var(--ms-stroke); }
+.overlap-action-label { font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ms-brand); margin-bottom: 8px; }
+.overlap-action-primary {
+  background: var(--ms-brand-xlight); border: 1px solid var(--ms-brand-light);
+  border-radius: var(--ms-r); padding: 10px 14px;
+  font-size: 13px; font-weight: 600; color: #003d73; line-height: 1.45;
+}
+.overlap-evidence-toggle {
+  background: var(--ms-surface-alt); padding: 9px 16px;
+  cursor: pointer; user-select: none;
+  display: flex; align-items: center; justify-content: space-between;
+  border-top: 1px solid var(--ms-stroke);
+  transition: background var(--ms-dur);
+}
+.overlap-evidence-toggle:hover { background: var(--ms-stroke); }
+.overlap-evidence-label { font-size: 11px; font-weight: 700; color: var(--ms-brand); }
+.overlap-evidence-panel { display: none; padding: 12px 16px; border-top: 1px solid var(--ms-stroke); }
+.overlap-evidence-panel.open { display: block; animation: slideDown 0.2s var(--ms-ease) both; }
+.overlap-sub-action { display: flex; gap: 8px; margin-bottom: 8px; align-items: flex-start; font-size: 12px; color: var(--ms-text); line-height: 1.5; }
+.overlap-sub-action-num {
+  width: 20px; height: 20px; background: var(--ms-stroke);
+  color: var(--ms-text-secondary); border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 10px; font-weight: 800; flex-shrink: 0; margin-top: 1px;
+}
+.overlap-snippet { font-size: 11px; color: var(--ms-text); background: var(--ms-surface-alt); border-radius: var(--ms-r); padding: 6px 9px; margin-top: 4px; line-height: 1.5; }
+.overlap-snippet-case { font-weight: 700; color: var(--ms-text-secondary); margin-right: 4px; }
+
+/* ── SCORE BARS ──────────────────────────────────────────────────── */
+.score-bar-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.score-bar-label { font-size: 12px; color: var(--ms-text); min-width: 90px; text-align: right; flex-shrink: 0; }
+.score-bar-track { flex: 1; height: 6px; background: var(--ms-stroke); border-radius: 3px; overflow: hidden; }
+.score-bar-fill { height: 100%; border-radius: 3px; transition: width 0.4s var(--ms-ease); }
+.score-bar-val { font-size: 12px; font-weight: 700; min-width: 34px; }
+
+/* ── CHECKLIST ───────────────────────────────────────────────────── */
+.checklist { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.checklist-item { display: flex; align-items: center; gap: 8px; background: var(--ms-surface-alt); border-radius: var(--ms-r); padding: 6px 10px; border: 1px solid var(--ms-stroke); }
+.checklist-label { font-size: 12px; color: var(--ms-text); flex: 1; }
+.checklist-pct { font-size: 11px; font-weight: 700; }
+
+/* ── EXPAND BUTTON ───────────────────────────────────────────────── */
+.expand-btn {
+  background: none; border: 1px solid var(--ms-stroke);
+  border-radius: var(--ms-r); cursor: pointer;
+  width: 24px; height: 24px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 10px; color: var(--ms-text-secondary);
+  transition: all var(--ms-dur); flex-shrink: 0;
+}
+.expand-btn:hover { background: var(--ms-surface-alt); border-color: var(--ms-stroke-strong); }
+.expand-btn.open { background: var(--ms-brand); border-color: var(--ms-brand); color: #fff; transform: rotate(90deg); }
+
+/* ── DETAIL PANEL ────────────────────────────────────────────────── */
+.detail-row td { padding: 0 !important; border-bottom: 1px solid var(--ms-brand-light) !important; }
+.detail-panel {
+  background: var(--ms-brand-xlight); border-top: 2px solid var(--ms-brand);
+  padding: 16px 20px; display: grid;
+  grid-template-columns: 1fr 1fr; gap: 14px;
+}
+.detail-panel.single-col { grid-template-columns: 1fr; }
+.detail-block {}
+.detail-label { font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.07em; color: var(--ms-brand); margin-bottom: 5px; }
+.detail-text { font-size: 13px; color: var(--ms-text); line-height: 1.55; }
+.detail-text em { color: var(--ms-text-secondary); font-style: italic; }
+.detail-bullets { font-size: 12px; color: var(--ms-text); line-height: 1.55; padding-left: 16px; }
+.detail-bullets li { margin-bottom: 3px; }
+.detail-link { font-size: 12px; color: var(--ms-brand); text-decoration: none; word-break: break-all; }
+.detail-link:hover { text-decoration: underline; }
+.detail-full-row { grid-column: 1 / -1; }
+.detail-warning {
+  background: var(--ms-yellow-bg); border: 1px solid var(--ms-yellow-border);
+  border-radius: var(--ms-r); padding: 7px 10px;
+  font-size: 11px; color: var(--ms-yellow-text); margin-bottom: 8px;
+}
+
+/* ── PM ACTION TABLE (SPM) ───────────────────────────────────────── */
+.action-table-wrap { background: var(--ms-surface); border: 1px solid var(--ms-stroke); border-radius: var(--ms-r-lg); overflow: hidden; box-shadow: var(--ms-shadow-2); }
+.action-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.action-table th { padding: 9px 12px; background: var(--ms-surface-alt); text-align: left; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ms-text-secondary); border-bottom: 1px solid var(--ms-stroke); white-space: nowrap; }
+.action-table td { padding: 9px 12px; border-bottom: 1px solid var(--ms-stroke); vertical-align: top; }
+.action-table tr.data-row { cursor: pointer; transition: background var(--ms-dur); }
+.action-table tr.data-row:hover td { background: var(--ms-surface-alt); }
+.action-table tr.data-row.expanded td { background: var(--ms-brand-xlight); }
+.action-table tr:last-child td { border-bottom: none; }
+.pm-preview { color: var(--ms-text); max-width: 320px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pm-empty { color: var(--ms-text-disabled); font-style: italic; }
+
+/* ── FILTER CHIPS ────────────────────────────────────────────────── */
+#filter-chips {
+  display: flex; flex-wrap: wrap; gap: 6px;
+  padding: 0 0 14px; align-items: center;
+}
+
+/* ── EVAL SPLIT LAYOUT ───────────────────────────────────────────── */
+#content-eval { padding: 0; max-width: none; }
+.eval-split { display: grid; grid-template-columns: 380px 1fr; align-items: start; min-height: calc(100vh - 56px); }
+.eval-charts-pane {
+  position: sticky; top: 52px;
+  max-height: calc(100vh - 52px);
+  overflow-y: auto;
+  border-right: 1px solid var(--ms-stroke);
+  background: var(--ms-surface-alt);
+  padding: 16px 12px 24px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--ms-stroke-strong) transparent;
+}
+.eval-charts-pane::-webkit-scrollbar { width: 5px; }
+.eval-charts-pane::-webkit-scrollbar-thumb { background: var(--ms-stroke-strong); border-radius: 3px; }
+.eval-cases-pane { padding: 20px 22px 48px; background: var(--ms-surface); min-height: calc(100vh - 52px); }
+.chart-section-group {
+  margin-bottom: 10px; border: 1px solid var(--ms-stroke);
+  border-radius: var(--ms-r-lg); background: var(--ms-surface); overflow: hidden;
+}
+.chart-section-toggle {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 9px 12px; cursor: pointer; user-select: none;
+  background: var(--ms-surface-alt);
+  border-bottom: 1px solid transparent;
+  transition: background var(--ms-dur);
+}
+.chart-section-toggle:hover { background: var(--ms-stroke); }
+.chart-section-toggle.is-open { border-bottom-color: var(--ms-stroke); }
+.chart-section-toggle-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ms-text); }
+.chart-section-chevron { font-size: 9px; color: var(--ms-text-secondary); transition: transform 0.2s; display: inline-block; }
+.chart-section-toggle.is-open .chart-section-chevron { transform: rotate(180deg); }
+.chart-section-body { display: none; padding: 10px; }
+.chart-section-body.is-open { display: block; }
+.kpi-grid.sidebar { grid-template-columns: 1fr 1fr; gap: 8px; }
+.kpi-grid.sidebar .kpi-card { padding: 10px 12px; box-shadow: none; border-color: var(--ms-stroke); }
+.kpi-grid.sidebar .kpi-value { font-size: 20px; }
+.kpi-grid.sidebar .kpi-label, .kpi-grid.sidebar .kpi-sub { font-size: 10px; }
+.sidebar .chart-card { padding: 10px 12px; box-shadow: none; }
+.sidebar .chart-title { font-size: 10px; margin-bottom: 7px; }
+.sidebar .h180 { height: 140px; }
+.sidebar .h220 { height: 160px; }
+.sidebar .h260 { height: 175px; }
+.sidebar .checklist { grid-template-columns: 1fr; }
+.sidebar .checklist-item { padding: 5px 8px; }
+.sidebar .checklist-label { font-size: 11px; }
+
+canvas { cursor: pointer; }
+
+/* ── MODALS ──────────────────────────────────────────────────────── */
+.modal-overlay {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,.38);
+  backdrop-filter: blur(3px);
+  z-index: 1000;
+  display: flex; align-items: center; justify-content: center;
+  padding: 20px;
+  animation: fadeIn 0.15s ease both;
+}
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+.modal-box {
+  background: var(--ms-surface);
+  border-radius: var(--ms-r-lg);
+  box-shadow: var(--ms-shadow-16);
+  width: 100%; max-width: 620px; max-height: 82vh;
+  overflow-y: auto;
+  animation: modalIn 0.18s var(--ms-ease) both;
+}
+@keyframes modalIn { from { opacity: 0; transform: scale(0.96) translateY(8px); } to { opacity: 1; transform: none; } }
+.modal-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 16px 20px; border-bottom: 1px solid var(--ms-stroke);
+  position: sticky; top: 0; background: var(--ms-surface); z-index: 1;
+}
+.modal-title { font-size: 16px; font-weight: 700; color: var(--ms-text); }
+.modal-close {
+  width: 32px; height: 32px; border: none; background: none;
+  cursor: pointer; border-radius: var(--ms-r);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 18px; color: var(--ms-text-secondary);
+  transition: all var(--ms-dur);
+}
+.modal-close:hover { background: var(--ms-surface-alt); color: var(--ms-text); }
+.modal-body { padding: 20px; }
+
+/* ── KEYBOARD SHORTCUT BADGE ─────────────────────────────────────── */
+.kbd {
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--ms-surface-alt); border: 1px solid var(--ms-stroke-strong);
+  border-radius: 3px; padding: 1px 5px; font-size: 11px;
+  font-family: 'Cascadia Code', monospace; color: var(--ms-text-secondary);
+  box-shadow: 0 1px 0 var(--ms-stroke-strong);
+}
+
+/* ── RESPONSIVE ──────────────────────────────────────────────────── */
+@media (max-width: 768px) {
+  .upload-section { grid-template-columns: 1fr; }
+  .g4, .g5 { grid-template-columns: 1fr 1fr; }
+  .g3 { grid-template-columns: 1fr; }
+  .cg2, .cg3 { grid-template-columns: 1fr; }
+  .detail-panel { grid-template-columns: 1fr; }
+  .checklist { grid-template-columns: 1fr; }
+}
+@media (max-width: 900px) {
+  .eval-split { grid-template-columns: 1fr; }
+  .eval-charts-pane { position: static; max-height: none; border-right: none; border-bottom: 1px solid var(--ms-stroke); }
+  .eval-cases-pane { padding: 14px 16px 48px; }
+  .kpi-grid.sidebar { grid-template-columns: 1fr 1fr; }
+  .sidebar .h180 { height: 160px; }
+  .sidebar .h220 { height: 180px; }
+  .sidebar .h260 { height: 200px; }
+}
+
+/* ── CASE POPOVER ────────────────────────────────────────────────── */
+#case-popover {
+  position: fixed;
+  z-index: 9999;
+  width: 400px;
+  max-height: 500px;
+  background: var(--ms-surface);
+  border: 1px solid var(--ms-stroke-strong);
+  border-radius: var(--ms-r-lg);
+  box-shadow: var(--ms-shadow-16);
+  display: none;
+  flex-direction: column;
+  pointer-events: auto;
+  animation: popIn 0.12s var(--ms-ease) both;
+}
+#case-popover.visible { display: flex; }
+@keyframes popIn { from { opacity: 0; transform: translateY(4px) scale(0.98); } to { opacity: 1; transform: none; } }
+.cpop-header {
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 14px;
+  background: var(--ms-surface-alt);
+  border-bottom: 1px solid var(--ms-stroke);
+  flex-shrink: 0;
+}
+.cpop-case-num {
+  font-family: 'Cascadia Code', 'Consolas', monospace;
+  font-size: 12px; font-weight: 700; color: var(--ms-text);
+}
+.cpop-product {
+  font-size: 10px; color: var(--ms-brand);
+  background: var(--ms-brand-xlight);
+  border: 1px solid var(--ms-brand-light);
+  border-radius: 10px; padding: 1px 7px;
+}
+.cpop-copy {
+  margin-left: auto; flex-shrink: 0;
+  background: none; border: 1px solid var(--ms-stroke-strong);
+  border-radius: var(--ms-r); padding: 3px 9px;
+  font-size: 11px; cursor: pointer;
+  color: var(--ms-text-secondary); font-family: inherit;
+  transition: all var(--ms-dur);
+}
+.cpop-copy:hover { background: var(--ms-brand); color: #fff; border-color: var(--ms-brand); }
+.cpop-body {
+  overflow-y: auto; padding: 12px 14px; flex: 1;
+  scrollbar-width: thin; scrollbar-color: var(--ms-stroke-strong) transparent;
+}
+.cpop-section-label {
+  font-size: 10px; font-weight: 800; text-transform: uppercase;
+  letter-spacing: 0.07em; color: var(--ms-brand);
+  margin: 10px 0 5px;
+}
+.cpop-section-label:first-child { margin-top: 0; }
+.cpop-text {
+  font-size: 12px; color: var(--ms-text); line-height: 1.6;
+  white-space: pre-wrap; user-select: text; cursor: text;
+}
+.cpop-ai {
+  background: var(--ms-surface-alt); border: 1px solid var(--ms-stroke);
+  border-radius: var(--ms-r); padding: 8px 10px;
+  max-height: 220px; overflow-y: auto;
+  scrollbar-width: thin; scrollbar-color: var(--ms-stroke-strong) transparent;
+}
+.cpop-hint {
+  font-size: 11px; color: var(--ms-yellow-text);
+  background: var(--ms-yellow-bg); border: 1px solid var(--ms-yellow-border);
+  border-radius: var(--ms-r); padding: 5px 8px; margin-top: 8px;
+}
+.cpop-empty {
+  font-size: 12px; color: var(--ms-text-disabled); font-style: italic;
+}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-logo">📊</div>
+  <div>
+    <div class="header-title">Agentic Insight Engine</div>
+    <div class="header-sub">Article Quality &amp; Trend Dashboard</div>
+  </div>
+  <div class="header-spacer"></div>
+  <span class="header-tag">Internal Tool</span>
+</div>
+
+<div class="upload-section">
+  <label class="upload-card" id="eval-card" ondragover="onDragOver(event,'eval-card')" ondragleave="onDragLeave('eval-card')" ondrop="onDrop(event,'eval')">
+    <input type="file" accept=".csv" class="upload-input" id="eval-input" onchange="handleFile(event,'eval')">
+    <div class="upload-icon" id="eval-icon">📋</div>
+    <div class="upload-title">Article Quality Report</div>
+    <div class="upload-desc">Article scores, case verdicts, and PM action plan</div>
+    <div class="upload-hint" id="eval-hint">evaluation_results_*.csv</div>
+    <div class="upload-filename" id="eval-fname"></div>
+    <button class="upload-clear" onclick="clearFile(event,'eval')">✕</button>
+  </label>
+  <label class="upload-card" id="trend-card" ondragover="onDragOver(event,'trend-card')" ondragleave="onDragLeave('trend-card')" ondrop="onDrop(event,'trend')">
+    <input type="file" accept=".csv" class="upload-input" id="trend-input" onchange="handleFile(event,'trend')">
+    <div class="upload-icon" id="trend-icon">📈</div>
+    <div class="upload-title">Pattern &amp; Trend Clusters</div>
+    <div class="upload-desc">Recurring issue clusters grouped by root cause</div>
+    <div class="upload-hint" id="trend-hint">trend_report_*.csv</div>
+    <div class="upload-filename" id="trend-fname"></div>
+    <button class="upload-clear" onclick="clearFile(event,'trend')">✕</button>
+  </label>
+  <label class="upload-card" id="overlap-card" ondragover="onDragOver(event,'overlap-card')" ondragleave="onDragLeave('overlap-card')" ondrop="onDrop(event,'overlap')">
+    <input type="file" accept=".csv" class="upload-input" id="overlap-input" onchange="handleFile(event,'overlap')">
+    <div class="upload-icon" id="overlap-icon">🔗</div>
+    <div class="upload-title">Duplicate Citation Finder</div>
+    <div class="upload-desc">Articles cited by multiple similar support cases</div>
+    <div class="upload-hint" id="overlap-hint">citation_overlaps_*.csv</div>
+    <div class="upload-filename" id="overlap-fname"></div>
+    <button class="upload-clear" onclick="clearFile(event,'overlap')">✕</button>
+  </label>
+</div>
+
+<div class="settings-row" style="max-width:900px;margin:10px auto 0;padding:0 24px;">
+  <div class="settings-row-inner">
+    <div style="font-size:18px;flex-shrink:0">⚙️</div>
+    <div style="flex:1">
+      <div class="settings-label">Teams Report Mode</div>
+      <div class="settings-desc">Groups results by Teams area path. Enable when your CSV includes <code>area_path</code> data.</div>
+    </div>
+    <label class="toggle-switch">
+      <input type="checkbox" id="teams-report-toggle" onchange="onTeamsToggle()">
+      <span class="toggle-track"><span class="toggle-thumb"></span></span>
+    </label>
+  </div>
+</div>
+
+<div class="empty-state" id="empty-state">
+  <div style="font-size:44px;margin-bottom:14px">📂</div>
+  <h2>Upload a CSV to get started</h2>
+  <p>Each report type unlocks a different analysis view.</p>
+  <div class="onboarding-steps">
+    <div class="onboard-step">
+      <div class="onboard-num">1</div>
+      <div>
+        <div class="onboard-title">Article Quality Report</div>
+        <div class="onboard-desc">Upload <strong>evaluation_results_*.csv</strong> to see per-case article scores, verdicts, KPI cards, and the full PM action plan table.</div>
+      </div>
+    </div>
+    <div class="onboard-step">
+      <div class="onboard-num">2</div>
+      <div>
+        <div class="onboard-title">Pattern &amp; Trend Clusters</div>
+        <div class="onboard-desc">Upload <strong>trend_report_*.csv</strong> to explore recurring issue clusters grouped by root cause, with recommended actions per cluster.</div>
+      </div>
+    </div>
+    <div class="onboard-step">
+      <div class="onboard-num">3</div>
+      <div>
+        <div class="onboard-title">Duplicate Citation Finder</div>
+        <div class="onboard-desc">Upload <strong>citation_overlaps_*.csv</strong> to identify articles being cited by multiple similar cases — a sign the article may need splitting or updating.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<nav class="tabs" id="tabs">
+  <button class="tab-btn disabled" id="tab-eval" onclick="showTab('eval')">
+    <span class="tab-label-group">
+      <span class="tab-label-main">Article Quality</span>
+      <span class="tab-label-sub">Scores &amp; verdicts</span>
+    </span>
+    <span class="tab-count" id="tab-eval-count"></span>
+  </button>
+  <button class="tab-btn disabled" id="tab-trends" onclick="showTab('trends')">
+    <span class="tab-label-group">
+      <span class="tab-label-main">Pattern Clusters</span>
+      <span class="tab-label-sub">Root cause trends</span>
+    </span>
+    <span class="tab-count" id="tab-trends-count"></span>
+  </button>
+  <button class="tab-btn disabled" id="tab-overlaps" onclick="showTab('overlaps')">
+    <span class="tab-label-group">
+      <span class="tab-label-main">Duplicate Citations</span>
+      <span class="tab-label-sub">Shared article links</span>
+    </span>
+    <span class="tab-count" id="tab-overlaps-count"></span>
+  </button>
+</nav>
+
+<!-- ═══════════════════════════════ EVAL REPORT ═══════════════════════════════ -->
+<div class="tab-content" id="content-eval">
+
+<div class="eval-split">
+
+  <!-- ═══ LEFT: CHART SIDEBAR ═══ -->
+  <div class="eval-charts-pane sidebar">
+
+    <!-- GROUP 1: Executive Summary (expanded) -->
+    <div class="chart-section-group">
+      <div class="chart-section-toggle is-open" onclick="toggleChartSection(this)">
+        <span class="chart-section-toggle-title">Executive Summary</span>
+        <span class="chart-section-chevron">▼</span>
+      </div>
+      <div class="chart-section-body is-open">
+        <div class="section-badge" id="eval-badge" style="display:block;margin-bottom:10px"></div>
+        <div class="kpi-grid sidebar g4" id="exec-kpis" style="margin-bottom:8px"></div>
+        <div class="kpi-grid sidebar" id="exec-kpis2" style="margin-bottom:10px"></div>
+        <div class="chart-grid cg2" style="margin-bottom:8px">
+          <div class="chart-card"><div class="chart-title">Verdict Distribution</div><div class="chart-wrap h180"><canvas id="chart-verdict"></canvas></div></div>
+          <div class="chart-card"><div class="chart-title">Priority</div><div class="chart-wrap h180"><canvas id="chart-priority"></canvas></div></div>
+        </div>
+        <div class="chart-card">
+          <div class="chart-title">Score Band Distribution</div>
+          <div class="chart-wrap h220"><canvas id="chart-scorebands"></canvas></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- GROUP 2: Article Quality (collapsed) -->
+    <div class="chart-section-group">
+      <div class="chart-section-toggle" onclick="toggleChartSection(this)">
+        <span class="chart-section-toggle-title">Article Quality</span>
+        <span class="chart-section-chevron">▼</span>
+      </div>
+      <div class="chart-section-body">
+        <div class="kpi-grid sidebar" id="article-kpis" style="margin-bottom:10px"></div>
+        <div class="chart-card" style="margin-bottom:8px"><div class="chart-title">Relevance Verdicts</div><div class="chart-wrap h180"><canvas id="chart-rel"></canvas></div></div>
+        <div class="chart-card" style="margin-bottom:8px"><div class="chart-title">Completeness Verdicts</div><div class="chart-wrap h180"><canvas id="chart-comp"></canvas></div></div>
+        <div class="chart-card" style="margin-bottom:8px"><div class="chart-title">Validity Verdicts</div><div class="chart-wrap h180"><canvas id="chart-val"></canvas></div></div>
+        <div class="chart-card">
+          <div class="chart-title">Article Content Checklist (% of cases)</div>
+          <div id="checklist"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- GROUP 3: Case Description Quality (collapsed) -->
+    <div class="chart-section-group">
+      <div class="chart-section-toggle" onclick="toggleChartSection(this)">
+        <span class="chart-section-toggle-title">Case Description Quality</span>
+        <span class="chart-section-chevron">▼</span>
+      </div>
+      <div class="chart-section-body">
+        <div class="kpi-grid sidebar" id="kt-kpis" style="margin-bottom:10px"></div>
+        <div class="chart-card" style="margin-bottom:8px">
+          <div class="chart-title">KT Dimension Averages</div>
+          <div id="kt-bars" style="padding:6px 0"></div>
+        </div>
+        <div class="chart-card">
+          <div class="chart-title">Description Quality Verdicts</div>
+          <div class="chart-wrap h180"><canvas id="chart-kt"></canvas></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- GROUP 4: AI Response Quality (collapsed, mwea only — visibility toggled via JS) -->
+    <div class="chart-section-group" id="sec-citation" style="display:none">
+      <div class="chart-section-toggle" onclick="toggleChartSection(this)">
+        <span class="chart-section-toggle-title">AI Response Quality <span class="section-badge mwea" style="font-size:9px;vertical-align:middle">mwea</span></span>
+        <span class="chart-section-chevron">▼</span>
+      </div>
+      <div class="chart-section-body">
+        <div class="kpi-grid sidebar" id="citation-kpis" style="margin-bottom:10px"></div>
+        <div class="chart-card" style="margin-bottom:8px">
+          <div class="chart-title">Grounding Verdicts</div>
+          <div class="chart-wrap h180"><canvas id="chart-ground"></canvas></div>
+        </div>
+        <div class="chart-card" style="margin-bottom:8px">
+          <div class="chart-title">Response Quality Verdicts</div>
+          <div class="chart-wrap h180"><canvas id="chart-rq"></canvas></div>
+        </div>
+        <div class="chart-card">
+          <div class="chart-title">Response Quality Components (average)</div>
+          <div id="rq-bars" style="padding:6px 0"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- GROUP 5: Priority & Root Cause (expanded) -->
+    <div class="chart-section-group">
+      <div class="chart-section-toggle is-open" onclick="toggleChartSection(this)">
+        <span class="chart-section-toggle-title">Priority &amp; Root Cause</span>
+        <span class="chart-section-chevron">▼</span>
+      </div>
+      <div class="chart-section-body is-open">
+        <div class="kpi-grid sidebar" id="synth-kpis" style="margin-bottom:10px"></div>
+        <div class="chart-card" style="margin-bottom:8px">
+          <div class="chart-title">Root Cause Categories</div>
+          <div class="chart-wrap h260"><canvas id="chart-rc"></canvas></div>
+        </div>
+        <div class="chart-card" style="margin-bottom:8px">
+          <div class="chart-title">Avg Score by Product (top 12)</div>
+          <div class="chart-wrap h260"><canvas id="chart-product"></canvas></div>
+        </div>
+        <div class="chart-card">
+          <div class="chart-title">Cases by Area Path</div>
+          <div class="chart-wrap h220"><canvas id="chart-area"></canvas></div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- end eval-charts-pane -->
+
+  <!-- ═══ RIGHT: CASES PANE ═══ -->
+  <div class="eval-cases-pane" id="eval-cases-pane">
+    <div id="filter-chips" style="display:none;flex-wrap:wrap;gap:6px;padding:0 0 12px;align-items:center"></div>
+    <div class="section">
+      <div class="section-header">
+        <div class="section-title">Case Details</div>
+        <div class="section-badge" id="table-badge"></div>
+      </div>
+      <div class="table-controls">
+        <input type="text" class="table-search" id="table-search" placeholder="Search case #, product, verdict…" oninput="filterTable()">
+        <select class="table-filter" id="f-priority" onchange="filterTable()">
+          <option value="">All Priorities</option>
+          <option value="red">🔴 Red</option><option value="yellow">🟡 Yellow</option><option value="green">🟢 Green</option><option value="gray">⚪ Gray</option>
+        </select>
+        <select class="table-filter" id="f-verdict" onchange="filterTable()">
+          <option value="">All Verdicts</option>
+          <option value="adequate">Adequate — article fully helps</option>
+          <option value="needs_supplementation">Needs Update — article partially helps</option>
+          <option value="inadequate">Inadequate — article doesn't help</option>
+          <option value="no_citation_provided">No Article Cited</option>
+        </select>
+        <select class="table-filter" id="f-dq" onchange="filterTable()">
+          <option value="">All Description Quality</option>
+          <option value="agent_ready">🟢 Agent Ready — clear &amp; specific</option>
+          <option value="workable">🟡 Workable — vague but usable</option>
+          <option value="insufficient">🔴 Insufficient — too vague to evaluate</option>
+        </select>
+        <select class="table-filter" id="f-area" onchange="setAreaFilter(this.value)">
+          <option value="">All Area Paths</option>
+        </select>
+      </div>
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead><tr>
+            <th style="width:24px"></th>
+            <th onclick="sortTable('case_number')">Case # ↕</th>
+            <th onclick="sortTable('issue_product')">Product ↕</th>
+            <th onclick="sortTable('area_path')">Area Path ↕</th>
+            <th onclick="sortTable('primary_article_score')">Score ↕</th>
+            <th onclick="sortTable('primary_article_verdict')">Verdict ↕</th>
+            <th onclick="sortTable('synthesis_priority')">Priority ↕</th>
+            <th onclick="sortTable('dq_description_quality_score')">Description Quality ↕</th>
+          </tr></thead>
+          <tbody id="case-tbody"></tbody>
+        </table>
+        <div class="table-pagination" id="table-pagination"></div>
+      </div>
+    </div>
+  </div><!-- end eval-cases-pane -->
+
+</div><!-- end eval-split -->
+
+</div><!-- end eval -->
+
+<!-- ═══════════════════════════════ TRENDS ═══════════════════════════════ -->
+<div class="tab-content" id="content-trends">
+  <div class="section">
+    <div class="section-header"><div class="section-title">Trend Overview</div><div class="section-badge" id="trend-badge"></div></div>
+    <div class="kpi-grid g5" id="trend-kpis"></div>
+  </div>
+  <div class="section">
+    <div class="section-header"><div class="section-title">Root Cause &amp; Priority Distribution</div></div>
+    <div class="chart-grid cg2">
+      <div class="chart-card"><div class="chart-title">Cases by Root Cause Pattern</div><div class="chart-wrap h220"><canvas id="chart-trc"></canvas></div></div>
+      <div class="chart-card"><div class="chart-title">Cluster Priority Mix</div><div class="chart-wrap h220"><canvas id="chart-tpri"></canvas></div></div>
+    </div>
+  </div>
+  <div class="section">
+    <div class="section-header"><div class="section-title">Trend Clusters</div><div class="section-badge">sorted by priority · case count</div></div>
+    <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap">
+      <select class="table-filter" id="trend-f-area" onchange="renderTrends()">
+        <option value="">All Area Paths</option>
+      </select>
+    </div>
+    <div id="cluster-grid"></div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════ OVERLAPS ═══════════════════════════════ -->
+<div class="tab-content" id="content-overlaps">
+  <div class="section">
+    <div class="section-header">
+      <div class="section-title">Citation Overlap Analysis</div>
+      <div class="section-badge" id="overlap-badge"></div>
+    </div>
+    <div class="kpi-grid g3" id="overlap-kpis"></div>
+  </div>
+  <div class="section">
+    <div class="section-header"><div class="section-title">Overlap Details</div></div>
+    <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap">
+      <select class="table-filter" id="overlap-f-area" onchange="renderOverlaps()">
+        <option value="">All Area Paths</option>
+      </select>
+    </div>
+    <div id="overlap-grid"></div>
+  </div>
+</div>
+
+<script>
+// ══════════════════════════════════════════════════════════
+// STATE & UTILS
+// ══════════════════════════════════════════════════════════
+const state = { evalData: null, trendData: null, overlapData: null, activeTab: null };
+const charts = {};
+let tbl = { filtered: [], page: 0, pageSize: 30, sortKey: '_priorityOrder', sortDir: 1 };
+let spm = { sortKey: null, sortDir: 1 };
+
+const num = v => parseFloat(v) || 0;
+const pct = (n, t) => t ? ((n / t) * 100).toFixed(1) + '%' : '0%';
+const avg = arr => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
+const countVal = (arr, k, v) => arr.filter(r => String(r[k] ?? '').trim() === String(v).trim()).length;
+const isTrue = v => v === true || v === 'TRUE' || v === 'true' || v === 'True' || v === 1 || v === '1';
+const trunc = (s, n) => s && s.length > n ? s.slice(0, n) + '…' : (s || '');
+
+function scoreColor(s) {
+  if (s >= 90) return '#16a34a'; if (s >= 70) return '#65a30d';
+  if (s >= 50) return '#d97706'; return '#dc2626';
+}
+function priColor(p) {
+  return { red: '#dc2626', yellow: '#d97706', green: '#16a34a', gray: '#94a3b8' }[p] || '#94a3b8';
+}
+function priBadge(p) {
+  const cls = { red: 'b-red', yellow: 'b-yellow', green: 'b-green', gray: 'b-gray' }[p] || 'b-gray';
+  const lbl = { red: '🔴 Red', yellow: '🟡 Yellow', green: '🟢 Green', gray: '⚪ Gray' }[p] || (p || '–');
+  return `<span class="badge ${cls}">${lbl}</span>`;
+}
+function hasAiError(row) {
+  return !String(row?.ai_response || '').trim() &&
+         !String(row?.primary_article_url || '').trim() &&
+         !String(row?.citation_1_url || '').trim();
+}
+function spmPriority(row) {
+  return hasAiError(row) ? 'gray' : (row.synthesis_priority || 'gray');
+}
+function spmPriorityOrder(row) {
+  const p = spmPriority(row);
+  return p === 'red' ? 1 : p === 'yellow' ? 2 : p === 'green' ? 3 : 4;
+}
+function verdictBadge(v) {
+  const cls = { adequate: 'b-green', needs_supplementation: 'b-yellow', inadequate: 'b-red', no_citation_provided: 'b-purple' }[v] || 'b-gray';
+  return `<span class="badge ${cls}">${(v || '–').replace(/_/g, ' ')}</span>`;
+}
+function citationVerdictBadge(v) {
+  const map = { good: ['b-green', '✓ Good Article'], partial: ['b-yellow', '~ Partial'], bad: ['b-red', '✗ Poor Article'] };
+  const [cls, lbl] = map[v] || ['b-gray', (v || '–').replace(/_/g, ' ')];
+  return `<span class="badge ${cls}">${lbl}</span>`;
+}
+function actionBadge(v) {
+  const cls = { none: 'b-green', add_context: 'b-yellow', find_better_article: 'b-yellow', create_content: 'b-red' }[v] || 'b-gray';
+  const lbl = { none: 'None', add_context: 'Action Required', find_better_article: 'Find Better Article', create_content: 'Create Content' }[v] || (v || '–').replace(/_/g, ' ');
+  return `<span class="badge ${cls}">${lbl}</span>`;
+}
+function scoreChip(s) {
+  const sc = num(s); return `<span class="score-chip" style="background:${scoreColor(sc)}">${sc.toFixed(0)}</span>`;
+}
+function descQualityBadge(score) {
+  const s = num(score);
+  if (s >= 70) return `<span class="badge b-green">High</span>`;
+  if (s >= 40) return `<span class="badge b-yellow">OK</span>`;
+  return `<span class="badge b-red">Low</span>`;
+}
+// Return the last segment after the final "/" — or the original string if no "/" found
+function pathLeaf(val) {
+  if (!val) return '';
+  const s = String(val).trim();
+  const idx = Math.max(s.lastIndexOf('/'), s.lastIndexOf('\\'));
+  return idx >= 0 ? s.slice(idx + 1).trim() : s;
+}
+// Strip "Exchange Online/" prefix (and anything before it) to get the leaf segment
+function exoLeaf(ap) {
+  const marker = 'exchange online/';
+  const idx = ap.toLowerCase().indexOf(marker);
+  return idx >= 0 ? ap.slice(idx + marker.length) : ap;
+}
+// Area path chip — Exchange cases show leaf after "Exchange Online/", others truncated
+function evalAreaChip(row, maxLen) {
+  const ap = row._areaPath;
+  if (!ap) return '<span style="color:#94a3b8;font-size:10px">–</span>';
+  const isExo = (row._product || '').toLowerCase().includes('exchange');
+  if (isExo) return `<span class="area-chip">${exoLeaf(ap)}</span>`;
+  return `<span class="area-chip">${trunc(ap, maxLen)}</span>`;
+}
+function trendAreaChip(row, maxLen) {
+  const ap = row._areaPath;
+  if (!ap) return '';
+  const isExo = (row.products_affected || '').toLowerCase().includes('exchange');
+  if (isExo) return `<span class="area-chip">${exoLeaf(ap)}</span>`;
+  return `<span class="area-chip">${trunc(ap, maxLen)}</span>`;
+}
+function kpiCard(label, value, sub, barPct, barColor) {
+  const bar = barPct != null ? `<div class="kpi-bar"><div class="kpi-bar-fill" style="width:${Math.min(barPct,100)}%;background:${barColor||'var(--ms-brand)'}"></div></div>` : '';
+  return `<div class="kpi-card">
+    <div class="kpi-label">${label}</div>
+    <div class="kpi-value"${barColor && barPct != null ? ` style="color:${barColor}"` : ''}>${value}</div>
+    ${sub ? `<div class="kpi-sub">${sub}</div>` : ''}${bar}</div>`;
+}
+function scoreBandBar(label, val, maxVal) {
+  const v = parseFloat(val) || 0; const m = maxVal || 100; const color = scoreColor(v);
+  return `<div class="score-bar-row">
+    <div class="score-bar-label">${label}</div>
+    <div class="score-bar-track"><div class="score-bar-fill" style="width:${(v/m)*100}%;background:${color}"></div></div>
+    <div class="score-bar-val" style="color:${color}">${v.toFixed(1)}</div></div>`;
+}
+
+// Bullet list from semicolon-separated text
+function bulletList(text) {
+  if (!text || !text.trim()) return '<em>Not provided</em>';
+  const items = text.split(';').map(s => s.trim()).filter(Boolean);
+  if (items.length === 1) return `<span>${items[0]}</span>`;
+  return `<ul class="detail-bullets">${items.map(i => `<li>${i}</li>`).join('')}</ul>`;
+}
+function textOrEmpty(text) {
+  return (text && text.trim()) ? text.trim() : '<em>Not provided</em>';
+}
+function renderMweaResponse(text) {
+  if (!text || !text.trim()) return '<em>Not provided</em>';
+  const body = text.trim()
+    .replace(/\[(\d+)\]/g, '<sup><a href="#cit-$1" style="color:#3b82f6;text-decoration:none;font-weight:700">[$1]</a></sup>')
+    .split(/\n\n+/)
+    .map(p => `<p style="margin-bottom:10px">${p.replace(/\n/g, '<br>')}</p>`)
+    .join('');
+  return `<div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:16px 18px;font-size:13px;line-height:1.6;color:#1e293b">
+    <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.07em;color:#64748b;margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid #f1f5f9">📧 MWEA Response</div>
+    ${body}
+  </div>`;
+}
+
+// ══════════════════════════════════════════════════════════
+// CROSS-FILTER STATE
+// ══════════════════════════════════════════════════════════
+const filterState = {};
+const MATCHERS = {
+  priority:     (r, v) => spmPriority(r) === v,
+  verdict:      (r, v) => r.primary_article_verdict === v,
+  scoreBand:    (r, v) => r._scoreBand === v,
+  relVerdict:   (r, v) => r.article_relevance_verdict === v,
+  compVerdict:  (r, v) => r.article_completeness_verdict === v,
+  valVerdict:   (r, v) => r.article_validity_verdict === v,
+  dqVerdict:    (r, v) => r.dq_description_quality_verdict === v,
+  groundVerdict:(r, v) => r.citation_grounding_verdict === v,
+  rqVerdict:    (r, v) => r.rq_ai_response_quality_verdict === v,
+  rootCause:    (r, v) => (r.synthesis_root_cause_category || 'Unknown') === v,
+  product:      (r, v) => r._product === v,
+  areaPath:     (r, v) => (r._areaPath || '') === v,
+};
+const DIM_LABELS = {
+  priority:'Priority', verdict:'Verdict',
+  scoreBand:'Score Band', relVerdict:'Relevance', compVerdict:'Completeness',
+  valVerdict:'Validity', dqVerdict:'Description Quality Verdict', groundVerdict:'Grounding',
+  rqVerdict:'Response Quality', rootCause:'Root Cause', product:'Product',
+  areaPath:'Area Path',
+};
+
+// Returns data filtered by all active filters EXCEPT excludeDim (so each chart sees others' filters but not its own)
+function getFiltered(excludeDim) {
+  if (!state.evalData) return [];
+  return state.evalData.filter(row =>
+    Object.entries(filterState).every(([d, v]) => d === excludeDim || MATCHERS[d](row, v))
+  );
+}
+// Returns data filtered by ALL active filters (for KPIs and table)
+function getFilteredAll() { return getFiltered('__none__'); }
+
+function hexAlpha(hex, a) {
+  const rr = parseInt(hex.slice(1,3),16), gg = parseInt(hex.slice(3,5),16), bb = parseInt(hex.slice(5,7),16);
+  return `rgba(${rr},${gg},${bb},${a})`;
+}
+function dimColors(colors, activeVal, values) {
+  if (activeVal == null) return colors;
+  return colors.map((c, i) => values[i] === activeVal ? c : hexAlpha(c, 0.2));
+}
+
+function toggleFilter(dim, val) {
+  if (filterState[dim] === val) delete filterState[dim]; else filterState[dim] = val;
+  updateEvalView();
+}
+function clearFilter(dim) { delete filterState[dim]; updateEvalView(); }
+function clearAllFilters() { Object.keys(filterState).forEach(k => delete filterState[k]); updateEvalView(); }
+function setAreaFilter(val) { if (val) filterState.areaPath = val; else delete filterState.areaPath; updateEvalView(); }
+
+function toggleChartSection(toggleEl) {
+  const wasOpen = toggleEl.classList.contains('is-open');
+  const body = toggleEl.nextElementSibling; // .chart-section-body
+  toggleEl.classList.toggle('is-open', !wasOpen);
+  body.classList.toggle('is-open', !wasOpen);
+  // If opening, resize any Chart.js instances that were hidden at render time
+  if (!wasOpen) {
+    body.querySelectorAll('canvas').forEach(canvas => {
+      const chart = Chart.getChart(canvas);
+      if (chart) chart.resize();
+    });
+  }
+}
+
+function renderFilterChips() {
+  const el = document.getElementById('filter-chips'); if (!el) return;
+  const entries = Object.entries(filterState);
+  if (!entries.length) { el.style.display = 'none'; return; }
+  el.style.display = 'flex';
+  el.innerHTML = entries.map(([dim, val]) =>
+    `<span style="background:#eff6ff;border:1px solid #bfdbfe;color:#1d4ed8;padding:3px 6px 3px 10px;border-radius:12px;font-size:11px;font-weight:600;display:inline-flex;align-items:center;gap:4px">
+      ${DIM_LABELS[dim]}: <strong>${val.replace(/_/g,' ')}</strong>
+      <button onclick="clearFilter('${dim}')" style="background:none;border:none;cursor:pointer;color:#3b82f6;font-size:15px;line-height:1;padding:0 1px">×</button>
+    </span>`
+  ).join('') + `<button onclick="clearAllFilters()" style="background:#e2e8f0;border:none;cursor:pointer;padding:3px 10px;border-radius:12px;font-size:11px;color:#374151;font-weight:600">Clear all</button>`;
+}
+
+// ══════════════════════════════════════════════════════════
+// CHART HELPERS (cross-filter aware)
+// ══════════════════════════════════════════════════════════
+function destroyChart(id) {
+  if (charts[id]) { charts[id].destroy(); delete charts[id]; }
+  const el = document.getElementById(id);
+  if (el) { const existing = Chart.getChart(el); if (existing) existing.destroy(); }
+}
+
+// Donut — predefined values list
+function makeDonut(id, labels, values, keyFn, colors, dim) {
+  destroyChart(id);
+  const ctx = document.getElementById(id); if (!ctx) return;
+  const data = getFiltered(dim);
+  const activeVal = filterState[dim] ?? null;
+  const counts = values.map(v => data.filter(r => keyFn(r) === v).length);
+  const bgColors = dimColors(colors, activeVal, values);
+  const total = counts.reduce((a,b) => a+b, 0);
+  charts[id] = new Chart(ctx.getContext('2d'), {
+    type: 'doughnut',
+    data: { labels, datasets: [{ data: counts, backgroundColor: bgColors, borderWidth: 2, borderColor: '#fff', hoverOffset: 3 }] },
+    options: {
+      responsive: true, maintainAspectRatio: false, cutout: '60%',
+      plugins: {
+        legend: { position: 'right', labels: { font: { size: 10 }, boxWidth: 10, padding: 5,
+          generateLabels: chart => labels.map((lbl, i) => ({
+            text: lbl, fillStyle: bgColors[i], strokeStyle: '#fff', lineWidth: 1,
+            fontColor: activeVal !== null && values[i] !== activeVal ? '#b0b8c4' : '#374151',
+            datasetIndex: 0, index: i, hidden: false
+          }))
+        }},
+        tooltip: { callbacks: { label: c => ` ${c.label}: ${c.raw} (${total ? ((c.raw/total)*100).toFixed(1) : 0}%)` } }
+      },
+      onClick: (evt, els) => { if (els.length) toggleFilter(dim, values[els[0].index]); else if (activeVal !== null) clearFilter(dim); }
+    }
+  });
+}
+
+// Horizontal bar — predefined values list
+function makeHBar(id, labels, values, keyFn, colors, dim) {
+  destroyChart(id);
+  const ctx = document.getElementById(id); if (!ctx) return;
+  const data = getFiltered(dim);
+  const activeVal = filterState[dim] ?? null;
+  const counts = values.map(v => data.filter(r => keyFn(r) === v).length);
+  const bgColors = dimColors(Array.isArray(colors) ? colors : values.map(() => colors), activeVal, values);
+  charts[id] = new Chart(ctx.getContext('2d'), {
+    type: 'bar',
+    data: { labels, datasets: [{ data: counts, backgroundColor: bgColors, borderRadius: 3, barThickness: 18 }] },
+    options: {
+      indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => ` ${c.raw} cases` } } },
+      scales: { x: { beginAtZero: true, grid: { color: '#f1f5f9' }, ticks: { font: { size: 10 } } }, y: { grid: { display: false }, ticks: { font: { size: 10 } } } },
+      onClick: (evt, els) => { if (els.length) toggleFilter(dim, values[els[0].index]); else if (activeVal !== null) clearFilter(dim); }
+    }
+  });
+}
+
+// Horizontal bar — dynamic values from data (root cause, etc.)
+function makeDynHBar(id, keyFn, colorFn, dim) {
+  destroyChart(id);
+  const ctx = document.getElementById(id); if (!ctx) return;
+  const data = getFiltered(dim);
+  const activeVal = filterState[dim] ?? null;
+  const map = {}; data.forEach(r => { const v = keyFn(r)||'Unknown'; map[v]=(map[v]||0)+1; });
+  const sorted = Object.entries(map).sort((a,b)=>b[1]-a[1]);
+  const labels = sorted.map(([k])=>k), values = labels, counts = sorted.map(([,v])=>v);
+  const bgColors = sorted.map(([k]) => { const c=colorFn(k); return activeVal!==null&&k!==activeVal?hexAlpha(c,0.2):c; });
+  charts[id] = new Chart(ctx.getContext('2d'), {
+    type: 'bar',
+    data: { labels, datasets: [{ data: counts, backgroundColor: bgColors, borderRadius: 3, barThickness: 18 }] },
+    options: {
+      indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => ` ${c.raw} cases` } } },
+      scales: { x: { beginAtZero: true, grid: { color: '#f1f5f9' }, ticks: { font: { size: 10 } } }, y: { grid: { display: false }, ticks: { font: { size: 10 } } } },
+      onClick: (evt, els) => { if (els.length) toggleFilter(dim, values[els[0].index]); else if (activeVal !== null) clearFilter(dim); }
+    }
+  });
+}
+
+// Vertical bar — score bands (predefined)
+function makeVBar(id, labels, values, keyFn, colors, dim) {
+  destroyChart(id);
+  const ctx = document.getElementById(id); if (!ctx) return;
+  const data = getFiltered(dim);
+  const activeVal = filterState[dim] ?? null;
+  const counts = values.map(v => data.filter(r => keyFn(r) === v).length);
+  const bgColors = dimColors(colors, activeVal, values);
+  charts[id] = new Chart(ctx.getContext('2d'), {
+    type: 'bar',
+    data: { labels, datasets: [{ data: counts, backgroundColor: bgColors, borderRadius: 3, barThickness: 28 }] },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => ` ${c.raw} cases` } } },
+      scales: { x: { grid: { color: '#f1f5f9' }, ticks: { font: { size: 10 }, maxRotation: 20 } }, y: { beginAtZero: true, grid: { color: '#f1f5f9' }, ticks: { font: { size: 10 } } } },
+      onClick: (evt, els) => { if (els.length) toggleFilter(dim, values[els[0].index]); else if (activeVal !== null) clearFilter(dim); }
+    }
+  });
+}
+
+// Vertical bar — avg score by product (dynamic, filterable by product)
+function makeProdBar(id, dim) {
+  destroyChart(id);
+  const ctx = document.getElementById(id); if (!ctx) return;
+  const data = getFiltered(dim);
+  const activeVal = filterState[dim] ?? null;
+  const map = {}; data.forEach(r => { const k=r._product||'Unknown'; if(!map[k]) map[k]=[]; map[k].push(num(r.primary_article_score)); });
+  const sorted = Object.entries(map).map(([k,v])=>[k,avg(v),v.length]).sort((a,b)=>b[2]-a[2]).slice(0,12);
+  const labels = sorted.map(([k])=>k), values = labels;
+  const scores = sorted.map(([,s])=>parseFloat(s.toFixed(1)));
+  const bgColors = sorted.map(([k,s])=>{ const c=scoreColor(s); return activeVal!==null&&k!==activeVal?hexAlpha(c,0.2):c; });
+  charts[id] = new Chart(ctx.getContext('2d'), {
+    type: 'bar',
+    data: { labels, datasets: [{ data: scores, backgroundColor: bgColors, borderRadius: 3 }] },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => ` Avg score: ${c.raw}` } } },
+      scales: { x: { grid: { color: '#f1f5f9' }, ticks: { font: { size: 10 }, maxRotation: 30 } }, y: { beginAtZero: true, max: 100, grid: { color: '#f1f5f9' }, ticks: { font: { size: 10 } } } },
+      onClick: (evt, els) => { if (els.length) toggleFilter(dim, values[els[0].index]); else if (activeVal !== null) clearFilter(dim); }
+    }
+  });
+}
+
+// ══════════════════════════════════════════════════════════
+// CSV PARSING
+// ══════════════════════════════════════════════════════════
+const isTeamsReport = () => !!(document.getElementById('teams-report-toggle') || {}).checked;
+function applyAreaPath(row) {
+  const teamsLeaf = pathLeaf((row.area_path || '').trim());
+  row._areaPath = isTeamsReport()
+    ? teamsLeaf
+    : (row._sapLeaf || teamsLeaf);
+}
+function parseEval(text) {
+  const r = Papa.parse(text, { header: true, skipEmptyLines: true, dynamicTyping: true });
+  return r.data.map(row => {
+    const s = num(row.primary_article_score);
+    row._scoreBand = s >= 90 ? '90-100' : s >= 70 ? '70-89' : s >= 50 ? '50-69' : '0-49';
+    row._priorityOrder = spmPriorityOrder(row);
+    row._hasError = !!(row.error && String(row.error).trim());
+    row._product = row.issue_product || (row.sap_path ? String(row.sap_path).split('/')[0].trim() : 'Unknown');
+    row._sapLeaf = pathLeaf(row.sap_path || '');
+    applyAreaPath(row);
+    return row;
+  });
+}
+function parseTrend(text) {
+  const r = Papa.parse(text, { header: true, skipEmptyLines: true, dynamicTyping: true });
+  return r.data.map(row => {
+    row._priorityOrder = row.priority === 'red' ? 1 : row.priority === 'yellow' ? 2 : row.priority === 'green' ? 3 : 4;
+    const m = String(row.estimated_impact || '').match(/~(\d+)/);
+    row._impact = m ? parseInt(m[1]) : num(row.case_count);
+    row._sapLeaf = pathLeaf(row.sap_path || '');
+    applyAreaPath(row);
+    try {
+      row._repCases = JSON.parse(row.representative_cases || '[]');
+    } catch(e) {
+      row._repCases = [];
+    }
+    try {
+      row._allCases = JSON.parse(row.all_cases || '[]');
+    } catch(e) {
+      row._allCases = [];
+    }
+    try {
+      row._topCitations = JSON.parse(row.top_citations || '[]');
+      if (!Array.isArray(row._topCitations)) row._topCitations = [];
+    } catch(e) {
+      row._topCitations = [];
+    }
+    // Normalise boolean fields — CSV stores TRUE/FALSE or true/false as string
+    row._evicted = String(row.evicted || '').toLowerCase() === 'true';
+    row._syntheticTheme = String(row.synthetic_theme || '').toLowerCase() === 'true';
+    return row;
+  }).sort((a, b) => a._priorityOrder - b._priorityOrder || b.case_count - a.case_count)
+  .map((row, i) => { row._gidx = i; return row; });
+}
+function onTeamsToggle() {
+  if (state.evalData) {
+    state.evalData.forEach(applyAreaPath);
+    const evalAreaEl = document.getElementById('f-area');
+    if (evalAreaEl) while (evalAreaEl.options.length > 1) evalAreaEl.remove(1);
+    renderEval();
+  }
+  if (state.trendData) {
+    state.trendData.forEach(applyAreaPath);
+    const el = document.getElementById('trend-f-area');
+    if (el) while (el.options.length > 1) el.remove(1);
+    renderTrends();
+  }
+  if (state.overlapData) {
+    state.overlapData.forEach(applyAreaPath);
+    const el = document.getElementById('overlap-f-area');
+    if (el) while (el.options.length > 1) el.remove(1);
+    renderOverlaps();
+  }
+}
+function parseOverlaps(text) {
+  const r = Papa.parse(text, { header: true, skipEmptyLines: true, dynamicTyping: true });
+  return r.data.map(row => {
+    row._snippets = (row.issue_snippets || '').split('|').map(s => s.trim()).filter(Boolean);
+    row._cases = (row.case_numbers || '').split(';').map(s => s.trim()).filter(Boolean);
+    row._pm_actions = (row.pm_actions || '').split(';').map(s => s.trim()).filter(Boolean);
+    try { row._caseHints = JSON.parse(row.case_hints_json || '{}'); } catch(e) { row._caseHints = {}; }
+    row._sapLeaf = '';
+    applyAreaPath(row);
+    return row;
+  }).sort((a, b) => num(b.case_count) - num(a.case_count));
+}
+function isMwea(data) {
+  return data.some(r => r.citation_grounding_score !== null && r.citation_grounding_score !== undefined && String(r.citation_grounding_score).trim() !== '');
+}
+
+// ══════════════════════════════════════════════════════════
+// UPLOAD
+// ══════════════════════════════════════════════════════════
+function onDragOver(e, id) { e.preventDefault(); document.getElementById(id).classList.add('drag-over'); }
+function onDragLeave(id) { document.getElementById(id).classList.remove('drag-over'); }
+function onDrop(e, type) {
+  e.preventDefault();
+  const cardId = type === 'eval' ? 'eval-card' : type === 'trend' ? 'trend-card' : 'overlap-card';
+  document.getElementById(cardId).classList.remove('drag-over');
+  const f = e.dataTransfer.files[0]; if (f) readFile(f, type);
+}
+function handleFile(e, type) { if (e.target.files[0]) readFile(e.target.files[0], type); }
+function readFile(file, type) {
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      if (type === 'eval') {
+        state.evalData = parseEval(e.target.result);
+        ['spm-f-area', 'f-area'].forEach(id => {
+          const el = document.getElementById(id);
+          if (el) while (el.options.length > 1) el.remove(1);
+        });
+        setLoaded('eval', file.name, state.evalData.length + ' cases');
+        renderEval();
+      } else if (type === 'trend') {
+        state.trendData = parseTrend(e.target.result);
+        const tAreaEl = document.getElementById('trend-f-area');
+        if (tAreaEl) while (tAreaEl.options.length > 1) tAreaEl.remove(1);
+        setLoaded('trend', file.name, state.trendData.length + ' clusters');
+        renderTrends();
+      } else {
+        state.overlapData = parseOverlaps(e.target.result);
+        setLoaded('overlap', file.name, state.overlapData.length + ' overlaps');
+        renderOverlaps();
+      }
+      updateTabs();
+    } catch (err) { alert('Error parsing CSV: ' + err.message); console.error(err); }
+  };
+  reader.readAsText(file, 'UTF-8');
+}
+function setLoaded(type, fname, sub) {
+  const ids = { eval: ['eval-card','eval-icon','eval-fname','eval-hint'], trend: ['trend-card','trend-icon','trend-fname','trend-hint'], overlap: ['overlap-card','overlap-icon','overlap-fname','overlap-hint'] };
+  const [cardId, iconId, fnameId, hintId] = ids[type];
+  document.getElementById(cardId).classList.add('loaded');
+  document.getElementById(iconId).textContent = '✅';
+  document.getElementById(fnameId).textContent = fname;
+  document.getElementById(hintId).textContent = sub;
+  const tabCountMap = { eval: 'tab-eval-count', trend: 'tab-trends-count', overlap: 'tab-overlaps-count' };
+  const tabCountEl = document.getElementById(tabCountMap[type]);
+  if (tabCountEl && sub) tabCountEl.textContent = sub;
+}
+function clearFile(e, type) {
+  e.preventDefault(); e.stopPropagation();
+  const defaults = { eval: ['📋','evaluation_results_*.csv'], trend: ['📈','trend_report_*.csv'], overlap: ['🔗','citation_overlaps_*.csv'] };
+  const ids = { eval: ['eval-card','eval-icon','eval-fname','eval-hint','eval-input'], trend: ['trend-card','trend-icon','trend-fname','trend-hint','trend-input'], overlap: ['overlap-card','overlap-icon','overlap-fname','overlap-hint','overlap-input'] };
+  const [cardId, iconId, fnameId, hintId, inputId] = ids[type];
+  const [icon, hint] = defaults[type];
+  document.getElementById(cardId).classList.remove('loaded');
+  document.getElementById(iconId).textContent = icon;
+  document.getElementById(fnameId).textContent = '';
+  document.getElementById(hintId).textContent = hint;
+  document.getElementById(inputId).value = '';
+  if (type === 'eval') state.evalData = null;
+  else if (type === 'trend') state.trendData = null;
+  else state.overlapData = null;
+  const tabCountMap = { eval: 'tab-eval-count', trend: 'tab-trends-count', overlap: 'tab-overlaps-count' };
+  const tabCountEl = document.getElementById(tabCountMap[type]);
+  if (tabCountEl) tabCountEl.textContent = '';
+  updateTabs();
+}
+function updateTabs() {
+  const hasEval = !!state.evalData, hasTrend = !!state.trendData, hasOverlap = !!state.overlapData;
+  const hasSome = hasEval || hasTrend || hasOverlap;
+  document.getElementById('empty-state').style.display = hasSome ? 'none' : 'block';
+  document.getElementById('tabs').classList.toggle('visible', hasSome);
+  const evalBtn = document.getElementById('tab-eval');
+  evalBtn.classList.toggle('disabled', !hasEval);
+  evalBtn.classList.toggle('has-data', hasEval);
+  const tBtn = document.getElementById('tab-trends');
+  tBtn.classList.toggle('disabled', !hasTrend);
+  tBtn.classList.toggle('has-data', hasTrend);
+  const oBtn = document.getElementById('tab-overlaps');
+  oBtn.classList.toggle('disabled', !hasOverlap);
+  oBtn.classList.toggle('has-data', hasOverlap);
+
+  if (state.activeTab === 'eval' && !hasEval) state.activeTab = null;
+  if (state.activeTab === 'trends' && !hasTrend) state.activeTab = null;
+  if (state.activeTab === 'overlaps' && !hasOverlap) state.activeTab = null;
+  if (!state.activeTab && hasSome) {
+    state.activeTab = hasEval ? 'eval' : hasTrend ? 'trends' : 'overlaps';
+  }
+  if (state.activeTab) showTab(state.activeTab);
+}
+function showTab(tab) {
+  if (tab === 'eval' && !state.evalData) return;
+  if (tab === 'trends' && !state.trendData) return;
+  if (tab === 'overlaps' && !state.overlapData) return;
+  state.activeTab = tab;
+  ['eval', 'trends', 'overlaps'].forEach(t => {
+    document.getElementById('content-' + t).classList.toggle('active', t === tab);
+    document.getElementById('tab-' + t).classList.toggle('active', t === tab);
+  });
+}
+
+// ══════════════════════════════════════════════════════════
+// CASE DETAIL PANEL
+// ══════════════════════════════════════════════════════════
+function buildDetailPanel(row, mweaMode, isSpmTab) {
+  const pmActions = row.synthesis_pm_actions || '';
+  const priReason = row.synthesis_priority_reason || '';
+  const finalRec = row.final_recommendation || '';
+  const rqAnalysis = row.rq_response_quality_analysis || '';
+  const gndAnalysis = row.rq_groundedness_analysis || '';
+  const resAnalysis = row.rq_issue_resolution_analysis || '';
+  const weaknesses = row.rq_quality_weaknesses || '';
+  const improvements = row.rq_improvement_suggestions || '';
+  const dqMissing = row.dq_missing_elements || '';
+  const dqSuggestions = row.dq_improvement_suggestions || '';
+  const artMissing = row.article_completeness_missing_elements || '';
+  const artIssues = row.article_validity_potential_issues || '';
+  const url = row.primary_article_url || '';
+  const warn = isTrue(row.dq_evaluation_reliability_warning);
+  const isExo = (row._product || '').toLowerCase().includes('exchange');
+
+  let html = `<div class="detail-panel">`;
+
+  if (isSpmTab) {
+    // ── SPM tab: show case context at top ──────────────────────
+    // Customer description quality warning (replaces KT warning)
+    if (warn) html += `<div class="detail-block detail-full-row"><div class="detail-warning">⚠️ Customer description scored low — evaluation reliability may be reduced.</div></div>`;
+
+    // PM Actions — full width, most important
+    html += `<div class="detail-block detail-full-row">
+      <div class="detail-label">💡 PM Actions</div>
+      <div class="detail-text">${bulletList(pmActions)}</div>
+    </div>`;
+
+    // Case title
+    if (row.case_number) {
+      html += `<div class="detail-block">
+        <div class="detail-label">🏷️ Case Title</div>
+        <div class="detail-text" style="font-family:monospace">${row.case_number}</div>
+      </div>`;
+    }
+
+    // Customer description quality badge
+    html += `<div class="detail-block">
+      <div class="detail-label">📊 Customer Description</div>
+      <div class="detail-text">${descQualityBadge(row.dq_description_quality_score)} <span style="color:#64748b;font-size:11px">(score: ${num(row.dq_description_quality_score).toFixed(0)})</span></div>
+    </div>`;
+
+    // Problem description
+    if ((row.issue_description || '').trim()) {
+      html += `<div class="detail-block detail-full-row">
+        <div class="detail-label">📝 Problem Description</div>
+        <div class="detail-text" style="white-space:pre-wrap">${(row.issue_description || '').trim()}</div>
+      </div>`;
+    }
+
+    // MWEA Response
+    if ((row.ai_response || '').trim()) {
+      html += `<div class="detail-block detail-full-row">
+        <div class="detail-label">🤖 MWEA Response</div>
+        <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;margin-top:4px">
+          <div style="background:#f0fdf4;border-bottom:1px solid #e2e8f0;padding:9px 14px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+            <div style="width:30px;height:30px;border-radius:50%;background:#bbf7d0;display:flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0">🤖</div>
+            <div style="flex:1;min-width:0">
+              <div style="font-size:12px;font-weight:700;color:#1e293b">MWEA Agent</div>
+              <div style="font-size:11px;color:#64748b">AI Response${row.case_number ? ` · Case <span style="font-family:monospace">${row.case_number}</span>` : ''}</div>
+            </div>
+            ${row._product ? `<span style="background:#f0f9ff;color:#0369a1;border:1px solid #bae6fd;border-radius:10px;padding:2px 8px;font-size:10px;font-weight:600;flex-shrink:0">${row._product}</span>` : ''}
+          </div>
+          <div style="padding:12px 14px">${renderMweaResponse(row.ai_response)}</div>
+        </div>
+      </div>`;
+    }
+
+    // Area Path
+    if (row._areaPath) {
+      const apDisplay = isExo ? exoLeaf(row._areaPath) : row._areaPath;
+      html += `<div class="detail-block">
+        <div class="detail-label">📍 Area Path</div>
+        <div class="detail-text"><span class="area-chip">${apDisplay}</span></div>
+      </div>`;
+    }
+
+    // Priority Reason
+    html += `<div class="detail-block">
+      <div class="detail-label">🎯 Priority Reason</div>
+      <div class="detail-text">${textOrEmpty(priReason)}</div>
+    </div>`;
+
+    // Final Recommendation
+    html += `<div class="detail-block">
+      <div class="detail-label">📋 Final Recommendation</div>
+      <div class="detail-text">${textOrEmpty(finalRec)}</div>
+    </div>`;
+
+    if (mweaMode) {
+      if (rqAnalysis.trim()) html += `<div class="detail-block"><div class="detail-label">📝 Response Quality Analysis</div><div class="detail-text">${rqAnalysis}</div></div>`;
+      if (gndAnalysis.trim()) html += `<div class="detail-block"><div class="detail-label">🔗 Groundedness Analysis</div><div class="detail-text">${gndAnalysis}</div></div>`;
+      if (resAnalysis.trim()) html += `<div class="detail-block"><div class="detail-label">✅ Issue Resolution Analysis</div><div class="detail-text">${resAnalysis}</div></div>`;
+      if (weaknesses.trim()) html += `<div class="detail-block"><div class="detail-label">⚠️ Quality Weaknesses</div><div class="detail-text">${bulletList(weaknesses)}</div></div>`;
+      if (improvements.trim()) html += `<div class="detail-block"><div class="detail-label">🔧 Response Improvement Suggestions</div><div class="detail-text">${bulletList(improvements)}</div></div>`;
+    }
+
+    // Citations with weights — sorted by score, numbered with [N] reference
+    const citations = [];
+    for (let i = 1; i <= 10; i++) {
+      const cUrl = (row[`citation_${i}_url`] || '').trim();
+      if (!cUrl) break;
+      citations.push({ refNum: i, url: cUrl, score: num(row[`citation_${i}_score`]), verdict: (row[`citation_${i}_verdict`] || '').trim(), coverage: num(row[`citation_${i}_coverage`]), isPrimary: !!(url && cUrl === url) });
+    }
+    const sortedCitations = [...citations].sort((a, b) => b.score - a.score);
+    if (sortedCitations.length) {
+      html += `<div class="detail-block detail-full-row">
+        <div class="detail-label">🔗 Citations (${sortedCitations.length})</div>
+        <div style="font-size:10px;color:#94a3b8;margin:2px 0 6px">Sorted by relevance score. Reference numbers [N] correspond to citations in the MWEA response above.${sortedCitations.length > 1 ? ' Coverage % shows how much of the AI response each article supports — citations can overlap.' : ''}</div>
+        ${sortedCitations.map(c => `<div id="cit-${c.refNum}" style="background:#f8fafc;border-radius:6px;padding:7px 10px;margin-top:5px;border-left:3px solid ${scoreColor(c.score)}">
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+            <span style="background:#e0f2fe;color:#0369a1;border-radius:4px;padding:1px 6px;font-size:10px;font-weight:800;font-family:monospace;flex-shrink:0">[${c.refNum}]</span>
+            ${c.isPrimary ? `<span class="badge b-yellow" style="flex-shrink:0">⭐ Primary</span>` : ''}
+            <a href="${c.url}" target="_blank" class="detail-link" style="flex:1;min-width:0">${trunc(c.url, 80)}</a>
+            <span class="score-chip" style="background:${scoreColor(c.score)}">${c.score.toFixed(0)}</span>
+            ${c.verdict ? citationVerdictBadge(c.verdict) : ''}
+          </div>
+          ${c.coverage ? `<div style="font-size:11px;color:#64748b;margin-top:3px" title="How much of the AI response this article covers. Each citation is scored independently — totals across citations can exceed 100%.">Coverage: ${c.coverage.toFixed(0)}%</div>` : ''}
+        </div>`).join('')}
+      </div>`;
+    }
+
+    // Article gaps
+    if (artMissing.trim()) html += `<div class="detail-block"><div class="detail-label">📄 Primary Article — Missing Elements</div><div class="detail-text"><div style="font-size:10px;color:#94a3b8;margin-bottom:4px">(applies to the ⭐ primary article above)</div>${bulletList(artMissing)}</div></div>`;
+    if (artIssues.trim()) html += `<div class="detail-block"><div class="detail-label">🚨 Article Potential Issues</div><div class="detail-text">${bulletList(artIssues)}</div></div>`;
+
+  } else {
+    // ── Eval tab: original full display with KT items ──────────
+    if (warn) html += `<div class="detail-block detail-full-row"><div class="detail-warning">⚠️ Low KT confidence — description quality below 40. Evaluation reliability may be reduced.</div></div>`;
+
+    // PM Actions — full width, most important
+    html += `<div class="detail-block detail-full-row">
+      <div class="detail-label">💡 PM Actions</div>
+      <div class="detail-text">${bulletList(pmActions)}</div>
+    </div>`;
+
+    // Problem Description
+    if ((row.issue_description || '').trim()) {
+      html += `<div class="detail-block detail-full-row">
+        <div class="detail-label">📝 Problem Description</div>
+        <div class="detail-text" style="white-space:pre-wrap">${(row.issue_description || '').trim()}</div>
+      </div>`;
+    }
+
+    // MWEA Response
+    if ((row.ai_response || '').trim()) {
+      html += `<div class="detail-block detail-full-row">
+        <div class="detail-label">🤖 MWEA Response</div>
+        <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;margin-top:4px">
+          <div style="background:#f0fdf4;border-bottom:1px solid #e2e8f0;padding:9px 14px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+            <div style="width:30px;height:30px;border-radius:50%;background:#bbf7d0;display:flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0">🤖</div>
+            <div style="flex:1;min-width:0">
+              <div style="font-size:12px;font-weight:700;color:#1e293b">MWEA Agent</div>
+              <div style="font-size:11px;color:#64748b">AI Response${row.case_number ? ` · Case <span style="font-family:monospace">${row.case_number}</span>` : ''}</div>
+            </div>
+            ${row._product ? `<span style="background:#f0f9ff;color:#0369a1;border:1px solid #bae6fd;border-radius:10px;padding:2px 8px;font-size:10px;font-weight:600;flex-shrink:0">${row._product}</span>` : ''}
+          </div>
+          <div style="padding:12px 14px">${renderMweaResponse(row.ai_response)}</div>
+        </div>
+      </div>`;
+    }
+
+    // Area Path
+    if (row._areaPath) {
+      const apDisplay = isExo ? exoLeaf(row._areaPath) : row._areaPath;
+      html += `<div class="detail-block">
+        <div class="detail-label">📍 Area Path</div>
+        <div class="detail-text"><span class="area-chip">${apDisplay}</span></div>
+      </div>`;
+    }
+
+    // Priority Reason
+    html += `<div class="detail-block">
+      <div class="detail-label">🎯 Priority Reason</div>
+      <div class="detail-text">${textOrEmpty(priReason)}</div>
+    </div>`;
+
+    // Final Recommendation
+    html += `<div class="detail-block">
+      <div class="detail-label">📋 Final Recommendation</div>
+      <div class="detail-text">${textOrEmpty(finalRec)}</div>
+    </div>`;
+
+    if (mweaMode) {
+      // Response Quality Analysis
+      if (rqAnalysis.trim()) {
+        html += `<div class="detail-block">
+          <div class="detail-label">📝 Response Quality Analysis</div>
+          <div class="detail-text">${rqAnalysis}</div>
+        </div>`;
+      }
+      // Groundedness Analysis
+      if (gndAnalysis.trim()) {
+        html += `<div class="detail-block">
+          <div class="detail-label">🔗 Groundedness Analysis</div>
+          <div class="detail-text">${gndAnalysis}</div>
+        </div>`;
+      }
+      // Issue Resolution Analysis
+      if (resAnalysis.trim()) {
+        html += `<div class="detail-block">
+          <div class="detail-label">✅ Issue Resolution Analysis</div>
+          <div class="detail-text">${resAnalysis}</div>
+        </div>`;
+      }
+      // Weaknesses
+      if (weaknesses.trim()) {
+        html += `<div class="detail-block">
+          <div class="detail-label">⚠️ Quality Weaknesses</div>
+          <div class="detail-text">${bulletList(weaknesses)}</div>
+        </div>`;
+      }
+      // Improvement Suggestions
+      if (improvements.trim()) {
+        html += `<div class="detail-block">
+          <div class="detail-label">🔧 Response Improvement Suggestions</div>
+          <div class="detail-text">${bulletList(improvements)}</div>
+        </div>`;
+      }
+    }
+
+    // DQ Missing Elements
+    if (dqMissing.trim()) {
+      html += `<div class="detail-block">
+        <div class="detail-label">❓ Description Missing Elements</div>
+        <div class="detail-text">${bulletList(dqMissing)}</div>
+      </div>`;
+    }
+    if (dqSuggestions.trim()) {
+      html += `<div class="detail-block">
+        <div class="detail-label">📌 Description Improvement Suggestions</div>
+        <div class="detail-text">${bulletList(dqSuggestions)}</div>
+      </div>`;
+    }
+
+    // Article gaps
+    if (artMissing.trim()) {
+      html += `<div class="detail-block">
+        <div class="detail-label">📄 Primary Article — Missing Elements</div>
+        <div class="detail-text">${bulletList(artMissing)}</div>
+      </div>`;
+    }
+    if (artIssues.trim()) {
+      html += `<div class="detail-block">
+        <div class="detail-label">🚨 Article Potential Issues</div>
+        <div class="detail-text">${bulletList(artIssues)}</div>
+      </div>`;
+    }
+
+    // Citations with weights — sorted by score, numbered with [N] reference
+    const citations = [];
+    for (let i = 1; i <= 10; i++) {
+      const cUrl = (row[`citation_${i}_url`] || '').trim();
+      if (!cUrl) break;
+      citations.push({ refNum: i, url: cUrl, score: num(row[`citation_${i}_score`]), verdict: (row[`citation_${i}_verdict`] || '').trim(), coverage: num(row[`citation_${i}_coverage`]), isPrimary: !!(url && cUrl === url) });
+    }
+    const sortedCitations = [...citations].sort((a, b) => b.score - a.score);
+    if (sortedCitations.length) {
+      html += `<div class="detail-block detail-full-row">
+        <div class="detail-label">🔗 Citations (${sortedCitations.length})</div>
+        <div style="font-size:10px;color:#94a3b8;margin:2px 0 6px">Sorted by relevance score. Reference numbers [N] correspond to citations in the MWEA response above.${sortedCitations.length > 1 ? ' Coverage % shows how much of the AI response each article supports — citations can overlap.' : ''}</div>
+        ${sortedCitations.map(c => `<div id="cit-${c.refNum}" style="background:#f8fafc;border-radius:6px;padding:7px 10px;margin-top:5px;border-left:3px solid ${scoreColor(c.score)}">
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+            <span style="background:#e0f2fe;color:#0369a1;border-radius:4px;padding:1px 6px;font-size:10px;font-weight:800;font-family:monospace;flex-shrink:0">[${c.refNum}]</span>
+            ${c.isPrimary ? `<span class="badge b-yellow" style="flex-shrink:0">⭐ Primary</span>` : ''}
+            <a href="${c.url}" target="_blank" class="detail-link" style="flex:1;min-width:0">${trunc(c.url, 80)}</a>
+            <span class="score-chip" style="background:${scoreColor(c.score)}">${c.score.toFixed(0)}</span>
+            ${c.verdict ? citationVerdictBadge(c.verdict) : ''}
+          </div>
+          ${c.coverage ? `<div style="font-size:11px;color:#64748b;margin-top:3px" title="How much of the AI response this article covers. Each citation is scored independently — totals across citations can exceed 100%.">Coverage: ${c.coverage.toFixed(0)}%</div>` : ''}
+        </div>`).join('')}
+      </div>`;
+    } else if (url.trim()) {
+      html += `<div class="detail-block detail-full-row">
+        <div class="detail-label">🔗 Cited Article</div>
+        <a href="${url}" target="_blank" class="detail-link">${url}</a>
+      </div>`;
+    }
+  } // end else (eval tab)
+
+  html += `</div>`;
+  return html;
+}
+
+function toggleDetail(btn, caseIdx, tableBodyId, mweaMode) {
+  const tbody = document.getElementById(tableBodyId);
+  const dataRow = tbody.querySelector(`tr[data-idx="${caseIdx}"]`);
+  const existing = tbody.querySelector(`tr.detail-row[data-idx="${caseIdx}"]`);
+  if (existing) {
+    existing.remove();
+    dataRow.classList.remove('expanded');
+    btn.classList.remove('open');
+    btn.textContent = '▶';
+  } else {
+    // Close any other open detail
+    tbody.querySelectorAll('tr.detail-row').forEach(r => r.remove());
+    tbody.querySelectorAll('tr.data-row.expanded').forEach(r => r.classList.remove('expanded'));
+    tbody.querySelectorAll('.expand-btn.open').forEach(b => { b.classList.remove('open'); b.textContent = '▶'; });
+
+    const row = state.evalData[caseIdx];
+    const detailTr = document.createElement('tr');
+    detailTr.className = 'detail-row';
+    detailTr.dataset.idx = caseIdx;
+    const isSpmTab = tableBodyId === 'spm-table-body';
+    const cols = isSpmTab ? 9 : 9;
+    detailTr.innerHTML = `<td colspan="${cols}">${buildDetailPanel(row, mweaMode, isSpmTab)}</td>`;
+    dataRow.after(detailTr);
+    dataRow.classList.add('expanded');
+    btn.classList.add('open');
+    btn.textContent = '▶';
+  }
+}
+
+// ══════════════════════════════════════════════════════════
+// RENDER SPM ACTIONS
+// ══════════════════════════════════════════════════════════
+function renderSPM() {
+  const data = state.evalData; if (!data) return;
+  const n = data.length; // always full count for alert/KPIs
+  const mwea = isMwea(data);
+
+  function matchesSpmScoreRange(row, range) {
+    if (!range) return true;
+    const score = num(row.primary_article_score);
+    if (range === '0-20') return score >= 0 && score <= 20;
+    if (range === '21-40') return score >= 21 && score <= 40;
+    if (range === '41-60') return score >= 41 && score <= 60;
+    if (range === '60-100') return score >= 60 && score <= 100;
+    return true;
+  }
+
+  // Populate area filter (once, on first render)
+  const areaSelectEl = document.getElementById('spm-f-area');
+  if (areaSelectEl && areaSelectEl.options.length <= 1) {
+    const areas = [...new Set(data.map(r => r._areaPath).filter(Boolean))].sort();
+    areas.forEach(a => { const o = document.createElement('option'); o.value = a; o.textContent = a; areaSelectEl.appendChild(o); });
+  }
+
+  // Apply local filters
+  const searchVal = (document.getElementById('spm-search') || {}).value || '';
+  const fpVal = (document.getElementById('spm-f-priority') || {}).value || '';
+  const fsVal = (document.getElementById('spm-f-score') || {}).value || '';
+  const faVal = (areaSelectEl || {}).value || '';
+  const fdqVal = (document.getElementById('spm-f-dq') || {}).value || '';
+  const filtered = data.filter(r =>
+    (!fpVal || spmPriority(r) === fpVal) &&
+    matchesSpmScoreRange(r, fsVal) &&
+    (!faVal || r._areaPath === faVal) &&
+    (!fdqVal || r.dq_description_quality_verdict === fdqVal) &&
+    (!searchVal || String(r.case_number || '').includes(searchVal) || (r._areaPath || '').toLowerCase().includes(searchVal.toLowerCase()))
+  );
+
+  const redN = data.filter(r => spmPriority(r) === 'red').length;
+  const yelN = data.filter(r => spmPriority(r) === 'yellow').length;
+  const grnN = data.filter(r => spmPriority(r) === 'green').length;
+  const errN = data.filter(r => hasAiError(r)).length;
+  // Alert
+  const alertEl = document.getElementById('spm-alert');
+  if (redN > 0) {
+    alertEl.innerHTML = `<div class="alert-banner alert-red">🚨 <strong>${redN} red-priority case${redN > 1 ? 's' : ''}</strong> require immediate PM action${errN > 0 ? ` (${errN} AI-error case${errN > 1 ? 's' : ''} excluded — no MWEA response received)` : ''} — articles need replacement or new content must be created.</div>`;
+  } else if (yelN > 0) {
+    alertEl.innerHTML = `<div class="alert-banner alert-yellow">⚠️ <strong>${yelN} yellow-priority case${yelN > 1 ? 's' : ''}</strong> need PM review${errN > 0 ? ` (${errN} AI-error case${errN > 1 ? 's' : ''} excluded)` : ''}.</div>`;
+  } else {
+    alertEl.innerHTML = `<div class="alert-banner alert-green">✅ No red-priority cases. All ${n - errN} evaluated cases are green or yellow${errN > 0 ? ` (${errN} AI-error case${errN > 1 ? 's' : ''} excluded from priority counts)` : ''}.</div>`;
+  }
+
+  // KPIs
+  document.getElementById('spm-kpis').innerHTML = [
+    `<div class="kpi-card"><div class="kpi-label">🔴 Immediate Action</div><div class="kpi-value c-red">${redN}</div><div class="kpi-sub">${pct(redN,n)} — critical article gaps</div></div>`,
+    `<div class="kpi-card"><div class="kpi-label">🟡 Needs Review</div><div class="kpi-value c-yellow">${yelN}</div><div class="kpi-sub">${pct(yelN,n)} — supplementation needed</div></div>`,
+    `<div class="kpi-card" title="Cases with no MWEA response, article URL or citations — excluded from priority counts"><div class="kpi-label">⚠️ AI Errors</div><div class="kpi-value c-gray">${errN}</div><div class="kpi-sub">excluded from priority counts</div></div>`,
+  ].join('');
+  // Sort filtered: by spm.sortKey if set, otherwise by priority then score asc
+  const sorted = [...filtered].sort((a, b) => {
+    if (spm.sortKey) {
+      const sk = spm.sortKey;
+      if (sk === '_priorityOrder') return (spmPriorityOrder(a) - spmPriorityOrder(b)) * spm.sortDir;
+      const av = a[sk], bv = b[sk];
+      if (typeof av === 'number') return (av - bv) * spm.sortDir;
+      return String(av||'').localeCompare(String(bv||'')) * spm.sortDir;
+    }
+    const aOrder = spmPriorityOrder(a);
+    const bOrder = spmPriorityOrder(b);
+    if (aOrder !== bOrder) return aOrder - bOrder;
+    return num(a.primary_article_score) - num(b.primary_article_score);
+  });
+
+  const fn = filtered.length;
+  document.getElementById('spm-table-badge').textContent = fn + (fn < n ? ' of ' + n : '') + ' cases';
+  const rows = sorted.map(row => {
+    const idx = data.indexOf(row);
+    const pm = row.synthesis_pm_actions || '';
+    const preview = pm.trim() ? trunc(pm.replace(/;/g, ' ·'), 80) : null;
+    const pmTitle = (pm.trim() || 'No PM actions recorded').replace(/"/g, '&quot;');
+    const areaHtml = evalAreaChip(row, 24);
+    const citedUrl = (row.primary_article_url || '').trim();
+    return `<tr class="data-row" data-idx="${idx}">
+      <td><button class="expand-btn" onclick="toggleDetail(this,${idx},'spm-table-body',${mwea})" title="Show detail">▶</button></td>
+      <td>${priBadge(spmPriority(row))}</td>
+      <td style="font-family:monospace;font-size:11px">${row.case_number || '–'}</td>
+      <td>${trunc(row._product || '–', 22)}</td>
+      <td>${areaHtml}</td>
+      <td>${scoreChip(row.primary_article_score)}</td>
+      <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${citedUrl ? `<a href="${citedUrl}" target="_blank" class="detail-link" style="font-size:11px">${trunc(citedUrl, 40)}</a>` : '<span style="color:#94a3b8">—</span>'}</td>
+      <td class="${preview ? 'pm-preview' : 'pm-empty'}" title="${pmTitle}">${preview || 'No PM actions recorded'}</td>
+    </tr>`;
+  }).join('');
+  document.getElementById('spm-table-body').innerHTML = rows || '<tr><td colspan="8" style="text-align:center;color:#94a3b8;padding:20px">No cases</td></tr>';
+}
+
+// ══════════════════════════════════════════════════════════
+// RENDER EVAL REPORT
+// ══════════════════════════════════════════════════════════
+function renderEval() {
+  if (!state.evalData) return;
+  // Reset text/select filters on first load only
+  document.getElementById('table-search').value = '';
+  document.getElementById('f-priority').value = '';
+  document.getElementById('f-verdict').value = '';
+  // Setup citation section visibility once
+  document.getElementById('sec-citation').style.display = isMwea(state.evalData) ? '' : 'none';
+  updateEvalView();
+}
+
+// Called on every filter change — re-renders everything using current filterState
+function updateEvalView() {
+  const allData = state.evalData; if (!allData) return;
+  const data = getFilteredAll(); // KPIs & static elements use all-filtered data
+  const n = data.length;
+  const mwea = isMwea(allData);
+
+  document.getElementById('eval-badge').textContent = n + ' of ' + allData.length + ' cases';
+  renderFilterChips();
+
+  // KPI cards (respond to filters)
+  const adequate = countVal(data, 'primary_article_verdict', 'adequate');
+  const avgScore = n ? avg(data.map(r => num(r.primary_article_score))) : 0;
+  const redN = data.filter(r => spmPriority(r) === 'red').length;
+  const grayN = data.filter(r => spmPriority(r) === 'gray').length;
+  document.getElementById('exec-kpis').innerHTML = [
+    kpiCard('Cases (filtered)', n, 'of ' + allData.length + ' total', null, null),
+    kpiCard('Avg Overall Score', avgScore.toFixed(1), 'out of 100', avgScore, scoreColor(avgScore)),
+    kpiCard('Adequacy Rate', pct(adequate, n), adequate + ' adequate', (adequate/n)*100, '#16a34a'),
+  ].join('');
+  document.getElementById('exec-kpis2').innerHTML = [
+    `<div class="kpi-card"><div class="kpi-label">🔴 Red Priority</div><div class="kpi-value c-red">${redN}</div><div class="kpi-sub">${pct(redN,n)} — immediate action</div></div>`,
+    `<div class="kpi-card"><div class="kpi-label">⚪ Gray Priority</div><div class="kpi-value c-gray">${grayN}</div><div class="kpi-sub">${pct(grayN,n)} — no AI response provided</div></div>`,
+    kpiCard('Low Desc. Quality Confidence', data.filter(r => isTrue(r.dq_evaluation_reliability_warning)).length, 'reliability warnings', null, null),
+    kpiCard('Avg Processing', n ? (avg(data.map(r => num(r.processing_time_ms)))/1000).toFixed(1) + 's' : '–', 'per case', null, null),
+  ].join('');
+
+  // Charts — each uses getFiltered(dim) internally
+  makeDonut('chart-verdict',
+    ['Adequate','Needs Supplement','Inadequate','No Citation'],
+    ['adequate','needs_supplementation','inadequate','no_citation_provided'],
+    r => r.primary_article_verdict,
+    ['#16a34a','#d97706','#dc2626','#7c3aed'], 'verdict');
+
+  makeDonut('chart-priority',
+    ['🔴 Red','🟡 Yellow','🟢 Green','⚪ Gray'],
+    ['red','yellow','green','gray'],
+    r => spmPriority(r),
+    ['#dc2626','#d97706','#16a34a','#94a3b8'], 'priority');
+
+  makeVBar('chart-scorebands',
+    ['90-100 Excellent','70-89 Good','50-69 Needs Work','0-49 Critical'],
+    ['90-100','70-89','50-69','0-49'],
+    r => r._scoreBand,
+    ['#16a34a','#65a30d','#d97706','#dc2626'], 'scoreBand');
+
+  // Article quality KPIs
+  const avgR = n ? avg(data.map(r => num(r.article_relevance_score))) : 0;
+  const avgC = n ? avg(data.map(r => num(r.article_completeness_score))) : 0;
+  const avgV = n ? avg(data.map(r => num(r.article_validity_score))) : 0;
+  document.getElementById('article-kpis').innerHTML = [
+    kpiCard('Avg Relevance', avgR.toFixed(1), '40% weight', avgR, '#3b82f6'),
+    kpiCard('Avg Completeness', avgC.toFixed(1), '30% weight', avgC, '#3b82f6'),
+    kpiCard('Avg Validity', avgV.toFixed(1), '30% weight', avgV, '#3b82f6'),
+  ].join('');
+
+  makeDonut('chart-rel',
+    ['Excellent','Good','Partial','Poor','Irrelevant'],
+    ['excellent','good','partial','poor','irrelevant'],
+    r => r.article_relevance_verdict,
+    ['#16a34a','#65a30d','#d97706','#f97316','#dc2626'], 'relVerdict');
+
+  makeDonut('chart-comp',
+    ['Complete','Mostly Complete','Incomplete','Severely Lacking'],
+    ['complete','mostly_complete','incomplete','severely_lacking'],
+    r => r.article_completeness_verdict,
+    ['#16a34a','#65a30d','#d97706','#dc2626'], 'compVerdict');
+
+  makeDonut('chart-val',
+    ['Valid','Likely Valid','Uncertain','Likely Invalid','Invalid'],
+    ['valid','likely_valid','uncertain','likely_invalid','invalid'],
+    r => r.article_validity_verdict,
+    ['#16a34a','#65a30d','#d97706','#f97316','#dc2626'], 'valVerdict');
+
+  // Content checklist (uses all-filtered data)
+  const checks = [
+    { key: 'article_completeness_has_prerequisites', label: 'Has Prerequisites' },
+    { key: 'article_completeness_has_step_by_step', label: 'Has Step-by-Step' },
+    { key: 'article_completeness_has_examples', label: 'Has Examples' },
+    { key: 'article_completeness_has_troubleshooting', label: 'Has Troubleshooting' },
+    { key: 'article_completeness_has_success_criteria', label: 'Has Success Criteria' },
+    { key: 'article_validity_addresses_root_cause', label: 'Addresses Root Cause' },
+    { key: 'article_validity_is_current_solution', label: 'Is Current Solution' },
+    { key: 'article_validity_environment_compatible', label: 'Env. Compatible' },
+  ];
+  document.getElementById('checklist').innerHTML = '<div class="checklist">' + checks.map(c => {
+    const cnt = data.filter(r => isTrue(r[c.key])).length;
+    const p = n ? Math.round(cnt/n*100) : 0;
+    const color = p >= 70 ? '#16a34a' : p >= 40 ? '#d97706' : '#dc2626';
+    return `<div class="checklist-item"><span>${p>=70?'✅':p>=40?'⚠️':'❌'}</span><span class="checklist-label">${c.label}</span><span class="checklist-pct" style="color:${color}">${p}%</span></div>`;
+  }).join('') + '</div>';
+
+  // Description Quality KPIs
+  const avgDQ = n ? avg(data.map(r => num(r.dq_description_quality_score))) : 0;
+  document.getElementById('kt-kpis').innerHTML = [
+    kpiCard('Avg Description Quality Score', avgDQ.toFixed(1), 'Product Clarity 40% + Symptom Specificity 40% + Context 20%', avgDQ, scoreColor(avgDQ)),
+    kpiCard('Agent Ready', pct(countVal(data,'dq_description_quality_verdict','agent_ready'), n), 'clear descriptions', null, '#16a34a'),
+    kpiCard('Insufficient', pct(countVal(data,'dq_description_quality_verdict','insufficient'), n), 'under-described cases', null, '#dc2626'),
+    kpiCard('Description Quality Warnings', data.filter(r => isTrue(r.dq_evaluation_reliability_warning)).length, 'DQ score < 40', null, null),
+  ].join('');
+  document.getElementById('kt-bars').innerHTML = [
+    { label: 'Product Clarity', val: n ? avg(data.map(r=>num(r.product_clarity_score))) : 0 },
+    { label: 'Symptom Specificity', val: n ? avg(data.map(r=>num(r.symptom_specificity_score))) : 0 },
+    { label: 'Operational Context', val: n ? avg(data.map(r=>num(r.operational_context_score))) : 0 },
+  ].map(d => scoreBandBar(d.label, d.val)).join('');
+
+  makeDonut('chart-kt',
+    ['Agent Ready','Workable','Insufficient'],
+    ['agent_ready','workable','insufficient'],
+    r => r.dq_description_quality_verdict,
+    ['#16a34a','#d97706','#dc2626'], 'dqVerdict');
+
+  // Citation & Response (mweaeval only)
+  if (mwea) {
+    const mweaData = data.filter(r => String(r.citation_grounding_score ?? '').trim() !== '');
+    const avgGround = mweaData.length ? avg(mweaData.map(r => num(r.citation_grounding_score))) : 0;
+    const avgRQ = mweaData.length ? avg(mweaData.map(r => num(r.rq_ai_response_quality_score))) : 0;
+    const totalCit = data.reduce((a,r) => a+num(r.citations_total), 0);
+    const goodCit = data.reduce((a,r) => a+num(r.citations_good), 0);
+    document.getElementById('citation-kpis').innerHTML = [
+      kpiCard('Avg Grounding Score', avgGround.toFixed(1), 'how well responses are backed by the article', avgGround, scoreColor(avgGround)),
+      kpiCard('Avg Response Quality', avgRQ.toFixed(1), 'composite AI response score', avgRQ, scoreColor(avgRQ)),
+      kpiCard('Good Citation Rate', pct(goodCit, totalCit), goodCit + ' cited · ' + (totalCit - goodCit) + ' uncited of ' + totalCit, null, null),
+      kpiCard('Zero Citation Cases', data.filter(r => num(r.citations_total) === 0).length, 'no citations evaluated', null, null),
+    ].join('');
+    makeDonut('chart-ground',
+      ['Well Grounded','Partially','Poorly','Ungrounded'],
+      ['well_grounded','partially_grounded','poorly_grounded','ungrounded'],
+      r => r.citation_grounding_verdict,
+      ['#16a34a','#65a30d','#d97706','#dc2626'], 'groundVerdict');
+    makeDonut('chart-rq',
+      ['Excellent','Good','Fair','Poor'],
+      ['excellent','good','fair','poor'],
+      r => r.rq_ai_response_quality_verdict,
+      ['#16a34a','#65a30d','#d97706','#dc2626'], 'rqVerdict');
+    document.getElementById('rq-bars').innerHTML = [
+      { label: 'Response Quality', val: mweaData.length ? avg(mweaData.map(r=>num(r.rq_response_quality_score))) : 0 },
+      { label: 'Groundedness', val: mweaData.length ? avg(mweaData.map(r=>num(r.rq_groundedness_score))) : 0 },
+      { label: 'Issue Resolution', val: mweaData.length ? avg(mweaData.map(r=>num(r.rq_issue_resolution_score))) : 0 },
+    ].map(c => scoreBandBar(c.label, c.val)).join('');
+  }
+
+  // Synthesis KPIs
+  const sRed = data.filter(r => spmPriority(r) === 'red').length;
+  const sYel = data.filter(r => spmPriority(r) === 'yellow').length;
+  const sGrn = data.filter(r => spmPriority(r) === 'green').length;
+  const sGray = data.filter(r => spmPriority(r) === 'gray').length;
+  document.getElementById('synth-kpis').innerHTML = [
+    `<div class="kpi-card"><div class="kpi-label">🔴 Red</div><div class="kpi-value c-red">${sRed}</div><div class="kpi-sub">${pct(sRed,n)}</div></div>`,
+    `<div class="kpi-card"><div class="kpi-label">🟡 Yellow</div><div class="kpi-value c-yellow">${sYel}</div><div class="kpi-sub">${pct(sYel,n)}</div></div>`,
+    `<div class="kpi-card"><div class="kpi-label">🟢 Green</div><div class="kpi-value c-green">${sGrn}</div><div class="kpi-sub">${pct(sGrn,n)}</div></div>`,
+    `<div class="kpi-card"><div class="kpi-label">⚪ Gray</div><div class="kpi-value c-gray">${sGray}</div><div class="kpi-sub">${pct(sGray,n)} — no AI response provided</div></div>`,
+  ].join('');
+
+  // Dynamic charts
+  makeDynHBar('chart-rc', r => r.synthesis_root_cause_category || 'Unknown',
+    k => { const ex = getFiltered('rootCause').find(r => (r.synthesis_root_cause_category||'Unknown')===k); return priColor(spmPriority(ex)); },
+    'rootCause');
+  makeProdBar('chart-product', 'product');
+  makeDynHBar('chart-area', r => r._areaPath || 'Unclassified', () => '#0369a1', 'areaPath');
+
+  // Populate f-area dropdown
+  const fareaEl = document.getElementById('f-area');
+  if (fareaEl) {
+    const prevFarea = fareaEl.value;
+    while (fareaEl.options.length > 1) fareaEl.remove(1);
+    const areas = [...new Set(allData.map(r => r._areaPath).filter(Boolean))].sort();
+    areas.forEach(a => { const o = document.createElement('option'); o.value = a; o.textContent = a; fareaEl.appendChild(o); });
+    fareaEl.value = filterState.areaPath || '';
+    fareaEl.style.display = areas.length ? '' : 'none';
+  }
+
+  // Case table
+  filterTable();
+}
+
+// ══════════════════════════════════════════════════════════
+// CASE TABLE
+// ══════════════════════════════════════════════════════════
+function filterTable() {
+  const q = (document.getElementById('table-search').value||'').toLowerCase();
+  const fp = document.getElementById('f-priority').value;
+  const fv = document.getElementById('f-verdict').value;
+  const fdq = document.getElementById('f-dq').value;
+  // Start from chart-filtered data (includes filterState.areaPath), then apply text/dropdown filters on top
+  tbl.filtered = getFilteredAll().filter(r => {
+    if (fp && spmPriority(r) !== fp) return false;
+    if (fv && r.primary_article_verdict !== fv) return false;
+    if (fdq && r.dq_description_quality_verdict !== fdq) return false;
+    if (q) {
+      const hay = [r.case_number, r._product, r.primary_article_verdict, spmPriority(r), r.synthesis_root_cause_category, r._areaPath].join(' ').toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    return true;
+  });
+  tbl.page = 0;
+  document.getElementById('table-badge').textContent = tbl.filtered.length + ' / ' + state.evalData.length;
+  renderTablePage();
+}
+function sortTable(key) {
+  if (tbl.sortKey === key) tbl.sortDir = -tbl.sortDir;
+  else { tbl.sortKey = key; tbl.sortDir = 1; }
+  tbl.page = 0; renderTablePage();
+}
+function sortSpm(key) {
+  if (spm.sortKey === key) spm.sortDir = -spm.sortDir;
+  else { spm.sortKey = key; spm.sortDir = 1; }
+  renderSPM();
+}
+function renderTablePage() {
+  const { filtered, page, pageSize, sortKey, sortDir } = tbl;
+  const mwea = isMwea(state.evalData);
+  const sorted = [...filtered].sort((a, b) => {
+    if (sortKey === 'synthesis_priority') return (spmPriorityOrder(a) - spmPriorityOrder(b)) * sortDir;
+    const av = a[sortKey], bv = b[sortKey];
+    if (typeof av === 'number') return (av - bv) * sortDir;
+    return String(av||'').localeCompare(String(bv||'')) * sortDir;
+  });
+  const start = page * pageSize;
+  const rows = sorted.slice(start, start + pageSize);
+
+  // Highlight active sort column header
+  document.querySelectorAll('.data-table th').forEach(th => th.classList.remove('sort-active'));
+  if (tbl.sortKey) {
+    const thEl = document.querySelector(`.data-table th[onclick="sortTable('${tbl.sortKey}')"]`);
+    if (thEl) thEl.classList.add('sort-active');
+  }
+  // Update sort direction in active header
+  document.querySelectorAll('.data-table th').forEach(th => {
+    const txt = th.textContent.replace(/ [↑↓↕]$/, '');
+    if (th.onclick && String(th.getAttribute('onclick')).includes(tbl.sortKey) && tbl.sortKey) {
+      th.textContent = txt + (tbl.sortDir === 1 ? ' ↑' : ' ↓');
+    } else if (th.onclick) {
+      th.textContent = txt.replace(/ [↑↓]$/, '') + ' ↕';
+    }
+  });
+
+  document.getElementById('case-tbody').innerHTML = rows.map(row => {
+    const idx = state.evalData.indexOf(row);
+    const areaHtml = evalAreaChip(row, 20);
+    return `<tr class="data-row" data-idx="${idx}">
+      <td><button class="expand-btn" onclick="toggleDetail(this,${idx},'case-tbody',${mwea})" title="Show detail">▶</button></td>
+      <td style="font-family:monospace;font-size:11px">${row.case_number||'–'}</td>
+      <td>${trunc(row._product||'–', 22)}</td>
+      <td>${areaHtml}</td>
+      <td>${scoreChip(row.primary_article_score)}</td>
+      <td>${verdictBadge(row.primary_article_verdict)}</td>
+      <td>${priBadge(spmPriority(row))}</td>
+      <td><span class="score-chip" style="background:#64748b">${num(row.dq_description_quality_score).toFixed(0)}</span></td>
+    </tr>`;
+  }).join('') || '<tr><td colspan="8" style="text-align:center;color:#94a3b8;padding:20px">No cases match</td></tr>';
+
+  const totalPages = Math.ceil(filtered.length / pageSize);
+  const btns = Array.from({ length: Math.min(totalPages, 10) }, (_, i) =>
+    `<button class="${i === page ? 'active' : ''}" onclick="goPage(${i})">${i + 1}</button>`).join('');
+  document.getElementById('table-pagination').innerHTML =
+    `<span>Showing ${start+1}–${Math.min(start+pageSize, filtered.length)} of ${filtered.length}</span><div class="pagination-btns">${btns}</div>`;
+}
+function goPage(p) { tbl.page = p; renderTablePage(); }
+
+// ══════════════════════════════════════════════════════════
+// CASE POPOVER
+// ══════════════════════════════════════════════════════════
+let _popHideTimer = null;
+
+function escAttr(s) {
+  return String(s || '').replace(/&/g,'&amp;').replace(/"/g,'&quot;');
+}
+function escHtml(s) {
+  return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function showCasePopover(chipEl, caseNum, descHint, whyCited) {
+  clearTimeout(_popHideTimer);
+  const pop = document.getElementById('case-popover');
+  if (!pop) return;
+
+  let desc = descHint || '';
+  let aiResponse = '';
+  let product = '';
+  let score = null;
+
+  if (state.evalData) {
+    const row = state.evalData.find(d => String(d.case_number || '').trim() === String(caseNum).trim());
+    if (row) {
+      if (row.issue_description) desc = row.issue_description;
+      aiResponse = row.ai_response || '';
+      product = row._product || row.issue_product || '';
+      const s = num(row.primary_article_score);
+      if (s || s === 0) score = s;
+    }
+  }
+
+  const cluster = (chipEl && chipEl.dataset && chipEl.dataset.cluster) || '';
+  const scoreHtml = score != null
+    ? `<span class="score-chip" style="background:${scoreColor(score)};font-size:10px;margin-left:2px">${score.toFixed(0)}</span>`
+    : '';
+  const productHtml = product
+    ? `<span class="cpop-product">${product}</span>`
+    : '';
+  const clusterHtml = cluster
+    ? `<span class="cpop-product" style="color:var(--ms-brand);border-color:var(--ms-brand-light,#91c4ff)">📂 ${escHtml(cluster)}</span>`
+    : '';
+
+  let bodyHtml = '';
+  if (desc) {
+    bodyHtml += `<div class="cpop-section-label">Issue Description</div>
+      <div class="cpop-text" id="cpop-desc-text">${escHtml(desc.trim())}</div>`;
+  }
+  if (whyCited) {
+    bodyHtml += `<div class="cpop-hint">💡 Why cited: ${escHtml(whyCited)}</div>`;
+  }
+  if (aiResponse) {
+    bodyHtml += `<div class="cpop-section-label">AI Response</div>
+      <div class="cpop-text cpop-ai">${escHtml(aiResponse.trim())}</div>`;
+  }
+  if (!desc && !aiResponse) {
+    bodyHtml = `<div class="cpop-empty">Load the Article Quality CSV for full case details.</div>`;
+  }
+
+  const copyBtn = desc
+    ? `<button class="cpop-copy" onclick="event.stopPropagation();const t=document.getElementById('cpop-desc-text');if(t){navigator.clipboard.writeText(t.innerText).then(()=>{this.textContent='Copied!';setTimeout(()=>this.textContent='Copy desc',1600)})}">Copy desc</button>`
+    : '';
+
+  pop.innerHTML = `
+    <div class="cpop-header">
+      <span class="cpop-case-num">${caseNum}</span>
+      ${productHtml}${scoreHtml}
+      ${copyBtn}
+    </div>
+    ${clusterHtml ? `<div style="padding:4px 12px 5px;border-bottom:1px solid var(--ms-stroke)">${clusterHtml}</div>` : ''}
+    <div class="cpop-body">${bodyHtml}</div>`;
+
+  pop.classList.add('visible');
+
+  // Position
+  const rect = chipEl.getBoundingClientRect();
+  const pw = 400;
+  let left = rect.left;
+  let top = rect.bottom + 8;
+  if (left + pw > window.innerWidth - 12) left = Math.max(8, window.innerWidth - pw - 12);
+  if (top + 320 > window.innerHeight - 8) {
+    pop.style.top = '';
+    pop.style.bottom = (window.innerHeight - rect.top + 8) + 'px';
+  } else {
+    pop.style.bottom = '';
+    pop.style.top = top + 'px';
+  }
+  pop.style.left = left + 'px';
+}
+
+function hideCasePopover(delay) {
+  _popHideTimer = setTimeout(() => {
+    const pop = document.getElementById('case-popover');
+    if (pop) pop.classList.remove('visible');
+  }, delay ?? 250);
+}
+
+// ══════════════════════════════════════════════════════════
+// KEYBOARD SHORTCUTS & INTERACTIONS
+// ══════════════════════════════════════════════════════════
+function debounce(fn, delay) {
+  let t; return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), delay); };
+}
+const debouncedFilterTable = debounce(filterTable, 280);
+
+document.addEventListener('keydown', e => {
+  // ESC: close any open modal
+  if (e.key === 'Escape') {
+    const overlay = document.querySelector('.modal-overlay');
+    if (overlay) { overlay.remove(); return; }
+    // Also clear focused search
+    const search = document.getElementById('table-search');
+    if (search && document.activeElement === search) { search.value = ''; filterTable(); }
+    return;
+  }
+  // '/' — focus search (when not in an input)
+  if (e.key === '/' && !['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName)) {
+    e.preventDefault();
+    const search = document.getElementById('table-search');
+    if (search && state.activeTab === 'eval') { search.focus(); search.select(); }
+  }
+});
+
+// Replace oninput on search to use debounce (via patching after DOMContentLoaded)
+document.addEventListener('DOMContentLoaded', () => {
+  const search = document.getElementById('table-search');
+  if (search) {
+    search.removeAttribute('oninput');
+    search.addEventListener('input', debouncedFilterTable);
+  }
+});
+
+// ══════════════════════════════════════════════════════════
+// CLUSTER EXPAND / CASE DRILL
+// ══════════════════════════════════════════════════════════
+function toggleCluster(card) {
+  const detail = card.querySelector('.cluster-detail');
+  const chevron = card.querySelector('.cluster-chevron');
+  const isOpen = detail.classList.contains('open');
+  detail.classList.toggle('open', !isOpen);
+  chevron.classList.toggle('open', !isOpen);
+  card.classList.toggle('open', !isOpen);
+}
+
+function toggleWeakClusters(btn) {
+  const section = btn.nextElementSibling;
+  const isHidden = section.style.display === 'none' || section.style.display === '';
+  section.style.display = isHidden ? 'block' : 'none';
+  btn.textContent = isHidden
+    ? btn.textContent.replace('Show', 'Hide')
+    : btn.textContent.replace('Hide', 'Show');
+}
+
+function toggleOverlapEvidence(toggleEl) {
+  const panel = toggleEl.nextElementSibling;
+  const chevron = toggleEl.querySelector('.overlap-evidence-label span');
+  const isOpen = panel.classList.contains('open');
+  panel.classList.toggle('open', !isOpen);
+  toggleEl.closest('.overlap-card').classList.toggle('open', !isOpen);
+  if (chevron) chevron.textContent = isOpen ? '▶' : '▼';
+}
+
+function drillCase(caseNum, evt) {
+  if (evt) evt.stopPropagation();
+  if (!state.evalData) return;
+  showTab('eval');
+  const searchEl = document.getElementById('table-search');
+  if (searchEl) { searchEl.value = caseNum; filterTable(); }
+  const casesPane = document.getElementById('eval-cases-pane');
+  if (casesPane) casesPane.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+// RENDER TRENDS
+// ══════════════════════════════════════════════════════════
+function renderTrends() {
+  const data = state.trendData; if (!data) return;
+
+  // Populate area filter (once)
+  const tAreaEl = document.getElementById('trend-f-area');
+  if (tAreaEl) {
+    const prevVal = tAreaEl.value;
+    while (tAreaEl.options.length > 1) tAreaEl.remove(1);
+    const areas = [...new Set(data.map(r => r._areaPath).filter(Boolean))].sort();
+    areas.forEach(a => { const o = document.createElement('option'); o.value = a; o.textContent = a; tAreaEl.appendChild(o); });
+    if (prevVal && areas.includes(prevVal)) tAreaEl.value = prevVal;
+    tAreaEl.parentElement.style.display = areas.length ? '' : 'none';
+  }
+  const tAreaVal = (tAreaEl || {}).value || '';
+  const filtered = tAreaVal ? data.filter(r => r._areaPath === tAreaVal) : data;
+
+  const n = data.length;
+  const fn = filtered.length;
+  const totalCases = data.reduce((a, r) => a + num(r.case_count), 0);
+  const filteredCases = filtered.reduce((a, r) => a + num(r.case_count), 0);
+  const redN = countVal(data,'priority','red'), yelN = countVal(data,'priority','yellow'), grnN = countVal(data,'priority','green');
+  const redCases = data.filter(r => r.priority==='red').reduce((a,r) => a+num(r.case_count), 0);
+
+  document.getElementById('trend-badge').textContent = fn + (fn < n ? ' of ' + n : '') + ' clusters · ' + filteredCases + ' cases';
+  document.getElementById('trend-kpis').innerHTML = [
+    kpiCard('Total Clusters', n, 'trend pattern groups', null, null),
+    kpiCard('Cases Covered', totalCases, 'across all clusters', null, null),
+    `<div class="kpi-card"><div class="kpi-label">🔴 Red Clusters</div><div class="kpi-value c-red">${redN}</div><div class="kpi-sub">${redCases} cases — urgent</div></div>`,
+    `<div class="kpi-card"><div class="kpi-label">🟡 Yellow Clusters</div><div class="kpi-value c-yellow">${yelN}</div><div class="kpi-sub">${pct(yelN,n)}</div></div>`,
+    `<div class="kpi-card"><div class="kpi-label">🟢 Green Clusters</div><div class="kpi-value c-green">${grnN}</div><div class="kpi-sub">${pct(grnN,n)}</div></div>`,
+  ].join('');
+
+  const rcMap = {};
+  data.forEach(r => { const k = r.root_cause_pattern||'Unknown'; rcMap[k] = (rcMap[k]||0)+num(r.case_count); });
+  const rcSorted = Object.entries(rcMap).sort((a,b) => b[1]-a[1]);
+  destroyChart('chart-trc');
+  const trcCtx = document.getElementById('chart-trc');
+  if (trcCtx) charts['chart-trc'] = new Chart(trcCtx.getContext('2d'), {
+    type: 'bar',
+    data: { labels: rcSorted.map(([k])=>k), datasets: [{ data: rcSorted.map(([,v])=>v), backgroundColor: '#3b82f6', borderRadius: 3, barThickness: 18 }] },
+    options: { indexAxis:'y', responsive:true, maintainAspectRatio:false, plugins:{ legend:{display:false}, tooltip:{callbacks:{label:c=>` ${c.raw} cases`}} }, scales:{ x:{beginAtZero:true,grid:{color:'#f1f5f9'},ticks:{font:{size:10}}}, y:{grid:{display:false},ticks:{font:{size:10},callback:v=>v.length>28?v.slice(0,27)+'…':v}} } }
+  });
+  destroyChart('chart-tpri');
+  const tpriCtx = document.getElementById('chart-tpri');
+  if (tpriCtx) {
+    const priLabels = ['🔴 Red','🟡 Yellow','🟢 Green'], priColors = ['#dc2626','#d97706','#16a34a'];
+    const priCounts = ['red','yellow','green'].map(p => countVal(data,'priority',p));
+    const priTotal = priCounts.reduce((a,b)=>a+b,0);
+    charts['chart-tpri'] = new Chart(tpriCtx.getContext('2d'), {
+      type: 'doughnut',
+      data: { labels: priLabels, datasets: [{ data: priCounts, backgroundColor: priColors, borderWidth:2, borderColor:'#fff', hoverOffset:3 }] },
+      options: { responsive:true, maintainAspectRatio:false, cutout:'60%', plugins:{ legend:{ position:'right', labels:{ font:{size:10}, boxWidth:10, padding:5, generateLabels: () => priLabels.map((lbl,i) => ({ text:lbl, fillStyle:priColors[i], strokeStyle:'#fff', lineWidth:1, fontColor:'#374151', datasetIndex:0, index:i, hidden:false })) }}, tooltip:{ callbacks:{ label: c => ` ${c.label}: ${c.raw} (${priTotal ? ((c.raw/priTotal)*100).toFixed(1):0}%)` }} } }
+    });
+  }
+
+  // Separate evicted clusters from the main render
+  const evictedClusters = filtered.filter(r => r._evicted);
+  const activeClusters  = filtered.filter(r => !r._evicted);
+
+  // Group active clusters by area path
+  const grouped = {};
+  activeClusters.forEach(r => {
+    const ap = r._areaPath || 'Other';
+    if (!grouped[ap]) grouped[ap] = [];
+    grouped[ap].push(r);
+  });
+
+  const activeHtml = Object.entries(grouped).map(([areaPath, clusters]) => {
+    const strong = clusters.filter(r => (r.confidence_score || 0) >= 0.4);
+    const weak   = clusters.filter(r => (r.confidence_score || 0) <  0.4);
+    const weakToggle = weak.length ? `
+      <div class="weak-cluster-toggle" onclick="toggleWeakClusters(this)">
+        Show ${weak.length} weak cluster${weak.length !== 1 ? 's' : ''}
+      </div>
+      <div class="weak-cluster-section">
+        ${weak.map((r, idx) => renderClusterCard(r, idx + strong.length)).join('')}
+      </div>` : '';
+    return `
+      <div class="area-section">
+        <div class="area-section-header">${areaPath}</div>
+        <div class="area-cluster-grid">
+          ${strong.map((r, idx) => renderClusterCard(r, idx)).join('')}
+          ${weakToggle}
+        </div>
+      </div>`;
+  }).join('');
+
+  // Evicted clusters section
+  const evictedHtml = evictedClusters.length ? `
+    <div class="evicted-section">
+      <div class="evicted-section-header" onclick="toggleEvictedSection(this)">
+        ⚠ ${evictedClusters.length} evicted cluster${evictedClusters.length !== 1 ? 's' : ''} — off-topic for this run ▶
+      </div>
+      <div class="evicted-section-body">
+        <div style="font-size:12px;color:#6b7280;margin-bottom:10px">
+          These clusters were detected as belonging to a different product area than the one being analysed.
+          They are excluded from the main report but preserved here for reference.
+        </div>
+        <div class="area-cluster-grid">
+          ${evictedClusters.map((r, idx) => renderClusterCard(r, idx, true)).join('')}
+        </div>
+      </div>
+    </div>` : '';
+
+  document.getElementById('cluster-grid').innerHTML = activeHtml + evictedHtml;
+}
+
+function toggleEvictedSection(header) {
+  const body = header.nextElementSibling;
+  const isOpen = body.classList.contains('open');
+  body.classList.toggle('open', !isOpen);
+  header.textContent = header.textContent.replace(isOpen ? '▼' : '▶', isOpen ? '▶' : '▼');
+}
+
+function toggleTopCitations(toggleEl) {
+  const panel = toggleEl.nextElementSibling;
+  const chevron = toggleEl.querySelector('.cluster-chevron');
+  const isOpen = panel.classList.contains('open');
+  panel.classList.toggle('open', !isOpen);
+  if (chevron) chevron.classList.toggle('open', !isOpen);
+}
+
+function renderClusterCard(r, idx, isEvicted) {
+  const products = (r.products_affected||'').split(';').map(s => s.trim()).filter(Boolean);
+  const repCases = r._repCases || [];
+
+  const priIcons = { red: '🔴', yellow: '🟡', green: '🟢', gray: '⚪' };
+  const priLabels = { red: 'Critical Priority', yellow: 'Moderate Priority', green: 'Low Priority', gray: 'Priority Unknown' };
+  const priIcon = priIcons[r.priority] || '⚪';
+  const priLabel = priLabels[r.priority] || 'Unknown Priority';
+  const bannerClass = r.priority || 'gray';
+
+  // Build rep rank map: 0 = centroid, 1-2 = representative
+  const repRank = {};
+  repCases.forEach((rc, i) => { const k = String(rc.case_number || '').trim(); if (k) repRank[k] = i; });
+
+  const topCitations = r._topCitations || [];
+  const topCitationsHtml = topCitations.length > 0 ? `
+    <div class="cluster-citations-toggle" onclick="toggleTopCitations(this)">
+      <span class="cluster-citations-label">Top Citations <span class="cluster-toggle-count">${topCitations.length}</span></span>
+      <span class="cluster-chevron">▼</span>
+    </div>
+    <div class="cluster-detail">
+      <div style="padding:8px 16px 4px">
+        ${topCitations.map((tc, i) =>
+          `<div style="display:flex;align-items:center;gap:8px;padding:5px 0;${i < topCitations.length - 1 ? 'border-bottom:1px solid var(--ms-stroke)' : ''}">
+            <span style="min-width:18px;font-size:11px;font-weight:700;color:var(--ms-text-secondary);text-align:right;flex-shrink:0">${i + 1}.</span>
+            <a href="${tc.url}" target="_blank" rel="noopener noreferrer" style="flex:1;font-size:12px;color:var(--ms-brand);text-decoration:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${tc.url}">${tc.url}</a>
+            <span class="badge b-blue" style="flex-shrink:0">${tc.hit_count}×</span>
+          </div>`
+        ).join('')}
+      </div>
+    </div>` : '';
+
+  const evictedBadge = isEvicted
+    ? `<span class="eviction-badge" title="${r.eviction_reason || 'Off-topic for this run'}">⚠ Evicted</span>`
+    : '';
+  const syntheticBadge = r._syntheticTheme
+    ? `<span class="synthetic-badge" title="Theme auto-generated from keywords">✦ Auto-named</span>`
+    : '';
+  const evictedClass = isEvicted ? ' evicted' : '';
+
+  // Build all cases chips for detail panel — use semicolon-separated case_numbers string
+  const caseNums = String(r.case_numbers || '').split(';').map(s => s.trim()).filter(Boolean);
+  // Build description lookup from _allCases and _repCases for tooltips
+  const descLookup = {};
+  (r._repCases || []).forEach(rc => { const k = String(rc.case_number || '').trim(); if (k) descLookup[k] = rc.issue_description || ''; });
+  (r._allCases || []).forEach(ac => { const k = String(ac.case_number || '').trim(); if (k) descLookup[k] = ac.issue_description || ''; });
+  const hasEvalData = !!(state.evalData && state.evalData.length);
+
+  const makeChip = (cn) => {
+    const descData = escAttr(String(descLookup[cn] || ''));
+    const clickAttr = hasEvalData ? ` onclick="drillCase('${cn}',event)"` : '';
+    const rank = repRank[cn];
+    const chipClass = rank === 0 ? ' chip-centroid' : rank !== undefined ? ' chip-rep' : '';
+    return `<span class="case-chip${hasEvalData ? ' clickable' : ''}${chipClass}"${clickAttr} data-case="${cn}" data-desc="${descData}" onmouseenter="showCasePopover(this,this.dataset.case,this.dataset.desc)" onmouseleave="hideCasePopover()">${cn}</span>`;
+  };
+
+  // Centroid section (repCases[0])
+  const centroidRc = repCases[0];
+  const centroidKey = centroidRc ? String(centroidRc.case_number || '').trim() : '';
+  const centroidSection = centroidRc && centroidKey ? `
+    <div class="cpd-section">
+      <div class="cpd-section-label cpd-centroid-label">⭐ Centroid — Most Representative</div>
+      <div class="cpd-row">
+        ${makeChip(centroidKey)}
+        <div class="cpd-snippet">${escHtml(String(centroidRc.issue_description || '').slice(0, 220))}</div>
+      </div>
+    </div>` : '';
+
+  // Representative cases section (repCases[1-2])
+  const repRows = repCases.slice(1, 3).map(rc => {
+    const k = String(rc.case_number || '').trim();
+    return k ? `<div class="cpd-row">${makeChip(k)}<div class="cpd-snippet">${escHtml(String(rc.issue_description || '').slice(0, 220))}</div></div>` : '';
+  }).join('');
+  const repsSection = repRows ? `
+    <div class="cpd-section">
+      <div class="cpd-section-label cpd-rep-label">★ Representative Cases</div>
+      ${repRows}
+    </div>` : '';
+
+  // Nudge banner when eval CSV not loaded
+  const evalNudge = !hasEvalData ? `<div style="padding:7px 16px 4px;font-size:11px;color:var(--ms-text-secondary);display:flex;align-items:center;gap:6px;border-bottom:1px solid var(--ms-stroke)"><span>ℹ️</span> Load the Article Quality CSV for full case details.</div>` : '';
+
+  // All cases section
+  const allCaseChipsHtml = caseNums.length > 0 ? `
+    <div class="cpd-section">
+      <div class="cpd-section-label" style="justify-content:space-between">
+        <span>All Cases <span style="font-weight:400;color:var(--ms-text-disabled)">(${caseNums.length})</span></span>
+        ${hasEvalData ? '<span style="font-weight:400;font-size:10px;color:var(--ms-text-disabled)">click to drill into eval</span>' : ''}
+      </div>
+      <div class="cluster-case-chips">${caseNums.map(makeChip).join('')}</div>
+    </div>` : '';
+
+  return `<div class="cluster-card ${bannerClass}${evictedClass}" data-tidx="${idx}">
+    <!-- Priority Banner -->
+    <div class="cluster-banner ${bannerClass}">
+      <span class="cluster-banner-icon">${priIcon}</span>
+      <span class="cluster-banner-label">${priLabel}</span>
+      <span class="cluster-banner-cases">${r.case_count} cases</span>
+    </div>
+
+    <!-- Card Body -->
+    <div class="cluster-body">
+      <div class="cluster-name">${r.cluster_name||'Unnamed Cluster'}${syntheticBadge}${evictedBadge}</div>
+      <div class="cluster-meta">
+        ${r.root_cause_pattern ? `<span class="badge b-gray">${r.root_cause_pattern}</span>` : ''}
+        ${trendAreaChip(r, 24)}
+      </div>
+
+      ${r.unified_pm_action ? `
+      <div class="cluster-action-bar">
+        <span class="cluster-action-arrow">→</span>
+        <span class="cluster-action-text">${r.unified_pm_action}</span>
+      </div>` : ''}
+    </div>
+
+    <!-- Context -->
+    ${(products.length || r.estimated_impact || (isEvicted && r.eviction_reason)) ? `
+    <div class="cluster-context">
+      ${products.length ? `<div class="cluster-fl">Products affected</div><div class="cluster-fv">${products.slice(0,5).join(', ')}${products.length>5?` <span style="color:var(--ms-text-disabled)">+${products.length-5} more</span>`:''}</div>` : ''}
+      ${r.estimated_impact ? `<div class="cluster-fl">Estimated impact</div><div class="cluster-fv">${r.estimated_impact}</div>` : ''}
+      ${isEvicted && r.eviction_reason ? `<div class="cluster-fl" style="color:var(--ms-red)">Eviction reason</div><div class="cluster-fv" style="color:var(--ms-red)">${r.eviction_reason}</div>` : ''}
+    </div>` : ''}
+
+    <!-- Expand toggle -->
+    <div class="cluster-toggle" onclick="toggleCluster(this.closest('.cluster-card'))">
+      <span style="display:flex;align-items:center;gap:6px">
+        <span class="cluster-toggle-label">Representative cases</span>
+        <span class="cluster-toggle-count">${caseNums.length || r.case_count}</span>
+      </span>
+      <span class="cluster-chevron">▼</span>
+    </div>
+
+    <!-- Expand detail -->
+    <div class="cluster-detail">
+      ${evalNudge}${centroidSection}${repsSection}${allCaseChipsHtml}
+    </div>
+
+    ${topCitationsHtml}
+  </div>`;
+}
+
+// ══════════════════════════════════════════════════════════
+// RENDER OVERLAPS
+// ══════════════════════════════════════════════════════════
+function renderOverlapCard(r) {
+  const simPct = Math.round(num(r.similarity_score) * 100);
+  const simColor = simPct >= 50 ? '#d97706' : '#3b82f6';
+  const snippets = (r._snippets || []).slice(0, 4);
+  const cases = (r._cases || []);
+  const pmActions = (r._pm_actions || []);
+  const hasEval = !!(state.evalData && state.evalData.length);
+
+  // Extract human-readable slug from URL
+  let articleSlug = r.url || '(No URL)';
+  try {
+    if (r.url) {
+      const u = new URL(r.url);
+      const lastPart = u.pathname.replace(/\/$/, '').split('/').pop();
+      articleSlug = decodeURIComponent(lastPart || u.hostname);
+    }
+  } catch(e) {}
+
+  // Build case → cluster name lookup from trend data
+  const caseToCluster = {};
+  (state.trendData || []).forEach(cl => {
+    const name = cl.cluster_name || '';
+    String(cl.case_numbers || '').split(';').forEach(cn => {
+      const k = cn.trim(); if (k) caseToCluster[k] = name;
+    });
+  });
+
+  const caseHints = r._caseHints || {};
+  const snippetsByCase = {};
+  cases.forEach((c, i) => { if ((r._snippets || [])[i]) snippetsByCase[c] = r._snippets[i]; });
+
+  const chipHtml = (arr) => arr.map(c => {
+    const desc = snippetsByCase[c] || '';
+    const hint = caseHints[c] || '';
+    const cluster = caseToCluster[c] || '';
+    const descData = escAttr(desc);
+    const hintData = escAttr(hint);
+    const clusterData = escAttr(cluster);
+    const clickAttr = hasEval ? ` onclick="openCaseModal('${c}')"` : '';
+    return `<span class="case-chip${hasEval ? ' clickable' : ''}"${clickAttr} data-case="${c}" data-desc="${descData}" data-hint="${hintData}" data-cluster="${clusterData}" onmouseenter="showCasePopover(this,this.dataset.case,this.dataset.desc,this.dataset.hint)" onmouseleave="hideCasePopover()">${c}</span>`;
+  }).join('');
+  const caseChipsHtml = cases.length
+    ? chipHtml(cases.slice(0, 10)) + (cases.length > 10
+        ? `<span class="case-show-more" onclick="this.style.display='none';this.nextElementSibling.style.display='inline'">+${cases.length - 10} more</span><span style="display:none">${chipHtml(cases.slice(10))}</span>`
+        : '')
+    : '';
+
+  const primaryAction = r.recommendation || pmActions[0] || '';
+  const secondaryActions = r.recommendation ? pmActions : pmActions.slice(1);
+  const extraActionsCount = secondaryActions.length;
+  const caseCount = num(r.case_count);
+  const isCrossCluster = r.overlap_type === 'cross_cluster';
+  const clusterCount = num(r.cluster_count);
+
+  const flagText = r.flag_reason
+    ? trunc(r.flag_reason, 200)
+    : isCrossCluster
+      ? `${caseCount} cases across ${clusterCount} clusters cite this article — it may be a shared root cause across different issue areas.`
+      : `${caseCount} cases are citing this article for similar issues — consider whether the article needs splitting or updating.`;
+
+  const secondaryHtml = secondaryActions.length
+    ? secondaryActions.map((a, i) => `<div class="overlap-sub-action"><div class="overlap-sub-action-num">${i + (r.recommendation ? 1 : 2)}</div><div>${trunc(a, 200)}</div></div>`).join('')
+    : '';
+
+  const snippetsHtml = snippets.length
+    ? `<div style="margin-top:10px"><div class="cluster-fl" style="margin-bottom:4px">Customer issue samples</div>${snippets.map((s,i) => {
+        const cn = cases[i] || (i+1);
+        const cl = caseToCluster[cn];
+        const clBadge = cl ? `<span style="font-size:10px;font-weight:400;color:var(--ms-brand);margin-left:4px">· ${escHtml(trunc(cl, 35))}</span>` : '';
+        return `<div class="overlap-snippet"><span class="overlap-snippet-case">Case ${cn}${clBadge}:</span>${trunc(s, 150)}</div>`;
+      }).join('')}</div>`
+    : '';
+
+  const toggleLabel = `Case details &amp; additional actions${extraActionsCount > 0 ? ` [+${extraActionsCount} more action${extraActionsCount!==1?'s':''}]` : ''}`;
+
+  return `<div class="overlap-card">
+    <div class="overlap-header">
+      <div class="overlap-article-slug">${articleSlug}</div>
+      ${r.url ? `<div class="overlap-article-url"><a href="${r.url}" target="_blank">${trunc(r.url, 70)}</a></div>` : ''}
+      <div class="overlap-case-count">
+        <span class="overlap-case-num">${caseCount}</span>
+        <span class="overlap-case-caption">${isCrossCluster ? `cases across ${clusterCount} clusters citing this article` : 'cases citing this article for similar issues'}</span>
+      </div>
+    </div>
+    <div class="overlap-why">
+      <div class="overlap-why-label">Why it matters</div>
+      ${isCrossCluster
+        ? `<div class="overlap-sim-row"><span class="overlap-sim-label">Clusters</span><span class="overlap-sim-pct" style="color:#7c3aed;font-weight:700">${clusterCount}</span></div>`
+        : `<div class="overlap-sim-row"><span class="overlap-sim-label">Case similarity</span><div class="score-bar-track" style="flex:1"><div class="score-bar-fill" style="width:${simPct}%;background:${simColor}"></div></div><span class="overlap-sim-pct">${simPct}%</span></div>`
+      }
+      <div class="overlap-flag-text">${flagText}</div>
+    </div>
+    ${primaryAction ? `<div class="overlap-action">
+      <div class="overlap-action-label">Recommended Action</div>
+      <div class="overlap-action-primary">${primaryAction}</div>
+    </div>` : ''}
+    <div class="overlap-evidence-toggle" onclick="toggleOverlapEvidence(this)">
+      <span class="overlap-evidence-label"><span>▶</span> ${toggleLabel}</span>
+    </div>
+    <div class="overlap-evidence-panel">
+      ${isCrossCluster && r.cluster_names ? `<div style="margin-bottom:10px"><div class="cluster-fl" style="margin-bottom:5px">Citing Clusters</div><div style="font-size:12px;color:#374151;line-height:1.6">${String(r.cluster_names).split(';').map(n => n.trim()).filter(Boolean).map(n => `<span style="display:inline-block;background:#f0f9ff;border:1px solid #bae6fd;border-radius:4px;padding:1px 7px;margin:2px 3px 2px 0;font-size:11px;color:#0369a1">${n}</span>`).join('')}</div></div>` : ''}
+      ${caseChipsHtml ? `<div style="margin-bottom:10px"><div class="cluster-fl" style="margin-bottom:5px">Cases <span style="font-weight:400;color:#94a3b8;font-size:10px">(hover for description · click for details)</span></div><div class="cluster-case-chips">${caseChipsHtml}</div></div>` : ''}
+      ${secondaryHtml ? `<div style="margin-bottom:10px"><div class="cluster-fl" style="margin-bottom:5px">Additional Actions</div>${secondaryHtml}</div>` : ''}
+      ${snippetsHtml}
+    </div>
+  </div>`;
+}
+
+function renderOverlaps() {
+  const data = state.overlapData; if (!data) return;
+
+  const n = data.length;
+  const totalCases = data.reduce((s, r) => s + num(r.case_count), 0);
+  const avgSim = n ? (data.reduce((s, r) => s + num(r.similarity_score), 0) / n) : 0;
+
+  document.getElementById('overlap-badge').textContent = n + ' overlap' + (n !== 1 ? 's' : '');
+  document.getElementById('overlap-kpis').innerHTML = [
+    `<div class="kpi-card"><div class="kpi-label">🔗 Overlapping URLs</div><div class="kpi-value c-blue">${n}</div><div class="kpi-sub">articles cited by similar cases</div></div>`,
+    `<div class="kpi-card"><div class="kpi-label">📋 Cases Affected</div><div class="kpi-value c-yellow">${totalCases}</div><div class="kpi-sub">cases sharing article citations</div></div>`,
+    `<div class="kpi-card"><div class="kpi-label">📐 Avg Similarity</div><div class="kpi-value c-blue">${avgSim.toFixed(2)}</div><div class="kpi-sub">avg Jaccard within groups</div></div>`,
+  ].join('');
+
+  const areaEl = document.getElementById('overlap-f-area');
+  const hasAreas = data.some(r => r._areaPath);
+
+  if (hasAreas) {
+    // Teams toggle ON — populate filter and render grouped
+    if (areaEl) {
+      const selArea = areaEl.value;
+      while (areaEl.options.length > 1) areaEl.remove(1);
+      const areas = [...new Set(data.map(r => r._areaPath).filter(Boolean))].sort();
+      areas.forEach(a => { const o = document.createElement('option'); o.value = a; o.textContent = a; areaEl.appendChild(o); });
+      if (selArea) areaEl.value = selArea;
+    }
+    const filterArea = areaEl ? areaEl.value : '';
+    const filtered = filterArea ? data.filter(r => r._areaPath === filterArea) : data;
+    const grouped = {};
+    filtered.forEach(r => { const k = r._areaPath; if (!grouped[k]) grouped[k] = []; grouped[k].push(r); });
+    document.getElementById('overlap-grid').innerHTML = filtered.length
+      ? Object.entries(grouped).map(([areaPath, rows]) => `
+          <div class="area-section">
+            <div class="area-section-header">${areaPath}</div>
+            <div class="area-cluster-grid">${rows.map(r => renderOverlapCard(r)).join('')}</div>
+          </div>`).join('')
+      : '<div style="text-align:center;color:#94a3b8;padding:40px">No citation overlaps found.</div>';
+  } else {
+    // Teams toggle OFF — flat list, clear filter
+    if (areaEl) while (areaEl.options.length > 1) areaEl.remove(1);
+    document.getElementById('overlap-grid').innerHTML = data.length
+      ? `<div class="area-cluster-grid">${data.map(r => renderOverlapCard(r)).join('')}</div>`
+      : '<div style="text-align:center;color:#94a3b8;padding:40px">No citation overlaps found.</div>';
+  }
+}
+
+// Init
+document.getElementById('empty-state').style.display = 'block';
+
+function openCaseModal(caseNum) {
+  const evalRow = (state.evalData || []).find(r =>
+    String(r.case_number || r['case #'] || r['Case #'] || '').trim() === String(caseNum).trim()
+  );
+  document.getElementById('modal-case-title').textContent = 'Case ' + caseNum;
+
+  const desc = evalRow
+    ? (evalRow.issue_description || evalRow.raw_description || evalRow.description || '(no description field found in eval data)')
+    : '(load eval CSV to see case description)';
+  document.getElementById('modal-description').textContent = desc;
+
+  const rec = evalRow
+    ? (evalRow.final_recommendation || evalRow.pm_actions || evalRow.unified_pm_action || evalRow.ai_recommendation || evalRow.recommendation || '(no recommendation field found in eval data)')
+    : '(load eval CSV to see AI recommendation)';
+  document.getElementById('modal-ai-response').textContent = rec;
+
+  const linkEl = document.getElementById('modal-eval-link');
+  linkEl.innerHTML = evalRow
+    ? `<a href="#" onclick="closeCaseModal();drillCase('${caseNum}',null);return false;" style="color:#3b82f6">Open full details in Eval tab →</a>`
+    : '';
+
+  const overlay = document.getElementById('case-modal-overlay');
+  overlay.style.display = 'flex';
+}
+
+function closeCaseModal(e) {
+  const overlay = document.getElementById('case-modal-overlay');
+  if (!e || e.target === overlay) {
+    overlay.style.display = 'none';
+  }
+}
+
+function openClusterCasesModal(e, gidx) {
+  e.stopPropagation();
+  const r = (state.trendData || [])[gidx];
+  if (!r) return;
+
+  const caseNums = String(r.case_numbers || '').split(';').map(s => s.trim()).filter(Boolean);
+
+  // Build description lookup: all_cases (new CSVs) → rep cases (fallback) → eval CSV (last resort)
+  const descMap = {};
+  (r._repCases || []).forEach(rc => { const k = String(rc.case_number || '').trim(); if (k) descMap[k] = rc.issue_description || ''; });
+  (r._allCases || []).forEach(ac => { const k = String(ac.case_number || '').trim(); if (k) descMap[k] = ac.issue_description || ''; });
+
+  document.getElementById('ccm-title').textContent = r.cluster_name || 'Unnamed Cluster';
+  document.getElementById('ccm-count').textContent = caseNums.length + ' cases in this cluster';
+
+  const actionEl = document.getElementById('ccm-action');
+  if (r.unified_pm_action) {
+    actionEl.innerHTML = `
+      <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;padding:10px 12px;margin-bottom:12px">
+        <div style="font-size:10px;font-weight:700;color:#15803d;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">Recommended Action</div>
+        <div style="font-size:13px;color:#166534;line-height:1.55">${r.unified_pm_action}</div>
+      </div>`;
+  } else {
+    actionEl.innerHTML = '';
+  }
+
+  // Map each rep case to its rank: 0 = centroid, 1-2 = representative
+  const repRank = {};
+  (r._repCases || []).slice(0, 3).forEach((rc, i) => {
+    const k = String(rc.case_number || '').trim();
+    if (k) repRank[k] = i;
+  });
+
+  // Sort: centroid (rank 0) first, then representatives (1, 2), then rest in original order
+  const sortedCaseNums = [...caseNums].sort((a, b) => {
+    const ra = repRank[a] ?? 99;
+    const rb = repRank[b] ?? 99;
+    return ra - rb;
+  });
+
+  const hasEval = !!(state.evalData && state.evalData.length);
+
+  // Build per-case recommendation lookup from eval CSV
+  const recMap = {};
+  if (hasEval) {
+    sortedCaseNums.forEach(cn => {
+      const ev = state.evalData.find(d => String(d.case_number || d['case #'] || d['Case #'] || '').trim() === cn);
+      if (ev) recMap[cn] = ev.final_recommendation || ev.pm_actions || ev.unified_pm_action || ev.ai_recommendation || ev.recommendation || '';
+    });
+  }
+
+  // Show/hide the recommendation toggle based on eval availability
+  const toggleWrap = document.getElementById('ccm-rec-toggle-wrap');
+  const toggleChk = document.getElementById('ccm-rec-toggle');
+  toggleWrap.style.display = hasEval ? 'flex' : 'none';
+  toggleChk.checked = false;
+
+  const rows = sortedCaseNums.map(cn => {
+    let desc = descMap[cn] || '';
+    if (!desc && hasEval) {
+      const ev = state.evalData.find(d => String(d.case_number || d['case #'] || d['Case #'] || '').trim() === cn);
+      if (ev) desc = ev.issue_description || ev.raw_description || ev.description || '';
+    }
+    const chip = hasEval
+      ? `<span class="case-chip clickable" onclick="closeClusterCasesModal();openCaseModal('${cn}')" title="Open full case details">${cn}</span>`
+      : `<span class="case-chip">${cn}</span>`;
+    const descHtml = desc
+      ? `<div style="font-size:12px;color:#374151;line-height:1.55;margin-top:5px;padding-left:2px">${String(desc).slice(0, 500)}</div>`
+      : '';
+    const rec = recMap[cn] || '';
+    const recHtml = rec
+      ? `<div class="ccm-rec" style="display:none;font-size:11px;font-weight:700;color:#4f46e5;text-transform:uppercase;letter-spacing:.04em;margin-top:8px;padding-left:2px">Recommendation</div>
+         <div class="ccm-rec" style="display:none;font-size:12px;color:#3730a3;line-height:1.55;padding-left:2px">${String(rec).slice(0, 600)}</div>`
+      : '';
+
+    const rank = repRank[cn];
+    if (rank === 0) {
+      // Centroid — most representative case
+      return `<div style="padding:10px 12px;border-bottom:1px solid #fef3c7;background:#fffbeb;border-left:3px solid #f59e0b;border-radius:0 4px 4px 0;margin-bottom:2px">
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">${chip}<span style="font-size:10px;font-weight:700;color:#b45309;background:#fde68a;padding:1px 6px;border-radius:10px;letter-spacing:.04em">★ CENTROID</span></div>
+        ${descHtml}${recHtml}
+      </div>`;
+    } else if (rank === 1 || rank === 2) {
+      // Representative case
+      return `<div style="padding:10px 12px;border-bottom:1px solid #eff6ff;background:#f0f9ff;border-left:3px solid #3b82f6;border-radius:0 4px 4px 0;margin-bottom:2px">
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">${chip}<span style="font-size:10px;font-weight:700;color:#1d4ed8;background:#dbeafe;padding:1px 6px;border-radius:10px;letter-spacing:.04em">● REPRESENTATIVE</span></div>
+        ${descHtml}${recHtml}
+      </div>`;
+    } else {
+      return `<div style="padding:10px 0;border-bottom:1px solid #f1f5f9">${chip}${descHtml}${recHtml}</div>`;
+    }
+  }).join('');
+
+  document.getElementById('ccm-body').innerHTML = rows || '<div style="color:#94a3b8;font-size:13px">No case numbers available.</div>';
+  document.getElementById('cluster-cases-modal-overlay').style.display = 'flex';
+}
+
+function toggleCcmRecs(show) {
+  document.getElementById('ccm-body').querySelectorAll('.ccm-rec').forEach(el => {
+    el.style.display = show ? '' : 'none';
+  });
+}
+
+function closeClusterCasesModal(e) {
+  const overlay = document.getElementById('cluster-cases-modal-overlay');
+  if (!e || e.target === overlay) overlay.style.display = 'none';
+}
+</script>
+
+<div id="case-modal-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1000;align-items:center;justify-content:center" onclick="closeCaseModal(event)">
+  <div style="background:#fff;border-radius:10px;padding:24px;max-width:580px;width:90%;max-height:80vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.25)" onclick="event.stopPropagation()">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+      <span id="modal-case-title" style="font-size:15px;font-weight:700;color:#1e293b"></span>
+      <button onclick="closeCaseModal()" style="background:none;border:none;font-size:18px;cursor:pointer;color:#94a3b8">✕</button>
+    </div>
+    <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Issue Description</div>
+    <div id="modal-description" style="font-size:13px;color:#374151;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:12px;line-height:1.6;margin-bottom:14px;white-space:pre-wrap"></div>
+    <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">AI Recommendation</div>
+    <div id="modal-ai-response" style="font-size:13px;color:#1e3a5f;background:#eff6ff;border:1px solid #bfdbfe;border-radius:6px;padding:12px;line-height:1.6"></div>
+    <div id="modal-eval-link" style="margin-top:12px;font-size:11px;color:#64748b;text-align:right"></div>
+  </div>
+</div>
+<div id="cluster-cases-modal-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1001;align-items:center;justify-content:center" onclick="closeClusterCasesModal(event)">
+  <div style="background:#fff;border-radius:10px;padding:24px;max-width:700px;width:92%;max-height:80vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.25)" onclick="event.stopPropagation()">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px;flex-shrink:0">
+      <div>
+        <div id="ccm-title" style="font-size:15px;font-weight:700;color:#1e293b"></div>
+        <div id="ccm-count" style="font-size:12px;color:#64748b;margin-top:3px"></div>
+      </div>
+      <button onclick="closeClusterCasesModal()" style="background:none;border:none;font-size:18px;cursor:pointer;color:#94a3b8;margin-left:16px;flex-shrink:0">✕</button>
+    </div>
+    <div id="ccm-action" style="flex-shrink:0"></div>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;flex-shrink:0">
+      <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em">All Cases</div>
+      <label id="ccm-rec-toggle-wrap" style="display:none;align-items:center;gap:5px;cursor:pointer;font-size:11px;color:#4f46e5;font-weight:600;user-select:none">
+        <input type="checkbox" id="ccm-rec-toggle" onchange="toggleCcmRecs(this.checked)" style="cursor:pointer;accent-color:#4f46e5">
+        Show recommendations
+      </label>
+    </div>
+    <div id="ccm-body" style="overflow-y:auto;flex:1;font-size:13px;padding-right:4px"></div>
+  </div>
+</div>
+
+<!-- Case Popover (singleton) -->
+<div id="case-popover" onmouseenter="clearTimeout(_popHideTimer)" onmouseleave="hideCasePopover()"></div>
+
+</body>
+</html>
