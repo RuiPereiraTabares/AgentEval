@@ -930,19 +930,6 @@ canvas { cursor: pointer; }
   </label>
 </div>
 
-<div class="settings-row" style="max-width:900px;margin:10px auto 0;padding:0 24px;">
-  <div class="settings-row-inner">
-    <div style="font-size:18px;flex-shrink:0">⚙️</div>
-    <div style="flex:1">
-      <div class="settings-label">Teams Report Mode</div>
-      <div class="settings-desc">Groups results by Teams area path. Enable when your CSV includes <code>area_path</code> data.</div>
-    </div>
-    <label class="toggle-switch">
-      <input type="checkbox" id="teams-report-toggle" onchange="onTeamsToggle()">
-      <span class="toggle-track"><span class="toggle-thumb"></span></span>
-    </label>
-  </div>
-</div>
 
 <div class="empty-state" id="empty-state">
   <div style="font-size:44px;margin-bottom:14px">📂</div>
@@ -1544,12 +1531,9 @@ function makeProdBar(id, dim) {
 // ══════════════════════════════════════════════════════════
 // CSV PARSING
 // ══════════════════════════════════════════════════════════
-const isTeamsReport = () => !!(document.getElementById('teams-report-toggle') || {}).checked;
 function applyAreaPath(row) {
   const teamsLeaf = pathLeaf((row.area_path || '').trim());
-  row._areaPath = isTeamsReport()
-    ? teamsLeaf
-    : (row._sapLeaf || teamsLeaf);
+  row._areaPath = row._sapLeaf || teamsLeaf;
 }
 function parseEval(text) {
   const r = Papa.parse(text, { header: true, skipEmptyLines: true, dynamicTyping: true });
@@ -1594,26 +1578,6 @@ function parseTrend(text) {
     return row;
   }).sort((a, b) => a._priorityOrder - b._priorityOrder || b.case_count - a.case_count)
   .map((row, i) => { row._gidx = i; return row; });
-}
-function onTeamsToggle() {
-  if (state.evalData) {
-    state.evalData.forEach(applyAreaPath);
-    const evalAreaEl = document.getElementById('f-area');
-    if (evalAreaEl) while (evalAreaEl.options.length > 1) evalAreaEl.remove(1);
-    renderEval();
-  }
-  if (state.trendData) {
-    state.trendData.forEach(applyAreaPath);
-    const el = document.getElementById('trend-f-area');
-    if (el) while (el.options.length > 1) el.remove(1);
-    renderTrends();
-  }
-  if (state.overlapData) {
-    state.overlapData.forEach(applyAreaPath);
-    const el = document.getElementById('overlap-f-area');
-    if (el) while (el.options.length > 1) el.remove(1);
-    renderOverlaps();
-  }
 }
 function parseOverlaps(text) {
   const r = Papa.parse(text, { header: true, skipEmptyLines: true, dynamicTyping: true });
@@ -2991,7 +2955,7 @@ function renderOverlaps() {
   const hasAreas = data.some(r => r._areaPath);
 
   if (hasAreas) {
-    // Teams toggle ON — populate filter and render grouped
+    // area_path available — populate filter and render grouped
     if (areaEl) {
       const selArea = areaEl.value;
       while (areaEl.options.length > 1) areaEl.remove(1);
@@ -3011,7 +2975,7 @@ function renderOverlaps() {
           </div>`).join('')
       : '<div style="text-align:center;color:#94a3b8;padding:40px">No citation overlaps found.</div>';
   } else {
-    // Teams toggle OFF — flat list, clear filter
+    // No area_path — flat list, clear filter
     if (areaEl) while (areaEl.options.length > 1) areaEl.remove(1);
     document.getElementById('overlap-grid').innerHTML = data.length
       ? `<div class="area-cluster-grid">${data.map(r => renderOverlapCard(r)).join('')}</div>`
