@@ -4,7 +4,6 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Agentic Insight Engine — Dashboard</title>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -1245,6 +1244,177 @@ const Papa = {
     return {data};
   }
 };
+
+// ══════════════════════════════════════════════════════════
+// INLINE CHART ENGINE (replaces Chart.js CDN)
+// Supports: doughnut, bar (vertical), bar (horizontal, indexAxis:'y')
+// ══════════════════════════════════════════════════════════
+const Chart = (() => {
+  const REG = new WeakMap();
+  function dpr() { return Math.max(window.devicePixelRatio || 1, 1); }
+  function prep(c) {
+    const d = dpr(), w = c.offsetWidth || 1, h = c.offsetHeight || 1;
+    if (c.width !== Math.round(w*d) || c.height !== Math.round(h*d)) { c.width = Math.round(w*d); c.height = Math.round(h*d); }
+    const g = c.getContext('2d'); g.setTransform(d, 0, 0, d, 0, 0); return {g, w, h};
+  }
+  function mpos(e, c) { const r = c.getBoundingClientRect(); return {x: e.clientX-r.left, y: e.clientY-r.top}; }
+  function trunc(s, n) { s = String(s); return s.length > n ? s.slice(0, n-1)+'…' : s; }
+  function rfill(g, x, y, w, h, r) {
+    if (w <= 0 || h <= 0) return; r = Math.min(r, w/2, h/2);
+    if (r <= 0) { g.fillRect(x, y, w, h); return; }
+    g.beginPath(); g.moveTo(x+r, y); g.arcTo(x+w, y, x+w, y+h, r);
+    g.arcTo(x+w, y+h, x, y+h, r); g.arcTo(x, y+h, x, y, r); g.arcTo(x, y, x+w, y, r);
+    g.closePath(); g.fill();
+  }
+  function drawTip(g, txt, mx, my, cw, ch) {
+    g.save(); g.font = '11px system-ui,sans-serif';
+    const p = 6, th = 22, tw = g.measureText(txt).width + p*2;
+    let tx = mx+10, ty = my-th-6;
+    if (tx+tw > cw) tx = mx-tw-10; if (ty < 0) ty = my+10;
+    g.fillStyle = 'rgba(31,41,55,.93)'; g.beginPath();
+    g.roundRect ? g.roundRect(tx, ty, tw, th, 3) : g.rect(tx, ty, tw, th); g.fill();
+    g.fillStyle = '#f9fafb'; g.textBaseline = 'middle'; g.textAlign = 'left';
+    g.fillText(txt, tx+p, ty+th/2); g.restore();
+  }
+  class MiniChart {
+    constructor(ctx2d, cfg) {
+      this.g = ctx2d; this.cfg = cfg; this.H = []; this.hov = -1; this.mp = null;
+      const c = ctx2d.canvas;
+      this.ro = new ResizeObserver(() => this.draw()); this.ro.observe(c);
+      this.fn = {
+        move:  e => { const p = mpos(e,c); this.hov = this.ht(p); this.mp = p; this.draw(); c.style.cursor = this.hov>=0?'pointer':'default'; },
+        leave: () => { this.hov = -1; this.mp = null; this.draw(); c.style.cursor = ''; },
+        click: e => { const fn = cfg.options?.onClick; if (fn) { const i = this.ht(mpos(e,c)); fn(e, i>=0?[{index:i}]:[]); } }
+      };
+      c.addEventListener('mousemove', this.fn.move);
+      c.addEventListener('mouseleave', this.fn.leave);
+      c.addEventListener('click', this.fn.click);
+      REG.set(c, this); this.draw();
+    }
+    static getChart(el) { return REG.get(el) || null; }
+    destroy() {
+      this.ro.disconnect(); const c = this.g.canvas;
+      c.removeEventListener('mousemove', this.fn.move);
+      c.removeEventListener('mouseleave', this.fn.leave);
+      c.removeEventListener('click', this.fn.click);
+      const {g, w, h} = prep(c); g.clearRect(0, 0, w, h); REG.delete(c);
+    }
+    ht(p) {
+      if (this.cfg.type === 'doughnut') {
+        for (let i = 0; i < this.H.length; i++) {
+          const h = this.H[i]; if (!h) continue;
+          const dx = p.x-h.cx, dy = p.y-h.cy, d = Math.sqrt(dx*dx+dy*dy);
+          if (d < h.or && d > h.ir) {
+            let a = Math.atan2(dy, dx);
+            a = ((a-h.s) % (Math.PI*2) + Math.PI*2) % (Math.PI*2) + h.s;
+            if (a <= h.e) return i;
+          }
+        }
+        return -1;
+      }
+      for (let i = 0; i < this.H.length; i++) {
+        const h = this.H[i]; if (!h) continue;
+        if (p.x >= h.x && p.x <= h.x+h.w && p.y >= h.y && p.y <= h.y+h.h) return i;
+      }
+      return -1;
+    }
+    tlbl(i) {
+      const ds = this.cfg.data.datasets[0], lbl = (this.cfg.data.labels||[])[i]??'', val = ds.data[i];
+      const cb = this.cfg.options?.plugins?.tooltip?.callbacks?.label;
+      return cb ? cb({raw:val, label:lbl, datasetIndex:0, dataIndex:i}).trimStart() : `${lbl}: ${val}`;
+    }
+    draw() {
+      const c = this.g.canvas; if (!c.offsetWidth) return;
+      const {g, w, h} = prep(c); g.clearRect(0, 0, w, h);
+      if (this.cfg.type === 'doughnut') this.donut(g, w, h);
+      else if (this.cfg.options?.indexAxis === 'y') this.hbar(g, w, h);
+      else this.vbar(g, w, h);
+      if (this.hov >= 0 && this.mp) drawTip(g, this.tlbl(this.hov), this.mp.x, this.mp.y, w, h);
+    }
+    donut(g, w, h) {
+      const cfg = this.cfg, ds = cfg.data.datasets[0];
+      const data = ds.data, labels = cfg.data.labels||[], cols = ds.backgroundColor||[];
+      const cut = parseFloat(cfg.options?.cutout||0) / 100;
+      g.font = '10px system-ui,sans-serif';
+      const LBW=10, LBG=4, LPD=8;
+      const maxTW = labels.reduce((m,l) => Math.max(m, g.measureText(trunc(l,24)).width), 0);
+      const legW = LBW+LBG+maxTW+LPD+6, chartW = w-legW, cx = chartW/2, cy = h/2;
+      const OR = Math.min(cx,cy)*0.88, IR = OR*cut;
+      const tot = data.reduce((a,b) => a+(b||0), 0) || 1;
+      let sa = -Math.PI/2; this.H = [];
+      data.forEach((v, i) => {
+        if (!v) { this.H.push(null); return; }
+        const sw = (v/tot)*Math.PI*2, ea = sa+sw, isH = i===this.hov;
+        const ma = sa+sw/2, ox = isH?Math.cos(ma)*5:0, oy = isH?Math.sin(ma)*5:0;
+        g.beginPath(); g.arc(cx+ox, cy+oy, OR, sa, ea); g.arc(cx+ox, cy+oy, IR, ea, sa, true);
+        g.closePath(); g.fillStyle = cols[i]||'#ccc'; g.fill();
+        if ((ds.borderWidth||0) > 0) { g.strokeStyle = ds.borderColor||'#fff'; g.lineWidth = ds.borderWidth; g.stroke(); }
+        this.H.push({cx, cy, or:OR+6, ir:Math.max(IR-4,0), s:sa, e:ea}); sa = ea;
+      });
+      const genL = cfg.options?.plugins?.legend?.labels?.generateLabels;
+      const items = genL ? genL(this) : labels.map((t,i) => ({text:t, fillStyle:cols[i]}));
+      const iH = 15, lx = chartW+LPD; let ly = (h-items.length*iH)/2;
+      items.forEach(it => {
+        g.fillStyle = it.fillStyle||'#ccc'; g.fillRect(lx, ly+(iH-LBW)/2, LBW, LBW);
+        g.font = '10px system-ui,sans-serif'; g.fillStyle = it.fontColor||'#374151';
+        g.textBaseline = 'middle'; g.textAlign = 'left';
+        g.fillText(trunc(it.text, 24), lx+LBW+LBG, ly+iH/2); ly += iH;
+      });
+    }
+    hbar(g, w, h) {
+      const cfg = this.cfg, ds = cfg.data.datasets[0];
+      const data = ds.data, labels = cfg.data.labels||[], cols = ds.backgroundColor;
+      const barTh = ds.barThickness||18, tcb = cfg.options?.scales?.y?.ticks?.callback;
+      g.font = '10px system-ui,sans-serif';
+      const rl = labels.map((l,i) => tcb ? String(tcb(l,i,[])??"") : trunc(String(l),28));
+      const LP = Math.min(rl.reduce((m,l) => Math.max(m, g.measureText(l).width), 0)+8, w*0.5);
+      const RP=6, TP=6, BP=24, cW=w-LP-RP, cH=h-TP-BP, mV=Math.max(...data,1), n=labels.length, rH=cH/n;
+      g.textAlign='center'; g.textBaseline='top';
+      for (let t=0; t<=4; t++) {
+        const v=Math.round(mV*t/4), xp=LP+(v/mV)*cW;
+        g.strokeStyle='#f1f5f9'; g.lineWidth=1; g.beginPath(); g.moveTo(xp,TP); g.lineTo(xp,TP+cH); g.stroke();
+        g.fillStyle='#9ca3af'; g.fillText(v, xp, TP+cH+4);
+      }
+      this.H = [];
+      labels.forEach((_, i) => {
+        const bh2=Math.min(barTh,rH*0.78), by=TP+i*rH+(rH-bh2)/2, bw=(data[i]/mV)*cW;
+        g.save(); g.textAlign='right'; g.textBaseline='middle'; g.font='10px system-ui,sans-serif';
+        g.fillStyle='#374151'; g.fillText(rl[i], LP-4, by+bh2/2); g.restore();
+        g.save();
+        g.fillStyle = Array.isArray(cols)?(cols[i]||'#3b82f6'):(cols||'#3b82f6');
+        if (i===this.hov) g.globalAlpha=0.8; rfill(g, LP, by, Math.max(bw,1), bh2, 3); g.restore();
+        this.H.push({x:LP, y:by, w:Math.max(bw,12), h:bh2});
+      });
+    }
+    vbar(g, w, h) {
+      const cfg = this.cfg, ds = cfg.data.datasets[0];
+      const data = ds.data, labels = cfg.data.labels||[], cols = ds.backgroundColor;
+      const sc = cfg.options?.scales||{}, mV = sc.y?.max??Math.max(...data,1);
+      const mR = sc.x?.ticks?.maxRotation||0;
+      const LP=32, RP=6, TP=8, BP=mR>0?52:26, cW=w-LP-RP, cH=h-TP-BP, n=labels.length;
+      const colW=cW/n, bw=ds.barThickness?Math.min(ds.barThickness,colW*0.85):colW*0.72;
+      g.font='10px system-ui,sans-serif'; g.textAlign='right'; g.textBaseline='middle';
+      for (let t=0; t<=4; t++) {
+        const v=parseFloat((mV*t/4).toFixed(1)), yp=TP+cH-(v/mV)*cH;
+        g.strokeStyle='#f1f5f9'; g.lineWidth=1; g.beginPath(); g.moveTo(LP,yp); g.lineTo(LP+cW,yp); g.stroke();
+        g.fillStyle='#9ca3af'; g.fillText(v%1===0?v:v.toFixed(1), LP-4, yp);
+      }
+      this.H = [];
+      labels.forEach((lbl, i) => {
+        const bx=LP+i*colW+(colW-bw)/2, bh=Math.max((data[i]/mV)*cH,0), by=TP+cH-bh;
+        g.save(); g.font='10px system-ui,sans-serif'; g.fillStyle='#374151';
+        if (mR>0) { g.translate(bx+bw/2,TP+cH+5); g.rotate(-mR*Math.PI/180); g.textAlign='right'; g.textBaseline='middle'; g.fillText(trunc(String(lbl),20),0,0); }
+        else { g.textAlign='center'; g.textBaseline='top'; g.fillText(trunc(String(lbl),10),bx+bw/2,TP+cH+4); }
+        g.restore();
+        g.save();
+        g.fillStyle = Array.isArray(cols)?(cols[i]||'#3b82f6'):(cols||'#3b82f6');
+        if (i===this.hov) g.globalAlpha=0.8; rfill(g, bx, by, bw, bh, Math.min(3,bw/2)); g.restore();
+        this.H.push({x:bx, y:by, w:bw, h:Math.max(bh,10)});
+      });
+    }
+  }
+  return MiniChart;
+})();
 
 // ══════════════════════════════════════════════════════════
 // STATE & UTILS
