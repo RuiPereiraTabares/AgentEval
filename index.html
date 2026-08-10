@@ -291,7 +291,7 @@ body {
   box-shadow: 0 0 0 2px var(--ms-brand-light);
 }
 .chart-title { font-size: 12px; font-weight: 700; color: var(--ms-text-secondary); margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.04em; }
-.chart-wrap { position: relative; }
+.chart-wrap { position: relative; overflow-y: auto; }
 .h180 { height: 180px; }
 .h220 { height: 220px; }
 .h260 { height: 260px; }
@@ -1366,10 +1366,19 @@ const Chart = (() => {
       const cfg = this.cfg, ds = cfg.data.datasets[0];
       const data = ds.data, labels = cfg.data.labels||[], cols = ds.backgroundColor;
       const barTh = ds.barThickness||18, tcb = cfg.options?.scales?.y?.ticks?.callback;
+      const n = labels.length, TP=6, BP=24, RP=6;
+      // Expand canvas to fit all bars at natural thickness (like Chart.js responsive mode)
+      const minH = n * (barTh + 5) + TP + BP;
+      if (h < minH) {
+        const c = this.g.canvas;
+        c.style.height = minH + 'px';
+        const r = prep(c); g = r.g; w = r.w; h = r.h;
+        g.clearRect(0, 0, w, h);
+      }
       g.font = '10px system-ui,sans-serif';
       const rl = labels.map((l,i) => tcb ? String(tcb(l,i,[])??"") : trunc(String(l),28));
       const LP = Math.min(rl.reduce((m,l) => Math.max(m, g.measureText(l).width), 0)+8, w*0.5);
-      const RP=6, TP=6, BP=24, cW=w-LP-RP, cH=h-TP-BP, mV=Math.max(...data,1), n=labels.length, rH=cH/n;
+      const cW=w-LP-RP, cH=h-TP-BP, mV=Math.max(...data,1), rH=cH/n;
       g.textAlign='center'; g.textBaseline='top';
       for (let t=0; t<=4; t++) {
         const v=Math.round(mV*t/4), xp=LP+(v/mV)*cW;
