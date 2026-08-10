@@ -1280,6 +1280,7 @@ const Chart = (() => {
     constructor(ctx2d, cfg) {
       this.g = ctx2d; this.cfg = cfg; this.H = []; this.hov = -1; this.mp = null;
       const c = ctx2d.canvas;
+      c.style.display = 'block'; c.style.width = '100%'; c.style.height = '100%';
       this.ro = new ResizeObserver(() => this.draw()); this.ro.observe(c);
       this.fn = {
         move:  e => { const p = mpos(e,c); this.hov = this.ht(p); this.mp = p; this.draw(); c.style.cursor = this.hov>=0?'pointer':'default'; },
