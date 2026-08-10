@@ -4,7 +4,6 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Agentic Insight Engine — Dashboard</title>
-<script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -1197,6 +1196,56 @@ canvas { cursor: pointer; }
 </div>
 
 <script>
+// ══════════════════════════════════════════════════════════
+// INLINE CSV PARSER (replaces PapaParse CDN)
+// ══════════════════════════════════════════════════════════
+const Papa = {
+  parse(text, {header=true, skipEmptyLines=true, dynamicTyping=true}={}) {
+    function parseRows(str) {
+      const rows = [];
+      let row = [], field = '', inQuote = false, i = 0;
+      while (i < str.length) {
+        const c = str[i];
+        if (inQuote) {
+          if (c === '"' && str[i+1] === '"') { field += '"'; i += 2; continue; }
+          if (c === '"') { inQuote = false; i++; continue; }
+          field += c; i++; continue;
+        }
+        if (c === '"') { inQuote = true; i++; continue; }
+        if (c === ',') { row.push(field); field = ''; i++; continue; }
+        if (c === '\r') { i++; continue; }
+        if (c === '\n') {
+          row.push(field); field = '';
+          if (!skipEmptyLines || row.some(f => f !== '')) rows.push(row);
+          row = []; i++; continue;
+        }
+        field += c; i++;
+      }
+      row.push(field);
+      if (!skipEmptyLines || row.some(f => f !== '')) rows.push(row);
+      return rows;
+    }
+    function autoType(v) {
+      if (!dynamicTyping || v === '') return v;
+      const lo = v.toLowerCase();
+      if (lo === 'true') return true;
+      if (lo === 'false') return false;
+      const n = Number(v);
+      return isNaN(n) ? v : n;
+    }
+    const rows = parseRows(text);
+    if (!rows.length) return {data: []};
+    if (!header) return {data: rows.map(r => r.map(autoType))};
+    const headers = rows[0];
+    const data = rows.slice(1).map(row => {
+      const obj = {};
+      headers.forEach((h, i) => { obj[h] = autoType(row[i] !== undefined ? row[i] : ''); });
+      return obj;
+    });
+    return {data};
+  }
+};
+
 // ══════════════════════════════════════════════════════════
 // STATE & UTILS
 // ══════════════════════════════════════════════════════════
